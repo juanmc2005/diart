@@ -10,6 +10,7 @@ duration = 5
 step = 0.5
 latency = 5
 sample_rate = 16000
+file = "DH_DEV_0001.flac"
 
 # Simulate an unreliable recording protocol yielding new audio with a varying refresh rates
 unreliable_source = src.UnreliableFileAudioSource(refresh_rate_range=(0.1, 0.9), sample_rate=sample_rate)
@@ -35,15 +36,15 @@ clustering = fn.OnlineSpeakerClustering(
 pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
     ops.starmap(clustering),
     my_ops.aggregate(duration, step, latency),
-    # TODO binarize
+    ops.map(fn.Binarize(file, tau_active=0.6)),
     ops.take(5)
 )
 
 
 pipeline.subscribe(
-    on_next=utils.visualize(duration),
+    on_next=utils.visualize_annotation(duration),
     on_error=lambda e: print_exc(),
     on_completed=lambda: print("Done")
 )
 
-unreliable_source.read("/home/coria/DH_DEV_0001.flac")
+unreliable_source.read(f"/home/coria/{file}")

@@ -1,7 +1,8 @@
 import torch
 import numpy as np
-from pyannote.core import SlidingWindow, SlidingWindowFeature
+from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
 from pyannote.audio import Model
+from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.audio.core.online import SpeakerMap, SpeakerMapBuilder
 from typing import Union, Text, Optional, List, Iterable, Tuple
 from pathlib import Path
@@ -219,3 +220,29 @@ class OnlineSpeakerClustering:
             self.identify(segmentation, embeddings).apply(segmentation.data),
             segmentation.sliding_window
         )
+
+
+class Binarize:
+    def __init__(self, uri: str, tau_active: float):
+        self.uri = uri
+        self._binarize = PyanBinarize(
+            onset=tau_active,
+            offset=tau_active,
+            min_duration_on=0,
+            min_duration_off=0,
+        )
+
+    def _select(
+        self, scores: SlidingWindowFeature, speaker: int
+    ) -> SlidingWindowFeature:
+        return SlidingWindowFeature(
+            scores[:, speaker].reshape(-1, 1), scores.sliding_window
+        )
+
+    def __call__(self, segmentation: SlidingWindowFeature) -> Annotation:
+        annotation = Annotation(uri=self.uri, modality="speech")
+        for speaker in range(segmentation.data.shape[1]):
+            turns = self._binarize(self._select(segmentation, speaker))
+            for speaker_turn in turns.itersegments():
+                annotation[speaker_turn, speaker] = f"speaker{speaker}"
+        return annotation
