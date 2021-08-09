@@ -2,39 +2,12 @@ import rx
 from rx import operators as ops
 from rx.core import Observable
 from dataclasses import dataclass
-from typing import Callable, Optional, List
+from typing import Callable, Optional
 import numpy as np
 from pyannote.core import SlidingWindow, SlidingWindowFeature
-from pyannote.audio.core.online import SpeakerMap
-import functional as fn
-from clustering import OnlineSpeakerClustering
 
 
 Operator = Callable[[Observable], Observable]
-
-
-def make_pair(function: Callable) -> Operator:
-    return ops.map(fn.MakePair(function))
-
-
-def map_arg(argpos: int, function: Callable) -> Operator:
-    return ops.starmap(fn.MapArgument(argpos, function))
-
-
-def map_arg_append(argpos: int, function: Callable) -> Operator:
-    return ops.starmap(fn.MapArgumentAppend(argpos, function))
-
-
-def map_many_args(argpos: List[int], function: Callable) -> Operator:
-    return ops.starmap(fn.MapArguments(argpos, function))
-
-
-def map_many_args_append(argpos: List[int], function: Callable) -> Operator:
-    return ops.starmap(fn.MapArgumentsAppend(argpos, function))
-
-
-def keep_args(argpos: List[int]) -> Operator:
-    return ops.starmap(fn.KeepArguments(argpos))
 
 
 @dataclass
@@ -66,7 +39,7 @@ def RegularizeStream(
     duration: float = 5,
     step: float = 0.5,
     sample_rate: int = 16000
-) -> Callable[[Observable], Observable]:
+) -> Operator:
     chunk_samples = int(round(sample_rate * duration))
     step_samples = int(round(sample_rate * step))
 
@@ -102,27 +75,4 @@ def RegularizeStream(
         ops.filter(lambda state: state.changed),
         # Transform state into a SlidingWindowFeature containing the new 5s chunk
         ops.map(AudioBufferState.to_sliding_window(sample_rate))
-    )
-
-
-def ClusterSpeakers(
-    tau_active: float,
-    rho_update: float,
-    delta_new: float,
-    k_max_speakers: int,
-    metric: Optional[str] = "cosine",
-    max_speakers: int = 20
-) -> Callable[[Observable], Observable]:
-    model = OnlineSpeakerClustering(delta_new, k_max_speakers, metric, max_speakers)
-
-    def apply_mapping(segmentation: SlidingWindowFeature, mapping: SpeakerMap) -> SlidingWindowFeature:
-        return SlidingWindowFeature(mapping.apply(segmentation.data), segmentation.sliding_window)
-
-    return rx.pipe(
-        map_arg_append(0, fn.ActiveSpeakers(threshold=tau_active)),  # (segmentation, embeddings, active)
-        map_arg_append(0, fn.LongSpeechSpeakers(threshold=rho_update)),  # (segmentation, embeddings, active, long)
-        map_many_args_append(list(range(1, 4)), model.identify),  # (segmentation, embeddings, active, long, mapping)
-        map_many_args([0, 4], apply_mapping),
-        # (embeddings, active, long, permutation)
-        keep_args([3])
     )
