@@ -2,9 +2,9 @@ import rx
 from rx import operators as ops
 from rx.core import Observable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple, List
 import numpy as np
-from pyannote.core import SlidingWindow, SlidingWindowFeature
+from pyannote.core import Segment, SlidingWindow, SlidingWindowFeature
 
 
 Operator = Callable[[Observable], Observable]
@@ -35,7 +35,7 @@ class AudioBufferState:
         return call_fn
 
 
-def RegularizeStream(
+def regularize_stream(
     duration: float = 5,
     step: float = 0.5,
     sample_rate: int = 16000
@@ -75,4 +75,33 @@ def RegularizeStream(
         ops.filter(lambda state: state.changed),
         # Transform state into a SlidingWindowFeature containing the new 5s chunk
         ops.map(AudioBufferState.to_sliding_window(sample_rate))
+    )
+
+
+def aggregate(duration: float, step: float, latency: Optional[float] = None):
+    if latency is None:
+        latency = step
+    assert duration >= latency >= step
+    num_overlapping = int(latency / step)
+
+    def _get_aggregation_range(buffers: List[SlidingWindowFeature]) -> Tuple[List[SlidingWindowFeature], Segment]:
+        real_time = buffers[-1].extent.end
+        start_time = 0
+        if buffers[0].extent.start > 0:
+            start_time = real_time - latency
+        return buffers, Segment(start_time, real_time - latency + step)
+
+    def _aggregate(data: Tuple[List[SlidingWindowFeature], Segment]) -> SlidingWindowFeature:
+        buffers, required = data
+        intersection = np.stack([buffer.crop(required, fixed=required.duration) for buffer in buffers])
+        aggregation = np.mean(intersection, axis=0)
+        resolution = buffers[-1].sliding_window
+        resolution = SlidingWindow(start=required.start, duration=resolution.duration, step=resolution.step)
+        return SlidingWindowFeature(aggregation, resolution)
+
+    return ops.pipe(
+        ops.buffer_with_count(num_overlapping, 1),
+        ops.filter(lambda xs: len(xs) == num_overlapping),
+        ops.map(_get_aggregation_range),
+        ops.map(_aggregate)
     )
