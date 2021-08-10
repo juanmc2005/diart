@@ -1,16 +1,15 @@
 import torch
 import numpy as np
 from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
-from pyannote.audio import Model
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.audio.core.online import SpeakerMap, SpeakerMapBuilder
-from typing import Union, Text, Optional, List, Iterable, Tuple
-from pathlib import Path
+from pyannote.audio.pipelines.utils import PipelineModel, get_model
+from typing import Union, Optional, List, Iterable, Tuple
 
 
 class FrameWiseModel:
-    def __init__(self, model: Union[Path, Text]):
-        self.model = Model.from_pretrained(model)
+    def __init__(self, model: PipelineModel):
+        self.model = get_model(model)
         self.model.eval()
 
     def __call__(self, waveform: SlidingWindowFeature) -> SlidingWindowFeature:
@@ -27,8 +26,8 @@ class FrameWiseModel:
 
 
 class ChunkWiseModel:
-    def __init__(self, model: Union[Path, Text]):
-        self.model = Model.from_pretrained(model)
+    def __init__(self, model: PipelineModel):
+        self.model = get_model(model)
         self.model.eval()
 
     def __call__(self, waveform: SlidingWindowFeature, weights: Optional[SlidingWindowFeature]) -> torch.Tensor:
@@ -84,16 +83,14 @@ class OnlineSpeakerClustering:
         tau_active: float,
         rho_update: float,
         delta_new: float,
-        k_max_speakers: int,
         metric: Optional[str] = "cosine",
-        max_identifiable_speakers: int = 20
+        max_speakers: int = 20
     ):
         self.tau_active = tau_active
         self.rho_update = rho_update
         self.delta_new = delta_new
-        self.num_local_speakers = k_max_speakers
         self.metric = metric
-        self.max_speakers = max_identifiable_speakers
+        self.max_speakers = max_speakers
         self.centers: Optional[np.ndarray] = None
         self.active_centers = set()
         self.blocked_centers = set()
@@ -148,6 +145,7 @@ class OnlineSpeakerClustering:
         embeddings = embeddings.detach().cpu().numpy()
         active_speakers = np.where(np.max(segmentation.data, axis=0) >= self.tau_active)[0]
         long_speakers = np.where(np.mean(segmentation.data, axis=0) >= self.rho_update)[0]
+        num_local_speakers = segmentation.data.shape[1]
 
         if self.centers is None:
             self.init_centers(embeddings.shape[1])
@@ -156,7 +154,7 @@ class OnlineSpeakerClustering:
                 for spk in active_speakers
             ]
             return SpeakerMapBuilder.hard_map(
-                shape=(self.num_local_speakers, self.max_speakers),
+                shape=(num_local_speakers, self.max_speakers),
                 assignments=assignments,
                 maximize=False,
             )
@@ -165,7 +163,7 @@ class OnlineSpeakerClustering:
         dist_map = SpeakerMapBuilder.dist(embeddings, self.centers, self.metric)
         # Remove any assignments containing invalid speakers
         inactive_speakers = np.array([
-            spk for spk in range(self.num_local_speakers)
+            spk for spk in range(num_local_speakers)
             if spk not in active_speakers
         ])
         dist_map = dist_map.unmap_speakers(inactive_speakers, self.inactive_centers)

@@ -1,24 +1,29 @@
-import rx
 from rx.subject import Subject
 from pyannote.audio.core.io import Audio, AudioFile
 from pyannote.core import SlidingWindow
 import random
 from typing import Tuple
+import time
 
 
-class FileAudioSource:
-    def __init__(self, sample_rate: int):
-        self.audio = Audio(sample_rate=sample_rate, mono=True)
+class AudioSource:
+    def __init__(self, uri: str, sample_rate: int):
+        self.uri = uri
+        self.sample_rate = sample_rate
         self.stream = Subject()
 
-    def to_iterable(self, file: AudioFile):
+
+class FileAudioSource(AudioSource):
+    def __init__(self, file: AudioFile, uri: str, sample_rate: int):
+        super().__init__(uri, sample_rate)
+        self.audio = Audio(sample_rate=sample_rate, mono=True)
+        self.file = file
+
+    def to_iterable(self):
         raise NotImplementedError
 
-    def __call__(self, file: AudioFile):
-        return rx.from_iterable(self.to_iterable(file))
-
-    def read(self, file: AudioFile):
-        for waveform in self.to_iterable(file):
+    def read(self):
+        for waveform in self.to_iterable():
             try:
                 self.stream.on_next(waveform)
             except Exception as e:
@@ -27,30 +32,47 @@ class FileAudioSource:
 
 
 class ReliableFileAudioSource(FileAudioSource):
-    def __init__(self, duration: float, step: float, sample_rate: int):
-        super().__init__(sample_rate)
+    def __init__(
+        self,
+        file: AudioFile,
+        uri: str,
+        sample_rate: int,
+        duration: float,
+        step: float
+    ):
+        super().__init__(file, uri, sample_rate)
         self.duration = duration
         self.step = step
 
-    def to_iterable(self, file: AudioFile):
-        duration = self.audio.get_duration(file)
+    def to_iterable(self):
+        duration = self.audio.get_duration(self.file)
         window = SlidingWindow(start=0., duration=self.duration, step=self.step, end=duration)
         for chunk in window:
-            waveform, sample_rate = self.audio.crop(file, chunk, fixed=self.duration)
+            waveform, sample_rate = self.audio.crop(self.file, chunk, fixed=self.duration)
             yield waveform
 
 
 class UnreliableFileAudioSource(FileAudioSource):
-    def __init__(self, refresh_rate_range: Tuple[float, float], sample_rate: int):
-        super().__init__(sample_rate)
+    def __init__(
+        self,
+        file: AudioFile,
+        uri: str,
+        sample_rate: int,
+        refresh_rate_range: Tuple[float, float],
+        simulate_delay: bool = False
+    ):
+        super().__init__(file, uri, sample_rate)
         self.start, self.end = refresh_rate_range
+        self.delay = simulate_delay
 
-    def to_iterable(self, file: AudioFile):
-        waveform, sample_rate = self.audio(file)
+    def to_iterable(self):
+        waveform, sample_rate = self.audio(self.file)
         total_samples = waveform.shape[1]
         i = 0
         while i < total_samples:
             rnd_duration = random.uniform(self.start, self.end)
+            if self.delay:
+                time.sleep(rnd_duration)
             num_samples = int(round(rnd_duration * sample_rate))
             last_i = i
             i += num_samples
