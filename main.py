@@ -12,7 +12,7 @@ parser.add_argument("--latency", required=False, type=float, help="System latenc
 parser.add_argument("--sample-rate", default=16000, type=int, help="Source sample rate")
 parser.add_argument("--tau", default=0.6, type=float, help="Activity threshold tau active")
 parser.add_argument("--rho", default=0.3, type=float, help="Speech duration threshold rho update")
-parser.add_argument("--delta", default=1.0, type=float, help="Maximum distance threshold delta new")
+parser.add_argument("--delta", default=1.2, type=float, help="Maximum distance threshold delta new")
 parser.add_argument("--gamma", default=3, type=float, help="Parameter gamma for overlapped speech penalty")
 parser.add_argument("--beta", default=10, type=float, help="Parameter beta for overlapped speech penalty")
 parser.add_argument("--max-speakers", default=20, type=int, help="Maximum number of identifiable speakers")

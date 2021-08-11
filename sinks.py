@@ -67,19 +67,19 @@ class OutputBuilder(Observer):
             mapping = metric.optimal_mapping(self.reference, self.output)
             self.output.rename_labels(mapping=mapping, copy=False)
         notebook.plot_annotation(self.output, self.axs[0])
-        self.axs[0].set_ylabel("Output")
+        self.axs[0].set_title("Output")
         if self.num_axs == 2:
             if self.waveform is not None:
                 notebook.plot_feature(self.waveform, self.axs[1])
-                self.axs[1].set_ylabel("Audio")
+                self.axs[1].set_title("Audio")
             elif self.reference is not None:
                 notebook.plot_annotation(self.reference, self.axs[1])
-                self.axs[1].set_ylabel("Reference")
+                self.axs[1].set_title("Reference")
         elif self.num_axs == 3:
             notebook.plot_feature(self.waveform, self.axs[1])
-            self.axs[1].set_ylabel("Audio")
+            self.axs[1].set_title("Audio")
             notebook.plot_annotation(self.reference, self.axs[2])
-            self.axs[2].set_ylabel("Reference")
+            self.axs[2].set_title("Reference")
 
         # Draw
         plt.tight_layout()
