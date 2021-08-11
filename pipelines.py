@@ -39,7 +39,7 @@ class OnlineDiarization:
         self.beta = beta
         self.max_speakers = max_speakers
 
-    def from_source(self, source: AudioSource) -> rx.Observable:
+    def from_source(self, source: AudioSource, output_waveform: bool = False) -> rx.Observable:
         # Regularize the stream to a specific chunk duration and step
         regular_stream = source.stream.pipe(
             my_ops.regularize_stream(self.duration, self.step, source.sample_rate)
@@ -60,8 +60,15 @@ class OnlineDiarization:
         clustering = fn.OnlineSpeakerClustering(
             self.tau_active, self.rho_update, self.delta_new, "cosine", self.max_speakers
         )
-        return rx.zip(segmentation_stream, embedding_stream).pipe(
+        pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
             ops.starmap(clustering),
-            my_ops.aggregate(self.duration, self.step, self.latency),
+            my_ops.aggregate(self.duration, self.step, self.latency, "mean"),
             ops.map(fn.Binarize(source.uri, self.tau_active)),
         )
+        if output_waveform:
+            pipeline = pipeline.pipe(
+                ops.zip(regular_stream.pipe(
+                    my_ops.aggregate(self.duration, self.step, self.latency, "any")
+                ))
+            )
+        return pipeline

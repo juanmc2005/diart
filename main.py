@@ -22,7 +22,7 @@ args = parser.parse_args()
 uri = args.source
 if args.source != "microphone":
     args.source = Path(args.source).expanduser()
-    uri = args.source.name
+    uri = args.source.name.split(".")[0]
 else:
     print("Microphone input is not supported yet")
     exit(1)
@@ -33,7 +33,7 @@ unreliable_source = src.UnreliableFileAudioSource(
     uri=uri,
     sample_rate=args.sample_rate,
     refresh_rate_range=(0.1, 1.0),
-    simulate_delay=True,
+    simulate_delay=False,
 )
 
 # Define online speaker diarization pipeline
@@ -49,8 +49,12 @@ pipeline = OnlineDiarization(
 )
 
 # Configure output builder to write an RTTM file and to draw in real time
-output_builder = OutputBuilder(args.source.parent / "output.rttm")
+output_builder = OutputBuilder(
+    output_path=args.source.parent / "output.rttm",
+    visualization="slide",
+    # reference=args.source.parent / f"{uri}.rttm",
+)
 # Build pipeline from audio source and stream results to the output builder
-pipeline.from_source(unreliable_source).subscribe(output_builder)
+pipeline.from_source(unreliable_source, output_waveform=True).subscribe(output_builder)
 # Read audio source as a stream
 unreliable_source.read()
