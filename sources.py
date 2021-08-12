@@ -1,6 +1,3 @@
-import warnings
-
-import numpy as np
 from rx.subject import Subject
 from pyannote.audio.core.io import Audio, AudioFile
 from pyannote.core import SlidingWindow
@@ -8,7 +5,6 @@ import random
 from typing import Tuple
 import time
 import sounddevice as sd
-import queue
 
 
 class AudioSource:
@@ -108,4 +104,3 @@ class MicrophoneAudioSource(AudioSource):
                 break
             self.stream.on_next(samples[:, [0]].T)
         self.stream.on_completed()
-
