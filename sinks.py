@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 class OutputBuilder(Observer):
     def __init__(
         self,
+        duration: float,
+        step: float,
         output_path: Optional[Union[Path, Text]] = None,
         merge_collar: float = 0.05,
         visualization: Literal["slide", "accumulate"] = "slide",
@@ -29,7 +31,9 @@ class OutputBuilder(Observer):
             self.reference = self.reference[uri]
         self.output: Optional[Annotation] = None
         self.waveform: Optional[SlidingWindowFeature] = None
-        self.window_duration: Optional[float] = None
+        self.window_duration: float = duration
+        self.step = step
+        self.real_time = 0
         self.figure, self.axs, self.num_axs = None, None, -1
 
     def init_num_axs(self):
@@ -54,12 +58,11 @@ class OutputBuilder(Observer):
             self.axs[i].clear()
 
         # Determine plot bounds
-        output_extent = self.output.get_timeline().extent()
         if self.visualization == "slide":
-            start_time = output_extent.end - self.window_duration
-            notebook.crop = Segment(start_time, output_extent.end)
+            start_time = self.real_time - self.window_duration
+            notebook.crop = Segment(start_time, self.real_time)
         else:
-            notebook.crop = output_extent
+            notebook.crop = Segment(0, self.real_time)
 
         # Plot internal state
         if self.reference is not None:
@@ -96,9 +99,10 @@ class OutputBuilder(Observer):
         # Update output annotation
         if self.output is None:
             self.output = annotation
-            self.window_duration = annotation.get_timeline().extent().duration
+            self.real_time = self.window_duration
         else:
             self.output = self.output.update(annotation).support(self.collar)
+            self.real_time += self.step
 
         # Update waveform
         if waveform is not None:
@@ -119,3 +123,6 @@ class OutputBuilder(Observer):
     def on_error(self, error: Exception):
         print_exc()
         exit(1)
+
+    def on_completed(self):
+        print("Stream completed")

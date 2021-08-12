@@ -1,9 +1,14 @@
+import warnings
+
+import numpy as np
 from rx.subject import Subject
 from pyannote.audio.core.io import Audio, AudioFile
 from pyannote.core import SlidingWindow
 import random
 from typing import Tuple
 import time
+import sounddevice as sd
+import queue
 
 
 class AudioSource:
@@ -11,6 +16,9 @@ class AudioSource:
         self.uri = uri
         self.sample_rate = sample_rate
         self.stream = Subject()
+
+    def read(self):
+        raise NotImplementedError
 
 
 class FileAudioSource(AudioSource):
@@ -77,3 +85,27 @@ class UnreliableFileAudioSource(FileAudioSource):
             last_i = i
             i += num_samples
             yield waveform[:, last_i:i]
+
+
+class MicrophoneAudioSource(AudioSource):
+    def __init__(self, sample_rate: int):
+        super().__init__("live_recording", sample_rate)
+        self.block_size = 1024
+        self.mic_stream = sd.InputStream(
+            channels=1,
+            samplerate=sample_rate,
+            latency=0,
+            blocksize=self.block_size,
+        )
+
+    def read(self):
+        self.mic_stream.start()
+        while self.mic_stream:
+            try:
+                samples = self.mic_stream.read(self.block_size)[0]
+            except Exception as e:
+                self.stream.on_error(e)
+                break
+            self.stream.on_next(samples[:, [0]].T)
+        self.stream.on_completed()
+

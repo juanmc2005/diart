@@ -46,7 +46,8 @@ def regularize_stream(
 
     def accumulate(state: AudioBufferState, value: np.ndarray):
         # State contains the last emitted chunk, the current step buffer and the last starting time
-        assert value.ndim == 2 and value.shape[0] == 1, "Waveform must have shape (1, samples)"
+        if value.ndim != 2 or value.shape[0] != 1:
+            raise ValueError(f"Waveform must have shape (1, samples) but {value.shape} was found")
         start_time = state.start_time
 
         # Add new samples to the buffer
