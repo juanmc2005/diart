@@ -2,20 +2,23 @@ import torch
 import numpy as np
 from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
-from pyannote.audio.pipelines.utils import PipelineModel, get_model
+from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
 from mapping import SpeakerMap, SpeakerMapBuilder
 from typing import Union, Optional, List, Iterable, Tuple
 
 
 class FrameWiseModel:
-    def __init__(self, model: PipelineModel):
+    def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
         self.model = get_model(model)
         self.model.eval()
+        if device is None:
+            device = get_devices(needs=1)[0]
+        self.model.to(device)
 
     def __call__(self, waveform: SlidingWindowFeature) -> SlidingWindowFeature:
         with torch.no_grad():
-            wave = waveform.data.T[np.newaxis]
-            output = self.model(torch.from_numpy(wave)).numpy()[0]
+            wave = torch.from_numpy(waveform.data.T[np.newaxis])
+            output = self.model(wave.to(self.model.device)).cpu().numpy()[0]
         # Temporal resolution of the output
         resolution = self.model.introspection.frames
         # Temporal shift to keep track of current start time
@@ -26,9 +29,12 @@ class FrameWiseModel:
 
 
 class ChunkWiseModel:
-    def __init__(self, model: PipelineModel):
+    def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
         self.model = get_model(model)
         self.model.eval()
+        if device is None:
+            device = get_devices(needs=1)[0]
+        self.model.to(device)
 
     def __call__(self, waveform: SlidingWindowFeature, weights: Optional[SlidingWindowFeature]) -> torch.Tensor:
         with torch.no_grad():
@@ -36,10 +42,10 @@ class ChunkWiseModel:
             inputs = chunk.unsqueeze(0).to(self.model.device)
             if weights is not None:
                 # weights has shape (num_local_speakers, num_frames)
-                weights = torch.from_numpy(weights.data.T).float()
+                weights = torch.from_numpy(weights.data.T).float().to(self.model.device)
                 inputs = inputs.repeat(weights.shape[0], 1, 1)
             # Shape (num_speakers, emb_dimension)
-            output = self.model(inputs, weights=weights)
+            output = self.model(inputs, weights=weights).cpu()
         return output
 
 
