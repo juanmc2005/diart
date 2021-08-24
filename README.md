@@ -4,14 +4,15 @@ This is the companion repository for the paper
 *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)*,  
 by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay]() and [Sophie Rosset]().
 
+<p align="center">
 <img height="400" src="/figure1.png" title="Figure 1" width="325" />
+</p>
 
 ## Citation
 
 ```bibtex
-Coming soon
+Paper currently under review.
 ```
-
 
 ## Installation
 
@@ -88,8 +89,8 @@ mic.read()
 
 In order to reproduce the results of the paper, use the following hyper-parameters:
 
-Dataset     | latency | $\tau$ | $\rho$ | $\delta$ 
-------------|---------|--------|--------|----------
+Dataset     | latency | tau    | rho    | delta 
+------------|---------|--------|--------|------
 DIHARD III  | any     | 0.555  | 0.422  | 1.517  
 AMI         | any     | 0.507  | 0.006  | 1.057  
 VoxConverse | any     | 0.576  | 0.915  | 0.648  
