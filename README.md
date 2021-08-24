@@ -118,9 +118,7 @@ reference = load_rttm("/path/to/reference.rttm")
 der = metric(reference, hypothesis)
 ```
 
-For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) in RTTM format corresponding to every entry of Table 1 and Figure 5 in the paper.  
-
-This includes the VBx offline baseline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
+For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) in RTTM format corresponding to every entry of Table 1 and Figure 5 in the paper. This includes the VBx offline baseline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
 ![Figure 5](/figure5.png)
 
