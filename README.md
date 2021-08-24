@@ -1,6 +1,7 @@
 # Streaming Speaker Diarization
 
-This is the companion repository for the paper *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)*,  
+This is the companion repository for the paper  
+*[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)*,  
 by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay]() and [Sophie Rosset]().
 
 <img height="400" src="/figure1.png" title="Figure 1" width="325" />
