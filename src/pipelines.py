@@ -7,14 +7,14 @@ from typing import Optional
 from pyannote.audio.pipelines.utils import PipelineModel
 
 
-class OnlineDiarization:
+class OnlineSpeakerDiarization:
     def __init__(
         self,
         segmentation: PipelineModel = "pyannote/segmentation",
         embedding: PipelineModel = "pyannote/embedding",
         duration: Optional[float] = None,
         step: float = 0.5,
-        latency: Optional[float] = 5,
+        latency: Optional[float] = None,
         tau_active: float = 0.6,
         rho_update: float = 0.3,
         delta_new: float = 1,
@@ -30,7 +30,7 @@ class OnlineDiarization:
         self.step = step
         self.latency = latency
         if self.latency is None:
-            self.latency = self.duration
+            self.latency = self.step
         assert self.step <= self.latency <= self.duration, "Invalid latency requested"
         self.tau_active = tau_active
         self.rho_update = rho_update
