@@ -1,4 +1,4 @@
-# Streaming Speaker Diarization
+# Streaming speaker diarization
 
 *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)*,  
 by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
