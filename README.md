@@ -89,16 +89,16 @@ In order to reproduce the results of the paper, use the following hyper-paramete
 
 Dataset     | latency | $\tau$ | $\rho$ | $\delta$ 
 ------------|---------|--------|--------|----------
-DIHARD III  | any     |        |        |   
-AMI         | any     |        |        |   
-VoxConverse | any     |        |        |   
-DIHARD II   | 1s      |        |        |   
-DIHARD II   | 5s      |        |        |
+DIHARD III  | any     | 0.555  | 0.422  | 1.517  
+AMI         | any     | 0.507  | 0.006  | 1.057  
+VoxConverse | any     | 0.576  | 0.915  | 0.648  
+DIHARD II   | 1s      | 0.619  | 0.326  | 0.997  
+DIHARD II   | 5s      | 0.555  | 0.422  | 1.517  
 
 For instance, for a DIHARD III configuration, one would use:
 
 ```shell
-python main.py /path/to/file.wav --latency=5 --tau= --rho= --delta= --output /output/dir
+python main.py /path/to/file.wav --latency=5 --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
 ```
 
 And then to obtain the diarization error rate:
