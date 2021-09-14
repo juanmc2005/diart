@@ -1,7 +1,7 @@
 from pathlib import Path
 import argparse
 
-import .sources as src
+from . import sources as src
 from .pipelines import OnlineSpeakerDiarization
 from .sinks import OutputBuilder
 
