@@ -1,9 +1,9 @@
 from pathlib import Path
 import argparse
 
-from . import sources as src
-from .pipelines import OnlineSpeakerDiarization
-from .sinks import OutputBuilder
+import streaming_speaker_diarization.sources as src
+from streaming_speaker_diarization.pipelines import OnlineSpeakerDiarization
+from streaming_speaker_diarization.sinks import OutputBuilder
 
 
 # Define script arguments
