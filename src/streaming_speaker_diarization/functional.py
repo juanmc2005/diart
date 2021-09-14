@@ -3,8 +3,9 @@ import numpy as np
 from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
-from mapping import SpeakerMap, SpeakerMapBuilder
 from typing import Union, Optional, List, Iterable, Tuple
+
+from .mapping import SpeakerMap, SpeakerMapBuilder
 
 
 class FrameWiseModel:
