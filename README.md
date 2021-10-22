@@ -13,7 +13,7 @@ by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://h
 ## Citation
 
 ```bibtex
-Paper currently under review.
+Awaiting paper publication (ASRU 2021).
 ```
 
 ## Installation
@@ -63,10 +63,14 @@ Our streaming implementation is based on [RxPY](https://github.com/ReactiveX/RxP
 In this example we show how to obtain speaker embeddings from a microphone stream with Equation 2:
 
 ```python
+import rx
+import rx.operators as ops
+import operators as myops
 from sources import MicrophoneAudioSource
 from functional import FrameWiseModel, ChunkWiseModel, OverlappedSpeechPenalty, EmbeddingNormalization
 
-mic = MicrophoneAudioSource(sample_rate=16000)
+sample_rate = 16000
+mic = MicrophoneAudioSource(sample_rate=sample_rate)
 
 # Initialize independent modules
 segmentation = FrameWiseModel("pyannote/segmentation")
@@ -74,16 +78,18 @@ embedding = ChunkWiseModel("pyannote/embedding")
 osp = OverlappedSpeechPenalty(gamma=3, beta=10)
 normalization = EmbeddingNormalization(norm=1)
 
+# Reformat microphone stream. Defaults to 5s duration and 500ms shift
+regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate=sample_rate))
 # Branch the microphone stream to calculate segmentation
-segmentation_stream = mic.stream.pipe(ops.map(segmentation))
+segmentation_stream = regular_stream.pipe(ops.map(segmentation))
 # Join audio and segmentation stream to calculate speaker embeddings
-embedding_stream = rx.zip(mic.stream, segmentation_stream).pipe(
+embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
     ops.starmap(lambda wave, seg: (wave, osp(seg))),
     ops.starmap(embedding),
     ops.map(normalization)
 )
 
-embedding_stream.suscribe(on_next=lambda emb: print(emb.shape))
+embedding_stream.subscribe(on_next=lambda emb: print(emb.shape))
 
 mic.read()
 ```
@@ -91,9 +97,9 @@ mic.read()
 Output:
 
 ```
-(4, 512)
-(4, 512)
-(4, 512)
+torch.Size([4, 512])
+torch.Size([4, 512])
+torch.Size([4, 512])
 ...
 ```
 
