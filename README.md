@@ -27,9 +27,10 @@ conda activate diarization
 
 2) Install the latest PyTorch version following the [official instructions](https://pytorch.org/get-started/locally/#start-locally)
 
-3) Install dependencies:
+3) Install:
 ```shell
-pip install -r requirements.txt
+cd StreamingSpeakerDiarization
+pip install -e .
 ```
 
 ## Usage
@@ -39,13 +40,13 @@ pip install -r requirements.txt
 Stream a previously recorded conversation:
 
 ```shell
-python main.py /path/to/audio.wav
+python -m diart.demo /path/to/audio.wav
 ```
 
 Or use a real audio stream from your microphone:
 
 ```shell
-python main.py microphone
+python -m diart.demo microphone
 ```
 
 This will launch a real-time visualization of the diarization outputs as they are produced by the system:
@@ -53,7 +54,7 @@ This will launch a real-time visualization of the diarization outputs as they ar
 ![Example of a state of the real-time output plot](/visualization.png)
 
 By default, the script uses step = latency = 500ms, and it sets reasonable values for all hyper-parameters.
-See `python main.py -h` for more information.
+See `python -m diart.demo -h` for more information.
 
 ### API
 
@@ -65,18 +66,18 @@ In this example we show how to obtain speaker embeddings from a microphone strea
 ```python
 import rx
 import rx.operators as ops
-import operators as myops
-from sources import MicrophoneAudioSource
-from functional import FrameWiseModel, ChunkWiseModel, OverlappedSpeechPenalty, EmbeddingNormalization
+import diart.operators as myops
+from diart.sources import MicrophoneAudioSource
+import diart.functional as fn
 
 sample_rate = 16000
 mic = MicrophoneAudioSource(sample_rate=sample_rate)
 
 # Initialize independent modules
-segmentation = FrameWiseModel("pyannote/segmentation")
-embedding = ChunkWiseModel("pyannote/embedding")
-osp = OverlappedSpeechPenalty(gamma=3, beta=10)
-normalization = EmbeddingNormalization(norm=1)
+segmentation = fn.FrameWiseModel("pyannote/segmentation")
+embedding = fn.ChunkWiseModel("pyannote/embedding")
+osp = fn.OverlappedSpeechPenalty(gamma=3, beta=10)
+normalization = fn.EmbeddingNormalization(norm=1)
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
 regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate=sample_rate))
@@ -120,7 +121,7 @@ DIHARD II   | 5s      | 0.555  | 0.422  | 1.517
 For instance, for a DIHARD III configuration, one would use:
 
 ```shell
-python main.py /path/to/file.wav --latency=5 --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
+python -m diart.demo /path/to/file.wav --latency=5 --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
 ```
 
 And then to obtain the diarization error rate:
