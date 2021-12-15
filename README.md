@@ -1,4 +1,6 @@
-# Streaming speaker diarization
+# Diart - Streaming speaker diarization in real time
+
+[![PyPI version](https://badge.fury.io/py/diart.svg)](https://badge.fury.io/py/diart)
 
 *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)*   
 by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
@@ -27,10 +29,14 @@ conda activate diarization
 
 2) Install the latest PyTorch version following the [official instructions](https://pytorch.org/get-started/locally/#start-locally)
 
-3) Install:
+3) Install pyannote.audio 2.0 (currently in development)
 ```shell
-cd StreamingSpeakerDiarization
-pip install -e .
+pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
+```
+
+4) Install Diart:
+```shell
+pip install diart
 ```
 
 ## Usage
@@ -51,7 +57,7 @@ python -m diart.demo microphone
 
 This will launch a real-time visualization of the diarization outputs as they are produced by the system:
 
-![Example of a state of the real-time output plot](/visualization.png)
+![Example of a state of the real time output plot](/visualization.png)
 
 By default, the script uses step = latency = 500ms, and it sets reasonable values for all hyper-parameters.
 See `python -m diart.demo -h` for more information.
