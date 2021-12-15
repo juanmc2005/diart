@@ -1,8 +1,10 @@
-import sources as src
-from pipelines import OnlineSpeakerDiarization
-from sinks import OutputBuilder
 from pathlib import Path
 import argparse
+
+import diart.sources as src
+from diart.pipelines import OnlineSpeakerDiarization
+from diart.sinks import OutputBuilder
+
 
 # Define script arguments
 parser = argparse.ArgumentParser()
