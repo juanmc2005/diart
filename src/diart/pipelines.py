@@ -61,15 +61,22 @@ class OnlineSpeakerDiarization:
         clustering = fn.OnlineSpeakerClustering(
             self.tau_active, self.rho_update, self.delta_new, "cosine", self.max_speakers
         )
+        aggregation = fn.DelayedAggregation(self.step, self.latency, strategy="mean")
         pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
             ops.starmap(clustering),
-            my_ops.aggregate(self.duration, self.step, self.latency, "mean"),
+            # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
+            ops.buffer_with_count(aggregation.num_overlapping_windows, 1),
+            # Aggregate overlapping output windows
+            ops.map(aggregation),
+            # Binarize output
             ops.map(fn.Binarize(source.uri, self.tau_active)),
         )
         if output_waveform:
+            window_selector = fn.DelayedAggregation(self.step, self.latency, strategy="any")
             pipeline = pipeline.pipe(
                 ops.zip(regular_stream.pipe(
-                    my_ops.aggregate(self.duration, self.step, self.latency, "any")
+                    ops.buffer_with_count(window_selector.num_overlapping_windows, 1),
+                    ops.map(window_selector),
                 ))
             )
         return pipeline

@@ -1,9 +1,10 @@
 import torch
 import numpy as np
-from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
+from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
-from typing import Union, Optional, List, Iterable, Tuple
+from typing import Union, Optional, List, Literal, Iterable, Tuple
+import warnings
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
 
@@ -82,6 +83,55 @@ class EmbeddingNormalization:
         with torch.no_grad():
             norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=1, keepdim=True)
         return norm_embs
+
+
+class DelayedAggregation:
+    def __init__(
+        self,
+        step: float,
+        latency: Optional[float] = None,
+        strategy: Literal["mean", "hamming", "any"] = "hamming",
+    ):
+        self.step = step
+        self.latency = latency
+        self.strategy = strategy
+
+        if self.latency is None:
+            self.latency = step
+
+        assert self.latency >= step, "Latency can't be smaller than step"
+        assert self.strategy in ["mean", "hamming", "any"]
+
+        self.num_overlapping_windows = int(round(self.latency / self.step))
+
+        if strategy == "hamming":
+            warnings.warn("'hamming' aggregation is not supported yet, defaulting to 'mean'")
+
+    def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
+        # Determine overlapping region to aggregate
+        real_time = buffers[-1].extent.end
+        start_time = 0
+        if buffers[0].extent.start > 0:
+            start_time = real_time - self.latency
+        required = Segment(start_time, real_time - self.latency + self.step)
+        # Stack all overlapping regions
+        intersection = np.stack([
+            buffer.crop(required, fixed=required.duration)
+            for buffer in buffers
+        ])
+        # Aggregate according to strategy
+        if self.strategy in ("mean", "hamming"):
+            aggregation = np.mean(intersection, axis=0)
+        else:
+            aggregation = intersection[0]
+        # Determine resolution
+        resolution = buffers[-1].sliding_window
+        resolution = SlidingWindow(
+            start=required.start,
+            duration=resolution.duration,
+            step=resolution.step
+        )
+        return SlidingWindowFeature(aggregation, resolution)
 
 
 class OnlineSpeakerClustering:
