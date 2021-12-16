@@ -22,11 +22,13 @@ class FrameWiseModel:
             wave = torch.from_numpy(waveform.data.T[np.newaxis])
             output = self.model(wave.to(self.model.device)).cpu().numpy()[0]
         # Temporal resolution of the output
-        resolution = self.model.introspection.frames
+        resolution = self.model.specifications.duration / output.shape[0]
         # Temporal shift to keep track of current start time
-        resolution = SlidingWindow(start=waveform.sliding_window.start,
-                                   duration=resolution.duration,
-                                   step=resolution.step)
+        resolution = SlidingWindow(
+            start=waveform.sliding_window.start,
+            duration=resolution,
+            step=resolution
+        )
         return SlidingWindowFeature(output, resolution)
 
 
@@ -86,6 +88,44 @@ class EmbeddingNormalization:
 
 
 class DelayedAggregation:
+    """Aggregate aligned overlapping windows of the same duration
+    across sliding buffers with a specific step and latency.
+
+    Parameters
+    ----------
+    step: float
+        Shift between two consecutive buffers, in seconds.
+    latency: float, optional
+        Desired latency, in seconds. Defaults to step.
+        The higher the latency, the more overlapping windows to aggregate.
+    strategy: ("mean", "hamming", "any"), optional
+        Specifies how to aggregate overlapping windows. Defaults to "hamming".
+        "mean": simple average
+        "hamming": average weighted by the Hamming window values (aligned to the buffer)
+        "any": no aggregation, pick the first overlapping window
+
+    Example
+    --------
+    >>> duration = 5
+    >>> frames = 500
+    >>> step = 0.5
+    >>> speakers = 2
+    >>> start_time = 10
+    >>> resolution = duration / frames
+    >>> dagg = DelayedAggregation(step=step, latency=2, strategy="mean")
+    >>> buffers = [
+    >>>     SlidingWindowFeature(
+    >>>         np.random.rand(frames, speakers),
+    >>>         SlidingWindow(start=(i + start_time) * step, duration=resolution, step=resolution)
+    >>>     )
+    >>>     for i in range(dagg.num_overlapping_windows)
+    >>> ]
+    >>> dagg.num_overlapping_windows
+    ... 4
+    >>> dagg(buffers).data.shape
+    ... (51, 2)  # Rounding errors are possible when cropping the buffers
+    """
+
     def __init__(
         self,
         step: float,
@@ -97,14 +137,14 @@ class DelayedAggregation:
         self.strategy = strategy
 
         if self.latency is None:
-            self.latency = step
+            self.latency = self.step
 
-        assert self.latency >= step, "Latency can't be smaller than step"
+        assert self.step <= self.latency, "Invalid latency requested"
         assert self.strategy in ["mean", "hamming", "any"]
 
         self.num_overlapping_windows = int(round(self.latency / self.step))
 
-        if strategy == "hamming":
+        if self.strategy == "hamming":
             warnings.warn("'hamming' aggregation is not supported yet, defaulting to 'mean'")
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
