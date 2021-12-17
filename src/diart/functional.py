@@ -1,9 +1,10 @@
 import torch
 import numpy as np
-from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
+from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
-from typing import Union, Optional, List, Iterable, Tuple
+from typing import Union, Optional, List, Literal, Iterable, Tuple
+import warnings
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
 
@@ -21,11 +22,13 @@ class FrameWiseModel:
             wave = torch.from_numpy(waveform.data.T[np.newaxis])
             output = self.model(wave.to(self.model.device)).cpu().numpy()[0]
         # Temporal resolution of the output
-        resolution = self.model.introspection.frames
+        resolution = self.model.specifications.duration / output.shape[0]
         # Temporal shift to keep track of current start time
-        resolution = SlidingWindow(start=waveform.sliding_window.start,
-                                   duration=resolution.duration,
-                                   step=resolution.step)
+        resolution = SlidingWindow(
+            start=waveform.sliding_window.start,
+            duration=resolution,
+            step=resolution
+        )
         return SlidingWindowFeature(output, resolution)
 
 
@@ -82,6 +85,93 @@ class EmbeddingNormalization:
         with torch.no_grad():
             norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=1, keepdim=True)
         return norm_embs
+
+
+class DelayedAggregation:
+    """Aggregate aligned overlapping windows of the same duration
+    across sliding buffers with a specific step and latency.
+
+    Parameters
+    ----------
+    step: float
+        Shift between two consecutive buffers, in seconds.
+    latency: float, optional
+        Desired latency, in seconds. Defaults to step.
+        The higher the latency, the more overlapping windows to aggregate.
+    strategy: ("mean", "hamming", "any"), optional
+        Specifies how to aggregate overlapping windows. Defaults to "hamming".
+        "mean": simple average
+        "hamming": average weighted by the Hamming window values (aligned to the buffer)
+        "any": no aggregation, pick the first overlapping window
+
+    Example
+    --------
+    >>> duration = 5
+    >>> frames = 500
+    >>> step = 0.5
+    >>> speakers = 2
+    >>> start_time = 10
+    >>> resolution = duration / frames
+    >>> dagg = DelayedAggregation(step=step, latency=2, strategy="mean")
+    >>> buffers = [
+    >>>     SlidingWindowFeature(
+    >>>         np.random.rand(frames, speakers),
+    >>>         SlidingWindow(start=(i + start_time) * step, duration=resolution, step=resolution)
+    >>>     )
+    >>>     for i in range(dagg.num_overlapping_windows)
+    >>> ]
+    >>> dagg.num_overlapping_windows
+    ... 4
+    >>> dagg(buffers).data.shape
+    ... (51, 2)  # Rounding errors are possible when cropping the buffers
+    """
+
+    def __init__(
+        self,
+        step: float,
+        latency: Optional[float] = None,
+        strategy: Literal["mean", "hamming", "any"] = "hamming",
+    ):
+        self.step = step
+        self.latency = latency
+        self.strategy = strategy
+
+        if self.latency is None:
+            self.latency = self.step
+
+        assert self.step <= self.latency, "Invalid latency requested"
+        assert self.strategy in ["mean", "hamming", "any"]
+
+        self.num_overlapping_windows = int(round(self.latency / self.step))
+
+        if self.strategy == "hamming":
+            warnings.warn("'hamming' aggregation is not supported yet, defaulting to 'mean'")
+
+    def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
+        # Determine overlapping region to aggregate
+        real_time = buffers[-1].extent.end
+        start_time = 0
+        if buffers[0].extent.start > 0:
+            start_time = real_time - self.latency
+        required = Segment(start_time, real_time - self.latency + self.step)
+        # Stack all overlapping regions
+        intersection = np.stack([
+            buffer.crop(required, fixed=required.duration)
+            for buffer in buffers
+        ])
+        # Aggregate according to strategy
+        if self.strategy in ("mean", "hamming"):
+            aggregation = np.mean(intersection, axis=0)
+        else:
+            aggregation = intersection[0]
+        # Determine resolution
+        resolution = buffers[-1].sliding_window
+        resolution = SlidingWindow(
+            start=required.start,
+            duration=resolution.duration,
+            step=resolution.step
+        )
+        return SlidingWindowFeature(aggregation, resolution)
 
 
 class OnlineSpeakerClustering:

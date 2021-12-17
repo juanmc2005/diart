@@ -2,10 +2,9 @@ import rx
 from rx import operators as ops
 from rx.core import Observable
 from dataclasses import dataclass
-from typing import Callable, Optional, List, Literal
+from typing import Callable, Optional
 import numpy as np
-from pyannote.core import Segment, SlidingWindow, SlidingWindowFeature
-import warnings
+from pyannote.core import SlidingWindow, SlidingWindowFeature
 
 
 Operator = Callable[[Observable], Observable]
@@ -85,48 +84,4 @@ def regularize_stream(
         ops.filter(lambda state: state.changed),
         # Transform state into a SlidingWindowFeature containing the new chunk
         ops.map(AudioBufferState.to_sliding_window(sample_rate))
-    )
-
-
-def aggregate(
-    duration: float,
-    step: float,
-    latency: Optional[float] = None,
-    strategy: Literal["mean", "hamming", "any"] = "mean",
-):
-    if latency is None:
-        latency = step
-    assert duration >= latency >= step
-    assert strategy in ["mean", "hamming", "any"]
-    if strategy == "hamming":
-        warnings.warn("'hamming' aggregation is not supported yet, defaulting to 'mean'")
-    num_overlapping = int(round(latency / step))
-
-    def apply(buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
-        # Determine overlapping region to aggregate
-        real_time = buffers[-1].extent.end
-        start_time = 0
-        if buffers[0].extent.start > 0:
-            start_time = real_time - latency
-        required = Segment(start_time, real_time - latency + step)
-        # Stack all overlapping regions
-        intersection = np.stack([
-            buffer.crop(required, fixed=required.duration)
-            for buffer in buffers
-        ])
-        # Aggregate according to strategy
-        if strategy in ("mean", "hamming"):
-            aggregation = np.mean(intersection, axis=0)
-        else:
-            aggregation = intersection[0]
-        # Determine resolution
-        resolution = buffers[-1].sliding_window
-        resolution = SlidingWindow(start=required.start, duration=resolution.duration, step=resolution.step)
-        return SlidingWindowFeature(aggregation, resolution)
-
-    return ops.pipe(
-        # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
-        ops.buffer_with_count(num_overlapping, 1),
-        # Aggregate buffered chunks
-        ops.map(apply)
     )
