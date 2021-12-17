@@ -55,10 +55,12 @@ class ChunkWiseModel:
 
 class OverlappedSpeechPenalty:
     """
-    :param gamma: float, optional
-        Exponent to sharpen per-frame speaker probability scores and distributions.
+    Parameters
+    ----------
+    gamma: float, optional
+        Exponent to lower low-confidence predictions.
         Defaults to 3.
-    :param beta: float, optional
+    beta: float, optional
         Softmax's temperature parameter (actually 1/beta) to sharpen per-frame speaker probability distributions.
         Defaults to 10.
     """
@@ -85,6 +87,89 @@ class EmbeddingNormalization:
         with torch.no_grad():
             norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=1, keepdim=True)
         return norm_embs
+
+
+class AggregationStrategy:
+    """Abstract class representing a strategy to aggregate overlapping buffers"""
+
+    @staticmethod
+    def build(name: Literal["mean", "hamming", "first"]) -> 'AggregationStrategy':
+        """Build an AggregationStrategy instance based on its name"""
+        assert name in ("mean", "hamming", "first")
+        if name == "mean":
+            return AverageStrategy()
+        elif name == "hamming":
+            return HammingWeightedAverageStrategy()
+        else:
+            return FirstOnlyStrategy()
+
+    def __call__(self, buffers: List[SlidingWindowFeature], focus: Segment) -> SlidingWindowFeature:
+        """Aggregate chunks over a specific region.
+
+        Parameters
+        ----------
+        buffers: list of SlidingWindowFeature, shapes (frames, speakers)
+            Buffers to aggregate
+        focus: Segment
+            Region to aggregate that is shared among the buffers
+
+        Returns
+        -------
+        aggregation: SlidingWindowFeature, shape (cropped_frames, speakers)
+            Aggregated values over the focus region
+        """
+        aggregation = self.aggregate(buffers, focus)
+        resolution = buffers[-1].sliding_window
+        resolution = SlidingWindow(
+            start=focus.start,
+            duration=resolution.duration,
+            step=resolution.step
+        )
+        return SlidingWindowFeature(aggregation, resolution)
+
+    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+        raise NotImplementedError
+
+
+class HammingWeightedAverageStrategy(AggregationStrategy):
+    """Compute the average weighted by the corresponding Hamming-window aligned to each buffer"""
+
+    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+        num_frames, num_speakers = buffers[0].data.shape
+        hamming, intersection = [], []
+        for buffer in buffers:
+            # Crop buffer to focus region
+            b = buffer.crop(focus, fixed=focus.duration)
+            # Crop Hamming window to focus region
+            h = np.expand_dims(np.hamming(num_frames), axis=-1)
+            h = SlidingWindowFeature(h, buffer.sliding_window)
+            h = h.crop(focus, fixed=focus.duration)
+            hamming.append(h.data)
+            intersection.append(b.data)
+        hamming, intersection = np.stack(hamming), np.stack(intersection)
+        # Calculate weighted mean
+        aggregation = np.sum(hamming * intersection, axis=0)
+        aggregation /= np.sum(hamming, axis=0)
+        return aggregation
+
+
+class AverageStrategy(AggregationStrategy):
+    """Compute a simple average over the focus region"""
+
+    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+        # Stack all overlapping regions
+        intersection = np.stack([
+            buffer.crop(focus, fixed=focus.duration)
+            for buffer in buffers
+        ])
+        return np.mean(intersection, axis=0)
+
+
+class FirstOnlyStrategy(AggregationStrategy):
+    """Instead of aggregating, keep the first focus region in the buffer list"""
+
+    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+        return buffers[0].crop(focus, fixed=focus.duration)
 
 
 class DelayedAggregation:
@@ -130,7 +215,7 @@ class DelayedAggregation:
         self,
         step: float,
         latency: Optional[float] = None,
-        strategy: Literal["mean", "hamming", "any"] = "hamming",
+        strategy: Literal["mean", "hamming", "first"] = "hamming",
     ):
         self.step = step
         self.latency = latency
@@ -140,12 +225,9 @@ class DelayedAggregation:
             self.latency = self.step
 
         assert self.step <= self.latency, "Invalid latency requested"
-        assert self.strategy in ["mean", "hamming", "any"]
 
         self.num_overlapping_windows = int(round(self.latency / self.step))
-
-        if self.strategy == "hamming":
-            warnings.warn("'hamming' aggregation is not supported yet, defaulting to 'mean'")
+        self.aggregate = AggregationStrategy.build(self.strategy)
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
         # Determine overlapping region to aggregate
@@ -153,25 +235,9 @@ class DelayedAggregation:
         start_time = 0
         if buffers[0].extent.start > 0:
             start_time = real_time - self.latency
-        required = Segment(start_time, real_time - self.latency + self.step)
-        # Stack all overlapping regions
-        intersection = np.stack([
-            buffer.crop(required, fixed=required.duration)
-            for buffer in buffers
-        ])
+        region = Segment(start_time, real_time - self.latency + self.step)
         # Aggregate according to strategy
-        if self.strategy in ("mean", "hamming"):
-            aggregation = np.mean(intersection, axis=0)
-        else:
-            aggregation = intersection[0]
-        # Determine resolution
-        resolution = buffers[-1].sliding_window
-        resolution = SlidingWindow(
-            start=required.start,
-            duration=resolution.duration,
-            step=resolution.step
-        )
-        return SlidingWindowFeature(aggregation, resolution)
+        return self.aggregate(buffers, region)
 
 
 class OnlineSpeakerClustering:
