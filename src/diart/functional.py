@@ -4,7 +4,6 @@ from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeatu
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
 from typing import Union, Optional, List, Literal, Iterable, Tuple
-import warnings
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
 
@@ -118,14 +117,13 @@ class AggregationStrategy:
         aggregation: SlidingWindowFeature, shape (cropped_frames, speakers)
             Aggregated values over the focus region
         """
-        aggregation = self.aggregate(buffers, focus)
         resolution = buffers[-1].sliding_window
         resolution = SlidingWindow(
             start=focus.start,
             duration=resolution.duration,
             step=resolution.step
         )
-        return SlidingWindowFeature(aggregation, resolution)
+        return SlidingWindowFeature(self.aggregate(buffers, focus), resolution)
 
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
         raise NotImplementedError
@@ -148,9 +146,7 @@ class HammingWeightedAverageStrategy(AggregationStrategy):
             intersection.append(b.data)
         hamming, intersection = np.stack(hamming), np.stack(intersection)
         # Calculate weighted mean
-        aggregation = np.sum(hamming * intersection, axis=0)
-        aggregation /= np.sum(hamming, axis=0)
-        return aggregation
+        return np.sum(hamming * intersection, axis=0) / np.sum(hamming, axis=0)
 
 
 class AverageStrategy(AggregationStrategy):
