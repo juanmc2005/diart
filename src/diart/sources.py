@@ -1,10 +1,11 @@
 from rx.subject import Subject
 from pyannote.audio.core.io import Audio, AudioFile
-from pyannote.core import SlidingWindow
+from pyannote.core import SlidingWindowFeature, SlidingWindow
 import random
 from typing import Tuple
 import time
 import sounddevice as sd
+from einops import rearrange
 
 
 class AudioSource:
@@ -12,6 +13,10 @@ class AudioSource:
         self.uri = uri
         self.sample_rate = sample_rate
         self.stream = Subject()
+
+    @property
+    def is_regular(self) -> bool:
+        return False
 
     def read(self):
         raise NotImplementedError
@@ -48,12 +53,22 @@ class ReliableFileAudioSource(FileAudioSource):
         self.duration = duration
         self.step = step
 
+    @property
+    def is_regular(self) -> bool:
+        return True
+
     def to_iterable(self):
-        duration = self.audio.get_duration(self.file)
-        window = SlidingWindow(start=0., duration=self.duration, step=self.step, end=duration)
-        for chunk in window:
-            waveform, sample_rate = self.audio.crop(self.file, chunk, fixed=self.duration)
-            yield waveform
+        waveform, _ = self.audio(self.file)
+        window_samples: int = round(self.duration * self.sample_rate)
+        step_samples: int = round(self.step * self.sample_rate)
+        resolution = 1 / self.sample_rate
+        chunks = rearrange(
+            waveform.unfold(1, window_samples, step_samples),
+            "channel chunk frame -> chunk channel frame",
+        ).numpy()
+        for i, chunk in enumerate(chunks):
+            w = SlidingWindow(start=i * self.step, duration=resolution, step=resolution)
+            yield SlidingWindowFeature(chunk.T, w)
 
 
 class UnreliableFileAudioSource(FileAudioSource):

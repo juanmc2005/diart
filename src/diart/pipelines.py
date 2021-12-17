@@ -42,9 +42,11 @@ class OnlineSpeakerDiarization:
 
     def from_source(self, source: AudioSource, output_waveform: bool = False) -> rx.Observable:
         # Regularize the stream to a specific chunk duration and step
-        regular_stream = source.stream.pipe(
-            my_ops.regularize_stream(self.duration, self.step, source.sample_rate)
-        )
+        regular_stream = source.stream
+        if not source.is_regular:
+            regular_stream = source.stream.pipe(
+                my_ops.regularize_stream(self.duration, self.step, source.sample_rate)
+            )
         # Branch the stream to calculate chunk segmentation
         segmentation_stream = regular_stream.pipe(
             ops.map(self.segmentation)

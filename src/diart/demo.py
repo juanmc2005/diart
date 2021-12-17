@@ -25,24 +25,6 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# Manage audio source
-uri = args.source
-if args.source != "microphone":
-    args.source = Path(args.source).expanduser()
-    uri = args.source.name.split(".")[0]
-    output_dir = args.source.parent if args.output is None else Path(args.output)
-    # Simulate an unreliable recording protocol yielding new audio with a varying refresh rate
-    audio_source = src.UnreliableFileAudioSource(
-        file=args.source,
-        uri=uri,
-        sample_rate=args.sample_rate,
-        refresh_rate_range=(0.1, 1.0),
-        simulate_delay=False,
-    )
-else:
-    output_dir = Path("~/").expanduser() if args.output is None else Path(args.output)
-    audio_source = src.MicrophoneAudioSource(args.sample_rate)
-
 # Define online speaker diarization pipeline
 pipeline = OnlineSpeakerDiarization(
     step=args.step,
@@ -54,6 +36,24 @@ pipeline = OnlineSpeakerDiarization(
     beta=args.beta,
     max_speakers=args.max_speakers,
 )
+
+# Manage audio source
+uri = args.source
+if args.source != "microphone":
+    args.source = Path(args.source).expanduser()
+    uri = args.source.name.split(".")[0]
+    output_dir = args.source.parent if args.output is None else Path(args.output)
+    # Simulate an unreliable recording protocol yielding new audio with a varying refresh rate
+    audio_source = src.ReliableFileAudioSource(
+        file=args.source,
+        uri=uri,
+        sample_rate=args.sample_rate,
+        duration=pipeline.duration,
+        step=args.step,
+    )
+else:
+    output_dir = Path("~/").expanduser() if args.output is None else Path(args.output)
+    audio_source = src.MicrophoneAudioSource(args.sample_rate)
 
 # Configure output builder to write an RTTM file and to draw in real time
 output_builder = OutputBuilder(

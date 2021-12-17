@@ -3,4 +3,5 @@ matplotlib>=3.3.3
 rx>=3.2.0
 scipy>=1.6.0
 sounddevice>=0.4.2
+einops>=0.3.0
 git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
