@@ -113,6 +113,7 @@ class OutputBuilder(Observer):
             if self.waveform is None:
                 self.waveform = waveform
             else:
+                # FIXME time complexity can be better with pre-allocation of a numpy array
                 new_samples = np.concatenate([self.waveform.data, waveform.data], axis=0)
                 self.waveform = SlidingWindowFeature(new_samples, self.waveform.sliding_window)
 

@@ -13,6 +13,7 @@ class AudioSource:
         self.uri = uri
         self.sample_rate = sample_rate
         self.stream = Subject()
+        self.resolution = 1 / sample_rate
 
     @property
     def is_regular(self) -> bool:
@@ -61,6 +62,8 @@ class ReliableFileAudioSource(FileAudioSource):
         super().__init__(file, uri, sample_rate)
         self.window_duration = window_duration
         self.step = step
+        self.window_samples = int(round(self.window_duration * self.sample_rate))
+        self.step_samples = int(round(self.step * self.sample_rate))
 
     @property
     def is_regular(self) -> bool:
@@ -68,15 +71,16 @@ class ReliableFileAudioSource(FileAudioSource):
 
     def to_iterable(self):
         waveform, _ = self.audio(self.file)
-        window_samples: int = round(self.window_duration * self.sample_rate)
-        step_samples: int = round(self.step * self.sample_rate)
-        resolution = 1 / self.sample_rate
         chunks = rearrange(
-            waveform.unfold(1, window_samples, step_samples),
+            waveform.unfold(1, self.window_samples, self.step_samples),
             "channel chunk frame -> chunk channel frame",
         ).numpy()
         for i, chunk in enumerate(chunks):
-            w = SlidingWindow(start=i * self.step, duration=resolution, step=resolution)
+            w = SlidingWindow(
+                start=i * self.step,
+                duration=self.resolution,
+                step=self.resolution
+            )
             yield SlidingWindowFeature(chunk.T, w)
 
 
@@ -94,14 +98,14 @@ class UnreliableFileAudioSource(FileAudioSource):
         self.delay = simulate_delay
 
     def to_iterable(self):
-        waveform, sample_rate = self.audio(self.file)
+        waveform, _ = self.audio(self.file)
         total_samples = waveform.shape[1]
         i = 0
         while i < total_samples:
             rnd_duration = random.uniform(self.start, self.end)
             if self.delay:
                 time.sleep(rnd_duration)
-            num_samples = int(round(rnd_duration * sample_rate))
+            num_samples = int(round(rnd_duration * self.sample_rate))
             last_i = i
             i += num_samples
             yield waveform[:, last_i:i]
