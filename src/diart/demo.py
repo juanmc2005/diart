@@ -48,7 +48,7 @@ if args.source != "microphone":
         file=args.source,
         uri=uri,
         sample_rate=args.sample_rate,
-        duration=pipeline.duration,
+        window_duration=pipeline.duration,
         step=args.step,
     )
 else:

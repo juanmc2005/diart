@@ -18,6 +18,10 @@ class AudioSource:
     def is_regular(self) -> bool:
         return False
 
+    @property
+    def duration(self):
+        return None
+
     def read(self):
         raise NotImplementedError
 
@@ -26,7 +30,12 @@ class FileAudioSource(AudioSource):
     def __init__(self, file: AudioFile, uri: str, sample_rate: int):
         super().__init__(uri, sample_rate)
         self.audio = Audio(sample_rate=sample_rate, mono=True)
+        self._duration = self.audio.get_duration(file)
         self.file = file
+
+    @property
+    def duration(self):
+        return self._duration
 
     def to_iterable(self):
         raise NotImplementedError
@@ -46,11 +55,11 @@ class ReliableFileAudioSource(FileAudioSource):
         file: AudioFile,
         uri: str,
         sample_rate: int,
-        duration: float,
+        window_duration: float,
         step: float
     ):
         super().__init__(file, uri, sample_rate)
-        self.duration = duration
+        self.window_duration = window_duration
         self.step = step
 
     @property
@@ -59,7 +68,7 @@ class ReliableFileAudioSource(FileAudioSource):
 
     def to_iterable(self):
         waveform, _ = self.audio(self.file)
-        window_samples: int = round(self.duration * self.sample_rate)
+        window_samples: int = round(self.window_duration * self.sample_rate)
         step_samples: int = round(self.step * self.sample_rate)
         resolution = 1 / self.sample_rate
         chunks = rearrange(
