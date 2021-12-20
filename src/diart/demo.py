@@ -59,6 +59,7 @@ else:
 output_builder = OutputBuilder(
     duration=pipeline.duration,
     step=args.step,
+    latency=args.latency,
     output_path=output_dir / "output.rttm",
     visualization="slide",
     # reference=output_dir / f"{uri}.rttm",

@@ -2,7 +2,7 @@ import rx
 from rx import operators as ops
 from rx.core import Observable
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, List, Any
 import numpy as np
 from pyannote.core import SlidingWindow, SlidingWindowFeature
 
@@ -85,3 +85,12 @@ def regularize_stream(
         # Transform state into a SlidingWindowFeature containing the new chunk
         ops.map(AudioBufferState.to_sliding_window(sample_rate))
     )
+
+
+def buffer_slide(n: int):
+    def accumulate(state: List[Any], value: Any) -> List[Any]:
+        new_state = [*state, value]
+        if len(new_state) > n:
+            return new_state[1:]
+        return new_state
+    return rx.pipe(ops.scan(accumulate, []))

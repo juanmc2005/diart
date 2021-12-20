@@ -67,7 +67,7 @@ class OnlineSpeakerDiarization:
         pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
             ops.starmap(clustering),
             # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
-            ops.buffer_with_count(aggregation.num_overlapping_windows, 1),
+            my_ops.buffer_slide(aggregation.num_overlapping_windows),
             # Aggregate overlapping output windows
             ops.map(aggregation),
             # Binarize output
@@ -77,7 +77,7 @@ class OnlineSpeakerDiarization:
             window_selector = fn.DelayedAggregation(self.step, self.latency, strategy="first")
             pipeline = pipeline.pipe(
                 ops.zip(regular_stream.pipe(
-                    ops.buffer_with_count(window_selector.num_overlapping_windows, 1),
+                    my_ops.buffer_slide(window_selector.num_overlapping_windows),
                     ops.map(window_selector),
                 ))
             )

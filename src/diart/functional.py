@@ -227,19 +227,23 @@ class DelayedAggregation:
         self.aggregate = AggregationStrategy.build(self.strategy)
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
-        first_buffer = buffers[0].extent
+        last_buffer = buffers[-1].extent
         # Determine overlapping region to aggregate
-        end = first_buffer.end
+        end = last_buffer.end - self.latency + self.step
         region = Segment(end - self.step, end)
         output_window = self.aggregate(buffers, region)
-        # Prepend prediction in case of first buffer
-        if first_buffer.start == 0:
-            # FIXME aggregate all possible windows instead of copying first buffer
-            first_output = buffers[0].data
+        # Prepend prediction until we match the latency in case of first buffer
+        if len(buffers) == 1 and last_buffer.start == 0:
+            first_region = Segment(0, end)
+            first_output = buffers[0].crop(
+                first_region, fixed=first_region.duration
+            )
             num_frames = output_window.data.shape[0]
             first_output[-num_frames:] = output_window.data
+            resolution = end / first_output.shape[0]
             output_window = SlidingWindowFeature(
-                first_output, buffers[0].sliding_window
+                first_output,
+                SlidingWindow(start=0, duration=resolution, step=resolution)
             )
         # Aggregate according to strategy
         return output_window
