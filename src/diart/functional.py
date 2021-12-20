@@ -117,13 +117,14 @@ class AggregationStrategy:
         aggregation: SlidingWindowFeature, shape (cropped_frames, speakers)
             Aggregated values over the focus region
         """
-        resolution = buffers[-1].sliding_window
+        aggregation = self.aggregate(buffers, focus)
+        resolution = focus.duration / aggregation.shape[0]
         resolution = SlidingWindow(
             start=focus.start,
-            duration=resolution.duration,
-            step=resolution.step
+            duration=resolution,
+            step=resolution
         )
-        return SlidingWindowFeature(self.aggregate(buffers, focus), resolution)
+        return SlidingWindowFeature(aggregation, resolution)
 
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
         raise NotImplementedError
@@ -227,15 +228,21 @@ class DelayedAggregation:
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
         first_buffer = buffers[0].extent
-        last_buffer = buffers[-1].extent
         # Determine overlapping region to aggregate
+        end = first_buffer.end
+        region = Segment(end - self.step, end)
+        output_window = self.aggregate(buffers, region)
+        # Prepend prediction in case of first buffer
         if first_buffer.start == 0:
-            region = first_buffer
-        else:
-            start = last_buffer.start
-            region = Segment(start, start + self.step)
+            # FIXME aggregate all possible windows instead of copying first buffer
+            first_output = buffers[0].data
+            num_frames = output_window.data.shape[0]
+            first_output[-num_frames:] = output_window.data
+            output_window = SlidingWindowFeature(
+                first_output, buffers[0].sliding_window
+            )
         # Aggregate according to strategy
-        return self.aggregate(buffers, region)
+        return output_window
 
 
 class OnlineSpeakerClustering:
