@@ -226,12 +226,14 @@ class DelayedAggregation:
         self.aggregate = AggregationStrategy.build(self.strategy)
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
+        first_buffer = buffers[0].extent
+        last_buffer = buffers[-1].extent
         # Determine overlapping region to aggregate
-        real_time = buffers[-1].extent.end
-        start_time = 0
-        if buffers[0].extent.start > 0:
-            start_time = real_time - self.latency
-        region = Segment(start_time, real_time - self.latency + self.step)
+        if first_buffer.start == 0:
+            region = first_buffer
+        else:
+            start = last_buffer.start
+            region = Segment(start, start + self.step)
         # Aggregate according to strategy
         return self.aggregate(buffers, region)
 

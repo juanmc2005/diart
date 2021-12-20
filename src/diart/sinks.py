@@ -47,6 +47,8 @@ class OutputBuilder(Observer):
     def init_figure(self):
         self.init_num_axs()
         self.figure, self.axs = plt.subplots(self.num_axs, 1, figsize=(10, 2 * self.num_axs))
+        if self.num_axs == 1:
+            self.axs = [self.axs]
 
     def draw(self):
         # Initialize figure if first call
