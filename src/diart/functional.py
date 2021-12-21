@@ -273,8 +273,8 @@ class DelayedAggregation:
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
         # Determine overlapping region to aggregate
-        end = buffers[-1].extent.end - self.latency + self.step
-        region = Segment(end - self.step, end)
+        start = buffers[-1].extent.end - self.latency
+        region = Segment(start, start + self.step)
         return self._prepend_or_append(self.aggregate(buffers, region), region, buffers)
 
 
