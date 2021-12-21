@@ -1,11 +1,11 @@
-import rx
-from rx import operators as ops
-from rx.core import Observable
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Any
-import numpy as np
-from pyannote.core import SlidingWindow, SlidingWindowFeature
 
+import numpy as np
+import rx
+from pyannote.core import SlidingWindow, SlidingWindowFeature
+from rx import operators as ops
+from rx.core import Observable
 
 Operator = Callable[[Observable], Observable]
 

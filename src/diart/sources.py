@@ -1,15 +1,26 @@
-from rx.subject import Subject
-from pyannote.audio.core.io import Audio, AudioFile
-from pyannote.core import SlidingWindowFeature, SlidingWindow
 import random
-from typing import Tuple
 import time
+from queue import SimpleQueue
+from typing import Tuple, Text, Optional, Iterable
+
 import sounddevice as sd
 from einops import rearrange
+from pyannote.audio.core.io import Audio, AudioFile
+from pyannote.core import SlidingWindowFeature, SlidingWindow
+from rx.subject import Subject
 
 
 class AudioSource:
-    def __init__(self, uri: str, sample_rate: int):
+    """Represents a source of audio that can start streaming via the `stream` property.
+
+    Parameters
+    ----------
+    uri: Text
+        Unique identifier of the audio source.
+    sample_rate: int
+        Sample rate of the audio source.
+    """
+    def __init__(self, uri: Text, sample_rate: int):
         self.uri = uri
         self.sample_rate = sample_rate
         self.stream = Subject()
@@ -17,31 +28,50 @@ class AudioSource:
 
     @property
     def is_regular(self) -> bool:
+        """Whether the stream is regular. Defaults to False.
+        A regular stream always yields the same amount of samples per event.
+        """
         return False
 
     @property
-    def duration(self):
+    def duration(self) -> Optional[float]:
+        """The duration of the stream if known. Defaults to None (unknown duration)"""
         return None
 
     def read(self):
+        """Start reading the source and yielding samples through the stream"""
         raise NotImplementedError
 
 
 class FileAudioSource(AudioSource):
-    def __init__(self, file: AudioFile, uri: str, sample_rate: int):
+    """Represents an audio source tied to a file.
+
+    Parameters
+    ----------
+    file: AudioFile
+        The file to stream.
+    uri: Text
+        Unique identifier of the audio source.
+    sample_rate: int
+        Sample rate of the audio source.
+    """
+    def __init__(self, file: AudioFile, uri: Text, sample_rate: int):
         super().__init__(uri, sample_rate)
         self.audio = Audio(sample_rate=sample_rate, mono=True)
         self._duration = self.audio.get_duration(file)
         self.file = file
 
     @property
-    def duration(self):
+    def duration(self) -> Optional[float]:
+        """The duration of a file is known"""
         return self._duration
 
-    def to_iterable(self):
+    def to_iterable(self) -> Iterable[SlidingWindowFeature]:
+        """Return an iterable over the file's samples"""
         raise NotImplementedError
 
     def read(self):
+        """Send each chunk of samples through the stream"""
         for waveform in self.to_iterable():
             try:
                 self.stream.on_next(waveform)
@@ -51,10 +81,26 @@ class FileAudioSource(AudioSource):
 
 
 class ReliableFileAudioSource(FileAudioSource):
+    """Represents a file audio source that always
+    yields the same number of samples with a given step.
+
+    Parameters
+    ----------
+    file: AudioFile
+        The file to stream.
+    uri: Text
+        Unique identifier of the audio source.
+    sample_rate: int
+        Sample rate of the audio source.
+    window_duration: float
+        Duration of each chunk of samples (window) in seconds.
+    step: float
+        Step duration between chunks in seconds.
+    """
     def __init__(
         self,
         file: AudioFile,
-        uri: str,
+        uri: Text,
         sample_rate: int,
         window_duration: float,
         step: float
@@ -67,9 +113,10 @@ class ReliableFileAudioSource(FileAudioSource):
 
     @property
     def is_regular(self) -> bool:
+        """This audio source is regular"""
         return True
 
-    def to_iterable(self):
+    def to_iterable(self) -> Iterable[SlidingWindowFeature]:
         waveform, _ = self.audio(self.file)
         chunks = rearrange(
             waveform.unfold(1, self.window_samples, self.step_samples),
@@ -85,10 +132,27 @@ class ReliableFileAudioSource(FileAudioSource):
 
 
 class UnreliableFileAudioSource(FileAudioSource):
+    """Represents a file audio source that yields
+    a different number of samples in each event.
+
+    Parameters
+    ----------
+    file: AudioFile
+        The file to stream.
+    uri: Text
+        Unique identifier of the audio source.
+    sample_rate: int
+        Sample rate of the audio source.
+    refresh_rate_range: (float, float)
+        Duration range within which to determine the number of samples to yield (in seconds).
+    simulate_delay: bool
+        Whether to simulate that the samples are being read in real time before they are yielded.
+        Defaults to False (no delay).
+    """
     def __init__(
         self,
         file: AudioFile,
-        uri: str,
+        uri: Text,
         sample_rate: int,
         refresh_rate_range: Tuple[float, float],
         simulate_delay: bool = False
@@ -112,6 +176,8 @@ class UnreliableFileAudioSource(FileAudioSource):
 
 
 class MicrophoneAudioSource(AudioSource):
+    """Represents an audio source tied to the default microphone available"""
+
     def __init__(self, sample_rate: int):
         super().__init__("live_recording", sample_rate)
         self.block_size = 1024
@@ -120,15 +186,19 @@ class MicrophoneAudioSource(AudioSource):
             samplerate=sample_rate,
             latency=0,
             blocksize=self.block_size,
+            callback=self._read_callback
         )
+        self.queue = SimpleQueue()
+
+    def _read_callback(self, samples, *args):
+        self.queue.put_nowait(samples[:, [0]].T)
 
     def read(self):
         self.mic_stream.start()
         while self.mic_stream:
             try:
-                samples = self.mic_stream.read(self.block_size)[0]
+                self.stream.on_next(self.queue.get())
             except Exception as e:
                 self.stream.on_error(e)
                 break
-            self.stream.on_next(samples[:, [0]].T)
         self.stream.on_completed()

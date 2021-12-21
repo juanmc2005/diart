@@ -1,10 +1,9 @@
-from pathlib import Path
 import argparse
+from pathlib import Path
 
 import diart.sources as src
 from diart.pipelines import OnlineSpeakerDiarization
 from diart.sinks import OutputBuilder
-
 
 # Define script arguments
 parser = argparse.ArgumentParser()
@@ -62,7 +61,6 @@ output_builder = OutputBuilder(
     latency=args.latency,
     output_path=output_dir / "output.rttm",
     visualization="slide",
-    # reference=output_dir / f"{uri}.rttm",
 )
 # Build pipeline from audio source and stream results to the output builder
 pipeline.from_source(audio_source, output_waveform=True).subscribe(output_builder)
