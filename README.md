@@ -1,73 +1,47 @@
-# Diart - Streaming speaker diarization in real time
-
-[![PyPI version](https://badge.fury.io/py/diart.svg)](https://badge.fury.io/py/diart)
-
-*[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)*   
-by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
-
-
-> We propose to address online speaker diarization as a combination of incremental clustering and local diarization applied to a rolling buffer updated every 500ms. Every single step of the proposed pipeline is designed to take full advantage of the strong ability of a recently proposed end-to-end overlap-aware segmentation to detect and separate overlapping speakers. In particular, we propose a modified version of the statistics pooling layer (initially introduced in the x-vector architecture) to give less weight to frames where the segmentation model predicts simultaneous speakers. Furthermore, we derive cannot-link constraints from the initial segmentation step to prevent two local speakers from being wrongfully merged during the incremental clustering step. Finally, we show how the latency of the proposed approach can be adjusted between 500ms and 5s to match the requirements of a particular use case, and we provide a systematic analysis of the influence of latency on the overall performance (on AMI, DIHARD and VoxConverse).
+<br/>
 
 <p align="center">
-<img height="400" src="/figure1.png" title="Figure 1" width="325" />
+<img src="/logo.png" title="Logo" />
 </p>
 
-## Citation
+<p align="center">
+<img alt="PyPI" src="https://img.shields.io/pypi/v/diart?color=g">
+<img alt="GitHub top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="GitHub" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
+</p>
 
-```bibtex
-Awaiting paper publication (ASRU 2021).
-```
+<br/>
 
-## Installation
+<p align="center">
+<img width="48%" src="/snippet.png" title="Code snippet" />
+<img width="48%" src="/visualization.gif" title="Real-time diarization example" />
+</p>
 
-1) Create environment:
+## Demo
 
-```shell
-conda create -n diarization python==3.8
-conda activate diarization
-```
+You can visualize the real-time speaker diarization of an audio stream with the built-in demo script.
 
-2) Install the latest PyTorch version following the [official instructions](https://pytorch.org/get-started/locally/#start-locally)
-
-3) Install pyannote.audio 2.0 (currently in development)
-```shell
-pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
-```
-
-4) Install Diart:
-```shell
-pip install diart
-```
-
-## Usage
-
-### CLI
-
-Stream a previously recorded conversation:
+### Stream a recorded conversation
 
 ```shell
 python -m diart.demo /path/to/audio.wav
 ```
 
-Or use a real audio stream from your microphone:
+### Stream from your microphone
 
 ```shell
 python -m diart.demo microphone
 ```
 
-This will launch a real-time visualization of the diarization outputs as they are produced by the system:
-
-![Example of a state of the real time output plot](/visualization.png)
-
-By default, the script uses step = latency = 500ms, and it sets reasonable values for all hyper-parameters.
 See `python -m diart.demo -h` for more information.
 
-### API
+## Build your own pipeline
 
-We provide various building blocks that can be combined to process an audio stream.
-Our streaming implementation is based on [RxPY](https://github.com/ReactiveX/RxPY), but the `functional` module is completely independent.
+Diart provides building blocks that can be combined to do speaker diarization on an audio stream.
+The streaming implementation is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `functional` module is completely independent.
 
-In this example we show how to obtain speaker embeddings from a microphone stream with Equation 2:
+**Example:** obtain overlap-aware speaker embeddings from a microphone stream:
 
 ```python
 import rx
@@ -110,11 +84,51 @@ torch.Size([4, 512])
 ...
 ```
 
-##  Reproducible research
+## Install
 
-![Table 1](/table1.png)
+1) Create environment:
 
-In order to reproduce the results of the paper, use the following hyper-parameters:
+```shell
+conda create -n diarization python==3.8
+conda activate diarization
+```
+
+2) Install the latest PyTorch version following the [official instructions](https://pytorch.org/get-started/locally/#start-locally)
+
+3) Install pyannote.audio 2.0 (currently in development)
+```shell
+pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
+```
+
+4) Install diart:
+```shell
+pip install diart
+```
+
+## Powered by research
+
+Diart is the official implementation of the paper *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)* by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
+
+
+> We propose to address online speaker diarization as a combination of incremental clustering and local diarization applied to a rolling buffer updated every 500ms. Every single step of the proposed pipeline is designed to take full advantage of the strong ability of a recently proposed end-to-end overlap-aware segmentation to detect and separate overlapping speakers. In particular, we propose a modified version of the statistics pooling layer (initially introduced in the x-vector architecture) to give less weight to frames where the segmentation model predicts simultaneous speakers. Furthermore, we derive cannot-link constraints from the initial segmentation step to prevent two local speakers from being wrongfully merged during the incremental clustering step. Finally, we show how the latency of the proposed approach can be adjusted between 500ms and 5s to match the requirements of a particular use case, and we provide a systematic analysis of the influence of latency on the overall performance (on AMI, DIHARD and VoxConverse).
+
+<p align="center">
+<img height="400" src="/figure1.png" title="Visual explanation of the system" width="325" />
+</p>
+
+## Citation
+
+If you found diart useful, please make sure to cite our paper:
+
+```bibtex
+Awaiting paper publication (ASRU 2021).
+```
+
+##  Reproducibility
+
+![Results table](/table1.png)
+
+To reproduce the results of the paper, use the following hyper-parameters:
 
 Dataset     | latency | tau    | rho    | delta 
 ------------|---------|--------|--------|------
@@ -122,12 +136,12 @@ DIHARD III  | any     | 0.555  | 0.422  | 1.517
 AMI         | any     | 0.507  | 0.006  | 1.057  
 VoxConverse | any     | 0.576  | 0.915  | 0.648  
 DIHARD II   | 1s      | 0.619  | 0.326  | 0.997  
-DIHARD II   | 5s      | 0.555  | 0.422  | 1.517  
+DIHARD II   | 5s      | 0.555  | 0.422  | 1.517
 
-For instance, for a DIHARD III configuration, one would use:
+For instance, for a DIHARD III configuration:
 
 ```shell
-python -m diart.demo /path/to/file.wav --latency=5 --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
+python -m diart.demo /path/to/file.wav --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
 ```
 
 And then to obtain the diarization error rate:
@@ -145,7 +159,7 @@ reference = list(reference.values())[0]  # Extract reference from dictionary
 der = metric(reference, hypothesis)
 ```
 
-For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) in RTTM format corresponding to every entry of Table 1 and Figure 5 in the paper. This includes the VBx offline baseline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
+For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) in RTTM format for every entry of Table 1 and Figure 5 in the paper. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
 ![Figure 5](/figure5.png)
 
@@ -176,3 +190,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+<p>Logo generated by <a href="https://www.designevo.com/" title="Free Online Logo Maker">DesignEvo free logo designer</a></p>
