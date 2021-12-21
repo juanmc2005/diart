@@ -1,10 +1,11 @@
 from rx.subject import Subject
 from pyannote.audio.core.io import Audio, AudioFile
-from pyannote.core import SlidingWindow
+from pyannote.core import SlidingWindowFeature, SlidingWindow
 import random
 from typing import Tuple
 import time
 import sounddevice as sd
+from einops import rearrange
 
 
 class AudioSource:
@@ -12,6 +13,15 @@ class AudioSource:
         self.uri = uri
         self.sample_rate = sample_rate
         self.stream = Subject()
+        self.resolution = 1 / sample_rate
+
+    @property
+    def is_regular(self) -> bool:
+        return False
+
+    @property
+    def duration(self):
+        return None
 
     def read(self):
         raise NotImplementedError
@@ -21,7 +31,12 @@ class FileAudioSource(AudioSource):
     def __init__(self, file: AudioFile, uri: str, sample_rate: int):
         super().__init__(uri, sample_rate)
         self.audio = Audio(sample_rate=sample_rate, mono=True)
+        self._duration = self.audio.get_duration(file)
         self.file = file
+
+    @property
+    def duration(self):
+        return self._duration
 
     def to_iterable(self):
         raise NotImplementedError
@@ -41,19 +56,32 @@ class ReliableFileAudioSource(FileAudioSource):
         file: AudioFile,
         uri: str,
         sample_rate: int,
-        duration: float,
+        window_duration: float,
         step: float
     ):
         super().__init__(file, uri, sample_rate)
-        self.duration = duration
+        self.window_duration = window_duration
         self.step = step
+        self.window_samples = int(round(self.window_duration * self.sample_rate))
+        self.step_samples = int(round(self.step * self.sample_rate))
+
+    @property
+    def is_regular(self) -> bool:
+        return True
 
     def to_iterable(self):
-        duration = self.audio.get_duration(self.file)
-        window = SlidingWindow(start=0., duration=self.duration, step=self.step, end=duration)
-        for chunk in window:
-            waveform, sample_rate = self.audio.crop(self.file, chunk, fixed=self.duration)
-            yield waveform
+        waveform, _ = self.audio(self.file)
+        chunks = rearrange(
+            waveform.unfold(1, self.window_samples, self.step_samples),
+            "channel chunk frame -> chunk channel frame",
+        ).numpy()
+        for i, chunk in enumerate(chunks):
+            w = SlidingWindow(
+                start=i * self.step,
+                duration=self.resolution,
+                step=self.resolution
+            )
+            yield SlidingWindowFeature(chunk.T, w)
 
 
 class UnreliableFileAudioSource(FileAudioSource):
@@ -70,14 +98,14 @@ class UnreliableFileAudioSource(FileAudioSource):
         self.delay = simulate_delay
 
     def to_iterable(self):
-        waveform, sample_rate = self.audio(self.file)
+        waveform, _ = self.audio(self.file)
         total_samples = waveform.shape[1]
         i = 0
         while i < total_samples:
             rnd_duration = random.uniform(self.start, self.end)
             if self.delay:
                 time.sleep(rnd_duration)
-            num_samples = int(round(rnd_duration * sample_rate))
+            num_samples = int(round(rnd_duration * self.sample_rate))
             last_i = i
             i += num_samples
             yield waveform[:, last_i:i]

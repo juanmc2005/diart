@@ -14,6 +14,7 @@ class OutputBuilder(Observer):
         self,
         duration: float,
         step: float,
+        latency: float,
         output_path: Optional[Union[Path, Text]] = None,
         merge_collar: float = 0.05,
         visualization: Literal["slide", "accumulate"] = "slide",
@@ -33,6 +34,7 @@ class OutputBuilder(Observer):
         self.waveform: Optional[SlidingWindowFeature] = None
         self.window_duration: float = duration
         self.step = step
+        self.latency = latency
         self.real_time = 0
         self.figure, self.axs, self.num_axs = None, None, -1
 
@@ -47,6 +49,8 @@ class OutputBuilder(Observer):
     def init_figure(self):
         self.init_num_axs()
         self.figure, self.axs = plt.subplots(self.num_axs, 1, figsize=(10, 2 * self.num_axs))
+        if self.num_axs == 1:
+            self.axs = [self.axs]
 
     def draw(self):
         # Initialize figure if first call
@@ -58,11 +62,11 @@ class OutputBuilder(Observer):
             self.axs[i].clear()
 
         # Determine plot bounds
+        start_time = 0
+        end_time = self.real_time - self.latency
         if self.visualization == "slide":
-            start_time = self.real_time - self.window_duration
-            notebook.crop = Segment(start_time, self.real_time)
-        else:
-            notebook.crop = Segment(0, self.real_time)
+            start_time = max(0., end_time - self.window_duration)
+        notebook.crop = Segment(start_time, end_time)
 
         # Plot internal state
         if self.reference is not None:
@@ -109,6 +113,7 @@ class OutputBuilder(Observer):
             if self.waveform is None:
                 self.waveform = waveform
             else:
+                # FIXME time complexity can be better with pre-allocation of a numpy array
                 new_samples = np.concatenate([self.waveform.data, waveform.data], axis=0)
                 self.waveform = SlidingWindowFeature(new_samples, self.waveform.sliding_window)
 
