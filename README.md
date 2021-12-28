@@ -41,7 +41,9 @@ See `python -m diart.demo -h` for more information.
 Diart provides building blocks that can be combined to do speaker diarization on an audio stream.
 The streaming implementation is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `functional` module is completely independent.
 
-**Example:** obtain overlap-aware speaker embeddings from a microphone stream:
+### Example
+
+Obtain overlap-aware speaker embeddings from a microphone stream
 
 ```python
 import rx
@@ -51,7 +53,7 @@ from diart.sources import MicrophoneAudioSource
 import diart.functional as fn
 
 sample_rate = 16000
-mic = MicrophoneAudioSource(sample_rate=sample_rate)
+mic = MicrophoneAudioSource(sample_rate)
 
 # Initialize independent modules
 segmentation = fn.FrameWiseModel("pyannote/segmentation")
@@ -60,7 +62,7 @@ osp = fn.OverlappedSpeechPenalty(gamma=3, beta=10)
 normalization = fn.EmbeddingNormalization(norm=1)
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
-regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate=sample_rate))
+regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate))
 # Branch the microphone stream to calculate segmentation
 segmentation_stream = regular_stream.pipe(ops.map(segmentation))
 # Join audio and segmentation stream to calculate speaker embeddings
