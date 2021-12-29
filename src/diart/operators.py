@@ -106,25 +106,66 @@ class PredictionWithAudio:
         return self.waveform is not None
 
 
-def accumulate_output(duration: float, step: float, merge_collar: float = 0.05) -> Operator:
-    State = Tuple[Optional[Annotation], Optional[SlidingWindowFeature], float]
+@dataclass
+class OutputAccumulationState:
+    annotation: Optional[Annotation]
+    waveform: Optional[SlidingWindowFeature]
+    real_time: float
+    next_sample: Optional[int]
 
-    def accumulate(state: State, value: Tuple[Annotation, Optional[SlidingWindowFeature]]) -> State:
+    @staticmethod
+    def initial() -> 'OutputAccumulationState':
+        return OutputAccumulationState(None, None, 0, 0)
+
+    @property
+    def cropped_waveform(self) -> SlidingWindowFeature:
+        return SlidingWindowFeature(
+            self.waveform[:self.next_sample],
+            self.waveform.sliding_window,
+        )
+
+    def to_tuple(self) -> Tuple[Optional[Annotation], Optional[SlidingWindowFeature], float]:
+        return self.annotation, self.cropped_waveform, self.real_time
+
+
+def accumulate_output(
+    duration: float,
+    step: float,
+    merge_collar: float = 0.05,
+) -> Operator:
+    def accumulate(
+        state: OutputAccumulationState,
+        value: Tuple[Annotation, Optional[SlidingWindowFeature]]
+    ) -> OutputAccumulationState:
         value = PredictionWithAudio(*value)
-        annotation, waveform, real_time = state
-        if annotation is None:
+        annotation, waveform, real_time = None, None, 0
+
+        if state.annotation is None:
             annotation = value.prediction
             real_time = duration
         else:
-            annotation = annotation.update(value.prediction).support(merge_collar)
-            real_time += step
-        if value.has_audio:
-            if waveform is None:
-                waveform = value.waveform
-            else:
-                # FIXME time complexity can be better with pre-allocation of a numpy array
-                new_samples = np.concatenate([waveform.data, value.waveform.data], axis=0)
-                waveform = SlidingWindowFeature(new_samples, waveform.sliding_window)
-        return annotation, waveform, real_time
+            annotation = state.annotation.update(value.prediction).support(merge_collar)
+            real_time = state.real_time + step
 
-    return rx.pipe(ops.scan(accumulate, (None, None, 0)))
+        new_next_sample = 0
+        if value.has_audio:
+            num_new_samples = value.waveform.data.shape[0]
+            new_next_sample = state.next_sample + num_new_samples
+            sw_holder = state
+            if state.waveform is None:
+                waveform, sw_holder = np.zeros((10 * num_new_samples, 1)), value
+            elif new_next_sample < state.waveform.data.shape[0]:
+                waveform = state.waveform.data
+            else:
+                waveform = np.concatenate(
+                    (state.waveform.data, np.zeros_like(state.waveform.data)), axis=0
+                )
+            waveform[state.next_sample:new_next_sample] = value.waveform.data
+            waveform = SlidingWindowFeature(waveform, sw_holder.waveform.sliding_window)
+
+        return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
+
+    return rx.pipe(
+        ops.scan(accumulate, OutputAccumulationState.initial()),
+        ops.map(OutputAccumulationState.to_tuple),
+    )
