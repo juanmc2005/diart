@@ -24,7 +24,6 @@ class AudioSource:
         self.uri = uri
         self.sample_rate = sample_rate
         self.stream = Subject()
-        self.resolution = 1 / sample_rate
 
     @property
     def is_regular(self) -> bool:
@@ -163,8 +162,6 @@ class FileAudioSource(AudioSource):
         The file to stream.
     uri: Text
         Unique identifier of the audio source.
-    sample_rate: int
-        Sample rate of the audio source.
     reader: AudioFileReader
         Determines how the file will be read.
     """
@@ -172,10 +169,9 @@ class FileAudioSource(AudioSource):
         self,
         file: AudioFile,
         uri: Text,
-        sample_rate: int,
         reader: AudioFileReader
     ):
-        super().__init__(uri, sample_rate)
+        super().__init__(uri, reader.sample_rate)
         self.reader = reader
         self._duration = self.reader.get_duration(file)
         self.file = file

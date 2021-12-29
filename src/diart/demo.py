@@ -46,7 +46,6 @@ if args.source != "microphone":
     audio_source = src.FileAudioSource(
         file=args.source,
         uri=uri,
-        sample_rate=args.sample_rate,
         reader=src.RegularAudioFileReader(
             args.sample_rate, pipeline.duration, pipeline.step
         ),
