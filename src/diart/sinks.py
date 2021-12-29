@@ -52,14 +52,12 @@ class RealTimePlot(Observer):
         self.visualization = visualization
         self.reference = reference
         if self.reference is not None:
-            self.reference = load_rttm(reference)
-            uri = list(self.reference.keys())[0]
-            self.reference = self.reference[uri]
+            self.reference = list(load_rttm(reference).values())[0]
         self.window_duration = duration
         self.latency = latency
         self.figure, self.axs, self.num_axs = None, None, -1
 
-    def init_num_axs(self, waveform: Optional[SlidingWindowFeature]):
+    def _init_num_axs(self, waveform: Optional[SlidingWindowFeature]):
         if self.num_axs == -1:
             self.num_axs = 1
             if waveform is not None:
@@ -67,30 +65,34 @@ class RealTimePlot(Observer):
             if self.reference is not None:
                 self.num_axs += 1
 
-    def init_figure(self, waveform: Optional[SlidingWindowFeature]):
-        self.init_num_axs(waveform)
+    def _init_figure(self, waveform: Optional[SlidingWindowFeature]):
+        self._init_num_axs(waveform)
         self.figure, self.axs = plt.subplots(self.num_axs, 1, figsize=(10, 2 * self.num_axs))
         if self.num_axs == 1:
             self.axs = [self.axs]
+
+    def _clear_axs(self):
+        for i in range(self.num_axs):
+            self.axs[i].clear()
+
+    def get_plot_bounds(self, real_time: float) -> Segment:
+        start_time = 0
+        end_time = real_time - self.latency
+        if self.visualization == "slide":
+            start_time = max(0., end_time - self.window_duration)
+        return Segment(start_time, end_time)
 
     def on_next(self, values: Tuple[Annotation, SlidingWindowFeature, float]):
         prediction, waveform, real_time = values
         # Initialize figure if first call
         if self.figure is None:
-            self.init_figure(waveform)
+            self._init_figure(waveform)
+        # Clear previous plots
+        self._clear_axs()
+        # Set plot bounds
+        notebook.crop = self.get_plot_bounds(real_time)
 
-        # Clear all axs
-        for i in range(self.num_axs):
-            self.axs[i].clear()
-
-        # Determine plot bounds
-        start_time = 0
-        end_time = real_time - self.latency
-        if self.visualization == "slide":
-            start_time = max(0., end_time - self.window_duration)
-        notebook.crop = Segment(start_time, end_time)
-
-        # Plot internal state
+        # Plot current values
         if self.reference is not None:
             metric = DiarizationErrorRate()
             mapping = metric.optimal_mapping(self.reference, prediction)
