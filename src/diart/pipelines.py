@@ -1,11 +1,12 @@
+from typing import Optional
+
 import rx
 import rx.operators as ops
-from typing import Optional
 from pyannote.audio.pipelines.utils import PipelineModel
 
-from . import sources as src
-from . import operators as dops
 from . import functional as fn
+from . import operators as dops
+from . import sources as src
 
 
 class OnlineSpeakerDiarization:

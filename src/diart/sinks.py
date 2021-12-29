@@ -1,11 +1,12 @@
-from rx.core import Observer
-from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
-from pyannote.metrics.diarization import DiarizationErrorRate
-from pyannote.database.util import load_rttm
-from typing import Literal, Union, Text, Optional, Tuple
 from pathlib import Path
 from traceback import print_exc
+from typing import Literal, Union, Text, Optional, Tuple
+
 import matplotlib.pyplot as plt
+from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
+from pyannote.database.util import load_rttm
+from pyannote.metrics.diarization import DiarizationErrorRate
+from rx.core import Observer
 
 
 class RTTMWriter(Observer):
