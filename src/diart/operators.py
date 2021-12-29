@@ -1,11 +1,11 @@
+from dataclasses import dataclass
+from typing import Callable, Optional, List, Any, Tuple
+
+import numpy as np
 import rx
+from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
 from rx import operators as ops
 from rx.core import Observable
-from dataclasses import dataclass
-from typing import Callable, Optional, List, Any
-import numpy as np
-from pyannote.core import SlidingWindow, SlidingWindowFeature
-
 
 Operator = Callable[[Observable], Observable]
 
@@ -94,3 +94,37 @@ def buffer_slide(n: int):
             return new_state[1:]
         return new_state
     return rx.pipe(ops.scan(accumulate, []))
+
+
+@dataclass
+class PredictionWithAudio:
+    prediction: Annotation
+    waveform: Optional[SlidingWindowFeature] = None
+
+    @property
+    def has_audio(self) -> bool:
+        return self.waveform is not None
+
+
+def accumulate_output(duration: float, step: float, merge_collar: float = 0.05) -> Operator:
+    State = Tuple[Optional[Annotation], Optional[SlidingWindowFeature], float]
+
+    def accumulate(state: State, value: Tuple[Annotation, Optional[SlidingWindowFeature]]) -> State:
+        value = PredictionWithAudio(*value)
+        annotation, waveform, real_time = state
+        if annotation is None:
+            annotation = value.prediction
+            real_time = duration
+        else:
+            annotation = annotation.update(value.prediction).support(merge_collar)
+            real_time += step
+        if value.has_audio:
+            if waveform is None:
+                waveform = value.waveform
+            else:
+                # FIXME time complexity can be better with pre-allocation of a numpy array
+                new_samples = np.concatenate([waveform.data, value.waveform.data], axis=0)
+                waveform = SlidingWindowFeature(new_samples, waveform.sliding_window)
+        return annotation, waveform, real_time
+
+    return rx.pipe(ops.scan(accumulate, (None, None, 0)))
