@@ -57,7 +57,12 @@ else:
 # Build pipeline from audio source and stream predictions to a real-time plot
 pipeline.from_source(audio_source).pipe(
     ops.do(RTTMWriter(path=output_dir / "output.rttm")),
-    dops.accumulate_output(pipeline.duration, pipeline.step),
+    dops.buffer_output(
+        duration=pipeline.duration,
+        step=pipeline.step,
+        latency=pipeline.latency,
+        sample_rate=audio_source.sample_rate
+    ),
 ).subscribe(RealTimePlot(pipeline.duration, pipeline.latency))
 
 # Read audio source as a stream

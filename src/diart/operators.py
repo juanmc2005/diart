@@ -3,7 +3,7 @@ from typing import Callable, Optional, List, Any, Tuple
 
 import numpy as np
 import rx
-from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature
+from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature, Segment
 from rx import operators as ops
 from rx.core import Observable
 
@@ -162,6 +162,57 @@ def accumulate_output(
                 )
             waveform[state.next_sample:new_next_sample] = value.waveform.data
             waveform = SlidingWindowFeature(waveform, sw_holder.waveform.sliding_window)
+
+        return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
+
+    return rx.pipe(
+        ops.scan(accumulate, OutputAccumulationState.initial()),
+        ops.map(OutputAccumulationState.to_tuple),
+    )
+
+
+def buffer_output(
+    duration: float,
+    step: float,
+    latency: float,
+    sample_rate: int,
+    merge_collar: float = 0.05,
+) -> Operator:
+    num_samples = int(round(duration * sample_rate))
+    resolution = 1 / sample_rate
+
+    def accumulate(
+        state: OutputAccumulationState,
+        value: Tuple[Annotation, Optional[SlidingWindowFeature]]
+    ) -> OutputAccumulationState:
+        value = PredictionWithAudio(*value)
+        annotation, waveform = None, None
+        real_time = duration if state.annotation is None else state.real_time + step
+        start_time = max(0., real_time - latency - duration)
+
+        if state.annotation is None:
+            annotation = value.prediction
+        else:
+            annotation = state.annotation.update(value.prediction) \
+                .support(merge_collar) \
+                .extrude(Segment(0, start_time))
+
+        new_next_sample = 0
+        if value.has_audio:
+            num_new_samples = value.waveform.data.shape[0]
+            new_next_sample = state.next_sample + num_new_samples
+            if state.waveform is None:
+                waveform = np.zeros((num_samples + num_new_samples, 1))
+                waveform[:num_new_samples] = value.waveform.data
+            elif state.next_sample <= num_samples:
+                waveform = state.waveform.data
+                waveform[state.next_sample:new_next_sample] = value.waveform.data
+            else:
+                waveform = np.roll(state.waveform.data, -num_new_samples, axis=0)
+                waveform[-num_new_samples:] = value.waveform.data
+
+            window = SlidingWindow(start=start_time, duration=resolution, step=resolution)
+            waveform = SlidingWindowFeature(waveform, window)
 
         return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
 

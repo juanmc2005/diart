@@ -41,12 +41,18 @@ class OnlineSpeakerDiarization:
         self.beta = beta
         self.max_speakers = max_speakers
 
+    @property
+    def sample_rate(self) -> int:
+        return self.segmentation.model.audio.sample_rate
+
     def get_end_time(self, source: src.AudioSource) -> Optional[float]:
         if source.duration is not None:
             return source.duration - source.duration % self.step
         return None
 
     def from_source(self, source: src.AudioSource, output_waveform: bool = True) -> rx.Observable:
+        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.sample_rate}"
+        assert source.sample_rate == self.sample_rate, msg
         # Regularize the stream to a specific chunk duration and step
         regular_stream = source.stream
         if not source.is_regular:
