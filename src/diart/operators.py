@@ -131,35 +131,59 @@ class OutputAccumulationState:
 def accumulate_output(
     duration: float,
     step: float,
-    merge_collar: float = 0.05,
+    patch_collar: float = 0.05,
 ) -> Operator:
+    """Accumulate predictions and audio to infinity: O(N) space complexity.
+    Uses a pre-allocated buffer that doubles its size once full: O(logN) concat operations.
+
+    Parameters
+    ----------
+    duration: float
+        Buffer duration in seconds.
+    step: float
+        Duration of the chunks at each event in seconds.
+        The first chunk may be bigger given the latency.
+    patch_collar: float, optional
+        Collar to merge speaker turns of the same speaker, in seconds.
+        Defaults to 0.05 (i.e. 50ms).
+    Returns
+    -------
+    A reactive x operator implementing this behavior.
+    """
     def accumulate(
         state: OutputAccumulationState,
         value: Tuple[Annotation, Optional[SlidingWindowFeature]]
     ) -> OutputAccumulationState:
         value = PredictionWithAudio(*value)
-        annotation, waveform, real_time = None, None, 0
+        annotation, waveform = None, None
 
+        # Determine the real time of the stream
+        real_time = duration if state.annotation is None else state.real_time + step
+
+        # Update total annotation with current predictions
         if state.annotation is None:
             annotation = value.prediction
-            real_time = duration
         else:
-            annotation = state.annotation.update(value.prediction).support(merge_collar)
-            real_time = state.real_time + step
+            annotation = state.annotation.update(value.prediction).support(patch_collar)
 
+        # Update total waveform if there's audio in the input
         new_next_sample = 0
         if value.has_audio:
             num_new_samples = value.waveform.data.shape[0]
             new_next_sample = state.next_sample + num_new_samples
             sw_holder = state
             if state.waveform is None:
+                # Initialize the audio buffer with 10 times the size of the first chunk
                 waveform, sw_holder = np.zeros((10 * num_new_samples, 1)), value
             elif new_next_sample < state.waveform.data.shape[0]:
+                # The buffer still has enough space to accommodate the chunk
                 waveform = state.waveform.data
             else:
+                # The buffer is full, double its size
                 waveform = np.concatenate(
                     (state.waveform.data, np.zeros_like(state.waveform.data)), axis=0
                 )
+            # Copy chunk into buffer
             waveform[state.next_sample:new_next_sample] = value.waveform.data
             waveform = SlidingWindowFeature(waveform, sw_holder.waveform.sliding_window)
 
@@ -194,7 +218,7 @@ def buffer_output(
         Sample rate of the audio source.
     patch_collar: float, optional
         Collar to merge speaker turns of the same speaker, in seconds.
-        Defaults to 0.05 (i.e. 50ms)
+        Defaults to 0.05 (i.e. 50ms).
 
     Returns
     -------
