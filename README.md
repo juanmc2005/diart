@@ -15,7 +15,7 @@
 
 <p align="center">
 <img width="48%" src="/snippet.png" title="Code snippet" />
-<img width="48%" src="/visualization.gif" title="Real-time diarization example" />
+<img width="51%" src="/visualization.gif" title="Real-time diarization example" />
 </p>
 
 ## Demo
