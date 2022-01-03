@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable, Optional, List, Any
+from typing import Callable, Optional, List, Any, Tuple
 
 import numpy as np
 import rx
-from pyannote.core import SlidingWindow, SlidingWindowFeature
+from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature, Segment
 from rx import operators as ops
 from rx.core import Observable
 
@@ -94,3 +94,189 @@ def buffer_slide(n: int):
             return new_state[1:]
         return new_state
     return rx.pipe(ops.scan(accumulate, []))
+
+
+@dataclass
+class PredictionWithAudio:
+    prediction: Annotation
+    waveform: Optional[SlidingWindowFeature] = None
+
+    @property
+    def has_audio(self) -> bool:
+        return self.waveform is not None
+
+
+@dataclass
+class OutputAccumulationState:
+    annotation: Optional[Annotation]
+    waveform: Optional[SlidingWindowFeature]
+    real_time: float
+    next_sample: Optional[int]
+
+    @staticmethod
+    def initial() -> 'OutputAccumulationState':
+        return OutputAccumulationState(None, None, 0, 0)
+
+    @property
+    def cropped_waveform(self) -> SlidingWindowFeature:
+        return SlidingWindowFeature(
+            self.waveform[:self.next_sample],
+            self.waveform.sliding_window,
+        )
+
+    def to_tuple(self) -> Tuple[Optional[Annotation], Optional[SlidingWindowFeature], float]:
+        return self.annotation, self.cropped_waveform, self.real_time
+
+
+def accumulate_output(
+    duration: float,
+    step: float,
+    patch_collar: float = 0.05,
+) -> Operator:
+    """Accumulate predictions and audio to infinity: O(N) space complexity.
+    Uses a pre-allocated buffer that doubles its size once full: O(logN) concat operations.
+
+    Parameters
+    ----------
+    duration: float
+        Buffer duration in seconds.
+    step: float
+        Duration of the chunks at each event in seconds.
+        The first chunk may be bigger given the latency.
+    patch_collar: float, optional
+        Collar to merge speaker turns of the same speaker, in seconds.
+        Defaults to 0.05 (i.e. 50ms).
+    Returns
+    -------
+    A reactive x operator implementing this behavior.
+    """
+    def accumulate(
+        state: OutputAccumulationState,
+        value: Tuple[Annotation, Optional[SlidingWindowFeature]]
+    ) -> OutputAccumulationState:
+        value = PredictionWithAudio(*value)
+        annotation, waveform = None, None
+
+        # Determine the real time of the stream
+        real_time = duration if state.annotation is None else state.real_time + step
+
+        # Update total annotation with current predictions
+        if state.annotation is None:
+            annotation = value.prediction
+        else:
+            annotation = state.annotation.update(value.prediction).support(patch_collar)
+
+        # Update total waveform if there's audio in the input
+        new_next_sample = 0
+        if value.has_audio:
+            num_new_samples = value.waveform.data.shape[0]
+            new_next_sample = state.next_sample + num_new_samples
+            sw_holder = state
+            if state.waveform is None:
+                # Initialize the audio buffer with 10 times the size of the first chunk
+                waveform, sw_holder = np.zeros((10 * num_new_samples, 1)), value
+            elif new_next_sample < state.waveform.data.shape[0]:
+                # The buffer still has enough space to accommodate the chunk
+                waveform = state.waveform.data
+            else:
+                # The buffer is full, double its size
+                waveform = np.concatenate(
+                    (state.waveform.data, np.zeros_like(state.waveform.data)), axis=0
+                )
+            # Copy chunk into buffer
+            waveform[state.next_sample:new_next_sample] = value.waveform.data
+            waveform = SlidingWindowFeature(waveform, sw_holder.waveform.sliding_window)
+
+        return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
+
+    return rx.pipe(
+        ops.scan(accumulate, OutputAccumulationState.initial()),
+        ops.map(OutputAccumulationState.to_tuple),
+    )
+
+
+def buffer_output(
+    duration: float,
+    step: float,
+    latency: float,
+    sample_rate: int,
+    patch_collar: float = 0.05,
+) -> Operator:
+    """Store last predictions and audio inside a fixed buffer.
+    Provides the best time/space complexity trade-off if the past data is not needed.
+
+    Parameters
+    ----------
+    duration: float
+        Buffer duration in seconds.
+    step: float
+        Duration of the chunks at each event in seconds.
+        The first chunk may be bigger given the latency.
+    latency: float
+        Latency of the system in seconds.
+    sample_rate: int
+        Sample rate of the audio source.
+    patch_collar: float, optional
+        Collar to merge speaker turns of the same speaker, in seconds.
+        Defaults to 0.05 (i.e. 50ms).
+
+    Returns
+    -------
+    A reactive x operator implementing this behavior.
+    """
+    # Define some useful constants
+    num_samples = int(round(duration * sample_rate))
+    num_step_samples = int(round(step * sample_rate))
+    resolution = 1 / sample_rate
+
+    def accumulate(
+        state: OutputAccumulationState,
+        value: Tuple[Annotation, Optional[SlidingWindowFeature]]
+    ) -> OutputAccumulationState:
+        value = PredictionWithAudio(*value)
+        annotation, waveform = None, None
+
+        # Determine the real time of the stream and the start time of the buffer
+        real_time = duration if state.annotation is None else state.real_time + step
+        start_time = max(0., real_time - latency - duration)
+
+        # Update annotation and constrain its bounds to the buffer
+        if state.annotation is None:
+            annotation = value.prediction
+        else:
+            annotation = state.annotation.update(value.prediction) \
+                .support(patch_collar) \
+                .extrude(Segment(0, start_time))
+
+        # Update the audio buffer if there's audio in the input
+        new_next_sample = state.next_sample + num_step_samples
+        if value.has_audio:
+            if state.waveform is None:
+                # Determine the size of the first chunk
+                expected_duration = duration + step - latency
+                expected_samples = int(round(expected_duration * sample_rate))
+                # Shift indicator to start copying new audio in the buffer
+                new_next_sample = state.next_sample + expected_samples
+                # Buffer size is duration + step
+                waveform = np.zeros((num_samples + num_step_samples, 1))
+                # Copy first chunk into buffer (slicing because of rounding errors)
+                waveform[:expected_samples] = value.waveform.data[:expected_samples]
+            elif state.next_sample <= num_samples:
+                # The buffer isn't full, copy into next free buffer chunk
+                waveform = state.waveform.data
+                waveform[state.next_sample:new_next_sample] = value.waveform.data
+            else:
+                # The buffer is full, shift values to the left and copy into last buffer chunk
+                waveform = np.roll(state.waveform.data, -num_step_samples, axis=0)
+                waveform[-num_step_samples:] = value.waveform.data
+
+            # Wrap waveform in a sliding window feature to include timestamps
+            window = SlidingWindow(start=start_time, duration=resolution, step=resolution)
+            waveform = SlidingWindowFeature(waveform, window)
+
+        return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
+
+    return rx.pipe(
+        ops.scan(accumulate, OutputAccumulationState.initial()),
+        ops.map(OutputAccumulationState.to_tuple),
+    )
