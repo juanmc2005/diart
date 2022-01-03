@@ -1,8 +1,10 @@
 from __future__ import annotations
-import numpy as np
-from scipy.optimize import linear_sum_assignment
-from pyannote.core.utils.distance import cdist
+
 from typing import Callable, Iterable, List, Optional, Text, Tuple, Union
+
+import numpy as np
+from pyannote.core.utils.distance import cdist
+from scipy.optimize import linear_sum_assignment
 
 
 class MappingMatrixObjective:

@@ -1,6 +1,7 @@
-from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
-import matplotlib.pyplot as plt
 from typing import Optional
+
+import matplotlib.pyplot as plt
+from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
 
 
 def visualize_feature(duration: Optional[float] = None):

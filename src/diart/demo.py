@@ -1,10 +1,11 @@
-from pathlib import Path
 import argparse
+from pathlib import Path
 
+import diart.operators as dops
 import diart.sources as src
+import rx.operators as ops
 from diart.pipelines import OnlineSpeakerDiarization
-from diart.sinks import OutputBuilder
-
+from diart.sinks import RealTimePlot, RTTMWriter
 
 # Define script arguments
 parser = argparse.ArgumentParser()
@@ -38,34 +39,32 @@ pipeline = OnlineSpeakerDiarization(
 )
 
 # Manage audio source
-uri = args.source
 if args.source != "microphone":
     args.source = Path(args.source).expanduser()
     uri = args.source.name.split(".")[0]
     output_dir = args.source.parent if args.output is None else Path(args.output)
-    # Simulate an unreliable recording protocol yielding new audio with a varying refresh rate
-    audio_source = src.ReliableFileAudioSource(
+    audio_source = src.FileAudioSource(
         file=args.source,
         uri=uri,
-        sample_rate=args.sample_rate,
-        window_duration=pipeline.duration,
-        step=args.step,
+        reader=src.RegularAudioFileReader(
+            args.sample_rate, pipeline.duration, pipeline.step
+        ),
     )
 else:
     output_dir = Path("~/").expanduser() if args.output is None else Path(args.output)
     audio_source = src.MicrophoneAudioSource(args.sample_rate)
 
-# Configure output builder to write an RTTM file and to draw in real time
-output_builder = OutputBuilder(
-    duration=pipeline.duration,
-    step=args.step,
-    latency=args.latency,
-    output_path=output_dir / "output.rttm",
-    visualization="slide",
-    # reference=output_dir / f"{uri}.rttm",
-)
-# Build pipeline from audio source and stream results to the output builder
-pipeline.from_source(audio_source, output_waveform=True).subscribe(output_builder)
+# Build pipeline from audio source and stream predictions to a real-time plot
+pipeline.from_source(audio_source).pipe(
+    ops.do(RTTMWriter(path=output_dir / "output.rttm")),
+    dops.buffer_output(
+        duration=pipeline.duration,
+        step=pipeline.step,
+        latency=pipeline.latency,
+        sample_rate=audio_source.sample_rate
+    ),
+).subscribe(RealTimePlot(pipeline.duration, pipeline.latency))
+
 # Read audio source as a stream
 if args.source == "microphone":
     print("Recording...")

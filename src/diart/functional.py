@@ -1,9 +1,10 @@
-import torch
-import numpy as np
-from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
-from pyannote.audio.utils.signal import Binarize as PyanBinarize
-from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
 from typing import Union, Optional, List, Literal, Iterable, Tuple
+
+import numpy as np
+import torch
+from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
+from pyannote.audio.utils.signal import Binarize as PyanBinarize
+from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
 

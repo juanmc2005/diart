@@ -1,11 +1,12 @@
+from typing import Optional
+
 import rx
 import rx.operators as ops
-from typing import Optional
 from pyannote.audio.pipelines.utils import PipelineModel
 
-from .sources import AudioSource
-from . import operators as my_ops
 from . import functional as fn
+from . import operators as dops
+from . import sources as src
 
 
 class OnlineSpeakerDiarization:
@@ -40,17 +41,23 @@ class OnlineSpeakerDiarization:
         self.beta = beta
         self.max_speakers = max_speakers
 
-    def get_end_time(self, source: AudioSource) -> Optional[float]:
+    @property
+    def sample_rate(self) -> int:
+        return self.segmentation.model.audio.sample_rate
+
+    def get_end_time(self, source: src.AudioSource) -> Optional[float]:
         if source.duration is not None:
             return source.duration - source.duration % self.step
         return None
 
-    def from_source(self, source: AudioSource, output_waveform: bool = False) -> rx.Observable:
+    def from_source(self, source: src.AudioSource, output_waveform: bool = True) -> rx.Observable:
+        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.sample_rate}"
+        assert source.sample_rate == self.sample_rate, msg
         # Regularize the stream to a specific chunk duration and step
         regular_stream = source.stream
         if not source.is_regular:
             regular_stream = source.stream.pipe(
-                my_ops.regularize_stream(self.duration, self.step, source.sample_rate)
+                dops.regularize_stream(self.duration, self.step, source.sample_rate)
             )
         # Branch the stream to calculate chunk segmentation
         segmentation_stream = regular_stream.pipe(
@@ -75,20 +82,21 @@ class OnlineSpeakerDiarization:
         pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
             ops.starmap(clustering),
             # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
-            my_ops.buffer_slide(aggregation.num_overlapping_windows),
+            dops.buffer_slide(aggregation.num_overlapping_windows),
             # Aggregate overlapping output windows
             ops.map(aggregation),
             # Binarize output
             ops.map(fn.Binarize(source.uri, self.tau_active)),
         )
+        # Add corresponding waveform to the output
         if output_waveform:
             window_selector = fn.DelayedAggregation(
                 self.step, self.latency, strategy="first", stream_end=end_time
             )
-            pipeline = pipeline.pipe(
-                ops.zip(regular_stream.pipe(
-                    my_ops.buffer_slide(window_selector.num_overlapping_windows),
-                    ops.map(window_selector),
-                ))
+            waveform_stream = regular_stream.pipe(
+                dops.buffer_slide(window_selector.num_overlapping_windows),
+                ops.map(window_selector),
             )
-        return pipeline
+            return rx.zip(pipeline, waveform_stream)
+        # No waveform needed, add None for consistency
+        return pipeline.pipe(ops.map(lambda ann: (ann, None)))
