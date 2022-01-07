@@ -61,7 +61,7 @@ class OverlappedSpeechPenalty:
         Exponent to lower low-confidence predictions.
         Defaults to 3.
     beta: float, optional
-        Softmax's temperature parameter (actually 1/beta) to sharpen per-frame speaker probability distributions.
+        Softmax's temperature parameter (actually 1/beta) to lower joint speaker activations.
         Defaults to 10.
     """
     def __init__(self, gamma: float = 3, beta: float = 10):
