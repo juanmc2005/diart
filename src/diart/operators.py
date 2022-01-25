@@ -244,9 +244,9 @@ def buffer_output(
         if state.annotation is None:
             annotation = value.prediction
         else:
-            annotation = state.annotation.update(value.prediction) \
-                .support(patch_collar) \
-                .extrude(Segment(0, start_time))
+            annotation = state.annotation.update(value.prediction).support(patch_collar)
+            if start_time > 0:
+                annotation = annotation.extrude(Segment(0, start_time))
 
         # Update the audio buffer if there's audio in the input
         new_next_sample = state.next_sample + num_step_samples
