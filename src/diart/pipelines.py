@@ -1,15 +1,17 @@
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union, Text
 
 import rx
 import rx.operators as ops
 from pyannote.audio.pipelines.utils import PipelineModel
+from pyannote.core import Annotation
 
 from . import functional as fn
 from . import operators as dops
 from . import sources as src
 
 
-class OnlineSpeakerDiarization:
+class PipelineConfig:
     def __init__(
         self,
         segmentation: PipelineModel = "pyannote/segmentation",
@@ -50,34 +52,43 @@ class OnlineSpeakerDiarization:
             return source.duration - source.duration % self.step
         return None
 
+
+class OnlineSpeakerDiarization:
+    def __init__(self, config: PipelineConfig):
+        self.config = config
+
     def from_source(self, source: src.AudioSource, output_waveform: bool = True) -> rx.Observable:
-        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.sample_rate}"
-        assert source.sample_rate == self.sample_rate, msg
+        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
+        assert source.sample_rate == self.config.sample_rate, msg
         # Regularize the stream to a specific chunk duration and step
         regular_stream = source.stream
         if not source.is_regular:
             regular_stream = source.stream.pipe(
-                dops.regularize_stream(self.duration, self.step, source.sample_rate)
+                dops.regularize_stream(self.config.duration, self.config.step, source.sample_rate)
             )
         # Branch the stream to calculate chunk segmentation
         segmentation_stream = regular_stream.pipe(
-            ops.map(self.segmentation)
+            ops.map(self.config.segmentation)
         )
         # Join audio and segmentation stream to calculate speaker embeddings
-        osp = fn.OverlappedSpeechPenalty(gamma=self.gamma, beta=self.beta)
+        osp = fn.OverlappedSpeechPenalty(gamma=self.config.gamma, beta=self.config.beta)
         embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
             ops.starmap(lambda wave, seg: (wave, osp(seg))),
-            ops.starmap(self.embedding),
+            ops.starmap(self.config.embedding),
             ops.map(fn.EmbeddingNormalization(norm=1))
         )
         # Join segmentation and embedding streams to update a background clustering model
         #  while regulating latency and binarizing the output
         clustering = fn.OnlineSpeakerClustering(
-            self.tau_active, self.rho_update, self.delta_new, "cosine", self.max_speakers
+            self.config.tau_active,
+            self.config.rho_update,
+            self.config.delta_new,
+            "cosine",
+            self.config.max_speakers,
         )
-        end_time = self.get_end_time(source)
+        end_time = self.config.get_end_time(source)
         aggregation = fn.DelayedAggregation(
-            self.step, self.latency, strategy="hamming", stream_end=end_time
+            self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
         )
         pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
             ops.starmap(clustering),
@@ -86,12 +97,12 @@ class OnlineSpeakerDiarization:
             # Aggregate overlapping output windows
             ops.map(aggregation),
             # Binarize output
-            ops.map(fn.Binarize(source.uri, self.tau_active)),
+            ops.map(fn.Binarize(source.uri, self.config.tau_active)),
         )
         # Add corresponding waveform to the output
         if output_waveform:
             window_selector = fn.DelayedAggregation(
-                self.step, self.latency, strategy="first", stream_end=end_time
+                self.config.step, self.config.latency, strategy="first", stream_end=end_time
             )
             waveform_stream = regular_stream.pipe(
                 dops.buffer_slide(window_selector.num_overlapping_windows),
@@ -100,3 +111,14 @@ class OnlineSpeakerDiarization:
             return rx.zip(pipeline, waveform_stream)
         # No waveform needed, add None for consistency
         return pipeline.pipe(ops.map(lambda ann: (ann, None)))
+
+
+class BatchedOnlineSpeakerDiarization:
+    def __init__(self, config: PipelineConfig):
+        self.config = config
+        self.chunk_loader = src.ChunkLoader(
+            self.config.sample_rate, self.config.duration, self.config.step
+        )
+
+    def run_offline(self, file: Union[Text, Path]) -> Annotation:
+        pass

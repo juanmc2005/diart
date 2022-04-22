@@ -11,6 +11,25 @@ from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeatu
 from .mapping import SpeakerMap, SpeakerMapBuilder
 
 
+Waveform = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
+
+
+def resolve_waveform(waveform: Waveform) -> torch.Tensor:
+    # As torch.Tensor with shape (..., 1, samples)
+    if isinstance(waveform, SlidingWindowFeature):
+        data = torch.from_numpy(waveform.data).transpose(-1, -2)
+    elif isinstance(waveform, np.ndarray):
+        data = torch.from_numpy(waveform)
+    else:
+        data = waveform
+    # Make sure there's a batch dimension
+    msg = "Waveform must be 2D (1, samples) or 3D (batch, 1, samples)"
+    assert data.ndim in (2, 3), msg
+    if data.ndim == 2:
+        data = data.unsqueeze(0)
+    return data
+
+
 class FrameWiseModel:
     def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
         self.model = get_model(model)
@@ -19,19 +38,24 @@ class FrameWiseModel:
             device = get_devices(needs=1)[0]
         self.model.to(device)
 
-    def __call__(self, waveform: SlidingWindowFeature) -> SlidingWindowFeature:
+    def __call__(self, waveform: Waveform) -> Union[SlidingWindowFeature, np.ndarray]:
         with torch.no_grad():
-            wave = torch.from_numpy(waveform.data.T[np.newaxis])
-            output = self.model(wave.to(self.model.device)).cpu().numpy()[0]
-        # Temporal resolution of the output
-        resolution = self.model.specifications.duration / output.shape[0]
-        # Temporal shift to keep track of current start time
-        resolution = SlidingWindow(
-            start=waveform.sliding_window.start,
-            duration=resolution,
-            step=resolution
-        )
-        return SlidingWindowFeature(output, resolution)
+            wave = resolve_waveform(waveform).to(self.model.device)
+            output = self.model(wave).cpu().numpy()[0]
+
+        # Wrap if a SlidingWindowFeature was given as input
+        if isinstance(waveform, SlidingWindowFeature):
+            # Temporal resolution of the output
+            resolution = self.model.specifications.duration / output.shape[0]
+            # Temporal shift to keep track of current start time
+            resolution = SlidingWindow(
+                start=waveform.sliding_window.start,
+                duration=resolution,
+                step=resolution
+            )
+            return SlidingWindowFeature(output, resolution)
+
+        return output
 
 
 class ChunkWiseModel:

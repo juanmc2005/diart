@@ -91,7 +91,7 @@ torch.Size([4, 512])
 1) Create environment:
 
 ```shell
-conda create -n diarization python==3.8
+conda create -n diarization python=3.8
 conda activate diarization
 ```
 
