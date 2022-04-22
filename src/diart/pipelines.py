@@ -1,9 +1,9 @@
-from pathlib import Path
-from typing import Optional, Union, Text
+from typing import Optional
 
 import rx
 import rx.operators as ops
 from pyannote.audio.pipelines.utils import PipelineModel
+from pyannote.audio.core.io import AudioFile
 from pyannote.core import Annotation
 
 from . import functional as fn
@@ -114,11 +114,23 @@ class OnlineSpeakerDiarization:
 
 
 class BatchedOnlineSpeakerDiarization:
-    def __init__(self, config: PipelineConfig):
+    def __init__(self, config: PipelineConfig, batch_size: int = 32):
         self.config = config
+        self.batch_size = batch_size
         self.chunk_loader = src.ChunkLoader(
             self.config.sample_rate, self.config.duration, self.config.step
         )
 
-    def run_offline(self, file: Union[Text, Path]) -> Annotation:
-        pass
+    def run(self, file: AudioFile) -> Annotation:
+        chunks = self.chunk_loader.get_chunks(file)
+        num_chunks = chunks.shape[0]
+        segmentation, embeddings = [], []
+        for i in range(0, num_chunks, self.batch_size):
+            i_end = i + self.batch_size
+            if i_end > num_chunks:
+                i_end = num_chunks
+            batch = chunks[i:i_end]
+            seg = self.config.segmentation(batch)
+            segmentation.append(seg)
+            # TODO add overlapped speech penalty
+            embeddings.append(self.config.embedding(batch, seg))

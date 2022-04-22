@@ -7,27 +7,28 @@ import torch
 from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
+from einops import rearrange
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
 
 
-Waveform = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
+TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
 
-def resolve_waveform(waveform: Waveform) -> torch.Tensor:
-    # As torch.Tensor with shape (..., 1, samples)
-    if isinstance(waveform, SlidingWindowFeature):
-        data = torch.from_numpy(waveform.data).transpose(-1, -2)
-    elif isinstance(waveform, np.ndarray):
-        data = torch.from_numpy(waveform)
+def resolve_features(features: TemporalFeatures) -> torch.Tensor:
+    # As torch.Tensor with shape (..., channels, frames)
+    if isinstance(features, SlidingWindowFeature):
+        data = torch.from_numpy(features.data).transpose(-1, -2)
+    elif isinstance(features, np.ndarray):
+        data = torch.from_numpy(features)
     else:
-        data = waveform
+        data = features
     # Make sure there's a batch dimension
-    msg = "Waveform must be 2D (1, samples) or 3D (batch, 1, samples)"
+    msg = "Temporal features must be 2D or 3D"
     assert data.ndim in (2, 3), msg
     if data.ndim == 2:
         data = data.unsqueeze(0)
-    return data
+    return data.float()
 
 
 class FrameWiseModel:
@@ -38,24 +39,30 @@ class FrameWiseModel:
             device = get_devices(needs=1)[0]
         self.model.to(device)
 
-    def __call__(self, waveform: Waveform) -> Union[SlidingWindowFeature, np.ndarray]:
+    def __call__(self, waveform: TemporalFeatures) -> Union[SlidingWindowFeature, np.ndarray]:
         with torch.no_grad():
-            wave = resolve_waveform(waveform).to(self.model.device)
-            output = self.model(wave).cpu().numpy()[0]
+            wave = resolve_features(waveform).to(self.model.device)
+            output = self.model(wave)
+
+        batch_size, num_frames, _ = output.shape
+
+        # Remove batch dimension if batch size is 1
+        if output.shape[0] == 1:
+            output = output[0]
 
         # Wrap if a SlidingWindowFeature was given as input
         if isinstance(waveform, SlidingWindowFeature):
             # Temporal resolution of the output
-            resolution = self.model.specifications.duration / output.shape[0]
+            resolution = self.model.specifications.duration / num_frames
             # Temporal shift to keep track of current start time
             resolution = SlidingWindow(
                 start=waveform.sliding_window.start,
                 duration=resolution,
                 step=resolution
             )
-            return SlidingWindowFeature(output, resolution)
+            return SlidingWindowFeature(output.cpu().numpy(), resolution)
 
-        return output
+        return output.transpose(-1, -2).cpu().numpy()
 
 
 class ChunkWiseModel:
@@ -66,17 +73,24 @@ class ChunkWiseModel:
             device = get_devices(needs=1)[0]
         self.model.to(device)
 
-    def __call__(self, waveform: SlidingWindowFeature, weights: Optional[SlidingWindowFeature]) -> torch.Tensor:
+    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures]) -> torch.Tensor:
         with torch.no_grad():
-            chunk = torch.from_numpy(waveform.data.T).float()
-            inputs = chunk.unsqueeze(0).to(self.model.device)
+            inputs = resolve_features(waveform).to(self.model.device)
             if weights is not None:
-                # weights has shape (num_local_speakers, num_frames)
-                weights = torch.from_numpy(weights.data.T).float().to(self.model.device)
-                inputs = inputs.repeat(weights.shape[0], 1, 1)
-            # Shape (num_speakers, emb_dimension)
-            output = self.model(inputs, weights=weights).cpu()
-        return output
+                weights = resolve_features(weights).to(self.model.device)
+                batch_size, num_speakers, _ = weights.shape
+                inputs = inputs.repeat(1, num_speakers, 1)
+                weights = rearrange(weights, "batch spk frame -> (batch spk) frame")
+                inputs = rearrange(inputs, "batch spk sample -> (batch spk) 1 sample")
+                output = rearrange(
+                    self.model(inputs, weights=weights),
+                    "(batch spk) feat -> batch spk feat",
+                    batch=batch_size,
+                    spk=num_speakers
+                )
+            else:
+                output = self.model(inputs)
+            return output.squeeze().cpu()
 
 
 class OverlappedSpeechPenalty:
@@ -95,6 +109,7 @@ class OverlappedSpeechPenalty:
         self.beta = beta
 
     def __call__(self, segmentation: SlidingWindowFeature) -> SlidingWindowFeature:
+        # TODO batchify
         weights = torch.from_numpy(segmentation.data).float().T
         with torch.no_grad():
             probs = torch.softmax(self.beta * weights, dim=0)
@@ -108,6 +123,7 @@ class EmbeddingNormalization:
         self.norm = norm
 
     def __call__(self, embeddings: torch.Tensor) -> torch.Tensor:
+        # TODO batchify
         if isinstance(self.norm, torch.Tensor):
             assert self.norm.shape[0] == embeddings.shape[0]
         with torch.no_grad():
