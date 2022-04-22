@@ -4,7 +4,7 @@ from pathlib import Path
 import diart.operators as dops
 import diart.sources as src
 import rx.operators as ops
-from diart.pipelines import OnlineSpeakerDiarization
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 from diart.sinks import RealTimePlot, RTTMWriter
 
 # Define script arguments
@@ -27,7 +27,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Define online speaker diarization pipeline
-pipeline = OnlineSpeakerDiarization(
+config = PipelineConfig(
     step=args.step,
     latency=args.latency,
     tau_active=args.tau,
@@ -37,6 +37,7 @@ pipeline = OnlineSpeakerDiarization(
     beta=args.beta,
     max_speakers=args.max_speakers,
 )
+pipeline = OnlineSpeakerDiarization(config)
 
 # Manage audio source
 if args.source != "microphone":
@@ -47,7 +48,7 @@ if args.source != "microphone":
         file=args.source,
         uri=uri,
         reader=src.RegularAudioFileReader(
-            args.sample_rate, pipeline.duration, pipeline.step
+            args.sample_rate, config.duration, config.step
         ),
     )
 else:
@@ -58,12 +59,12 @@ else:
 pipeline.from_source(audio_source).pipe(
     ops.do(RTTMWriter(path=output_dir / "output.rttm")),
     dops.buffer_output(
-        duration=pipeline.duration,
-        step=pipeline.step,
-        latency=pipeline.latency,
+        duration=config.duration,
+        step=config.step,
+        latency=config.latency,
         sample_rate=audio_source.sample_rate
     ),
-).subscribe(RealTimePlot(pipeline.duration, pipeline.latency))
+).subscribe(RealTimePlot(config.duration, config.latency))
 
 # Read audio source as a stream
 if args.source == "microphone":
