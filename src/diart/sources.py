@@ -3,11 +3,45 @@ import time
 from queue import SimpleQueue
 from typing import Tuple, Text, Optional, Iterable
 
+import numpy as np
 import sounddevice as sd
 from einops import rearrange
 from pyannote.audio.core.io import Audio, AudioFile
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
+
+
+class ChunkLoader:
+    """Loads an audio file and chunks it according to a given window and step size.
+
+    Parameters
+    ----------
+    sample_rate: int
+        Sample rate to load audio.
+    window_duration: float
+        Duration of the chunk in seconds.
+    step_duration: float
+        Duration of the step between chunks in seconds.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int,
+        window_duration: float,
+        step_duration: float,
+    ):
+        self.audio = Audio(sample_rate, mono=True)
+        self.window_duration = window_duration
+        self.step_duration = step_duration
+        self.window_samples = int(round(window_duration * sample_rate))
+        self.step_samples = int(round(step_duration * sample_rate))
+
+    def get_chunks(self, file: AudioFile) -> np.ndarray:
+        waveform, _ = self.audio(file)
+        return rearrange(
+            waveform.unfold(1, self.window_samples, self.step_samples),
+            "channel chunk frame -> chunk channel frame",
+        ).numpy()
 
 
 class AudioSource:
@@ -91,24 +125,19 @@ class RegularAudioFileReader(AudioFileReader):
         step_duration: float,
     ):
         super().__init__(sample_rate)
-        self.window_duration = window_duration
-        self.step_duration = step_duration
-        self.window_samples = int(round(self.window_duration * self.sample_rate))
-        self.step_samples = int(round(self.step_duration * self.sample_rate))
+        self.chunk_loader = ChunkLoader(
+            sample_rate, window_duration, step_duration
+        )
 
     @property
     def is_regular(self) -> bool:
         return True
 
     def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
-        waveform, _ = self.audio(file)
-        chunks = rearrange(
-            waveform.unfold(1, self.window_samples, self.step_samples),
-            "channel chunk frame -> chunk channel frame",
-        ).numpy()
+        chunks = self.chunk_loader.get_chunks(file)
         for i, chunk in enumerate(chunks):
             w = SlidingWindow(
-                start=i * self.step_duration,
+                start=i * self.chunk_loader.step_duration,
                 duration=self.resolution,
                 step=self.resolution
             )
