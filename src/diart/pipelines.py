@@ -1,10 +1,13 @@
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union, Text
 
+import numpy as np
 import rx
 import rx.operators as ops
+import torch
+from einops import rearrange
 from pyannote.audio.pipelines.utils import PipelineModel
-from pyannote.audio.core.io import AudioFile
-from pyannote.core import Annotation
+from pyannote.core import SlidingWindowFeature, SlidingWindow
 
 from . import functional as fn
 from . import operators as dops
@@ -121,8 +124,27 @@ class BatchedOnlineSpeakerDiarization:
             self.config.sample_rate, self.config.duration, self.config.step
         )
 
-    def run(self, file: AudioFile) -> Annotation:
-        chunks = self.chunk_loader.get_chunks(file)
+    def run(self, file: Union[Text, Path], output_waveform: bool = False) -> rx.Observable:
+        print("Preprocessing...")
+        file = Path(file)
+        osp = fn.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
+        emb_norm = fn.EmbeddingNormalization(norm=1)
+        clustering = fn.OnlineSpeakerClustering(
+            self.config.tau_active,
+            self.config.rho_update,
+            self.config.delta_new,
+            "cosine",
+            self.config.max_speakers,
+        )
+        end_time = self.chunk_loader.audio.get_duration(file) % self.config.step
+        aggregation = fn.DelayedAggregation(
+            self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
+        )
+
+        chunks = rearrange(
+            self.chunk_loader.get_chunks(file),
+            "chunk channel sample -> chunk sample channel"
+        )
         num_chunks = chunks.shape[0]
         segmentation, embeddings = [], []
         for i in range(0, num_chunks, self.batch_size):
@@ -132,5 +154,52 @@ class BatchedOnlineSpeakerDiarization:
             batch = chunks[i:i_end]
             seg = self.config.segmentation(batch)
             segmentation.append(seg)
-            # TODO add overlapped speech penalty
-            embeddings.append(self.config.embedding(batch, seg))
+            embeddings.append(emb_norm(self.config.embedding(batch, osp(seg))))
+        segmentation = np.vstack(segmentation)
+        embeddings = torch.vstack(embeddings)
+        print("Done")
+
+        # Join segmentation and embedding streams to update a background clustering model
+        #  while regulating latency and binarizing the output
+        resolution = self.config.duration / segmentation.shape[1]
+        segmentation_stream = rx.range(0, num_chunks).pipe(
+            ops.map(lambda i: SlidingWindowFeature(
+                segmentation[i],
+                SlidingWindow(
+                    start=i * self.config.step,
+                    duration=resolution,
+                    step=resolution,
+                )
+            ))
+        )
+        embedding_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
+        pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
+            ops.starmap(clustering),
+            # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
+            dops.buffer_slide(aggregation.num_overlapping_windows),
+            # Aggregate overlapping output windows
+            ops.map(aggregation),
+            # Binarize output
+            ops.map(fn.Binarize(file.name, self.config.tau_active)),
+        )
+        # Add corresponding waveform to the output
+        if output_waveform:
+            window_selector = fn.DelayedAggregation(
+                self.config.step, self.config.latency, strategy="first", stream_end=end_time
+            )
+            waveform_resolution = 1 / self.config.sample_rate
+            waveform_stream = rx.range(0, num_chunks).pipe(
+                ops.map(lambda i: SlidingWindowFeature(
+                    chunks[i],
+                    SlidingWindow(
+                        start=i * self.config.step,
+                        duration=waveform_resolution,
+                        step=waveform_resolution,
+                    )
+                )),
+                dops.buffer_slide(window_selector.num_overlapping_windows),
+                ops.map(window_selector),
+            )
+            return rx.zip(pipeline, waveform_stream)
+        # No waveform needed, add None for consistency
+        return pipeline.pipe(ops.map(lambda ann: (ann, None)))

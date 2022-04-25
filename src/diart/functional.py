@@ -14,9 +14,21 @@ TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
 
 def resolve_features(features: TemporalFeatures) -> torch.Tensor:
+    """
+    Transform features into a `torch.Tensor` and add batch dimension if missing.
+
+    Parameters
+    ----------
+    features: Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
+        Shape (frames, channels) or (batch, frames, channels)
+
+    Returns
+    -------
+    transformed_features: torch.Tensor, shape (batch, frames, channels)
+    """
     # As torch.Tensor with shape (..., channels, frames)
     if isinstance(features, SlidingWindowFeature):
-        data = torch.from_numpy(features.data).transpose(-1, -2)
+        data = torch.from_numpy(features.data)
     elif isinstance(features, np.ndarray):
         data = torch.from_numpy(features)
     else:
@@ -37,10 +49,10 @@ class FrameWiseModel:
             device = get_devices(needs=1)[0]
         self.model.to(device)
 
-    def __call__(self, waveform: TemporalFeatures) -> Union[SlidingWindowFeature, np.ndarray]:
+    def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         with torch.no_grad():
-            wave = resolve_features(waveform).to(self.model.device)
-            output = self.model(wave)
+            wave = rearrange(resolve_features(waveform), "batch sample channel -> batch channel sample")
+            output = self.model(wave.to(self.model.device)).cpu()
 
         batch_size, num_frames, _ = output.shape
 
@@ -58,9 +70,12 @@ class FrameWiseModel:
                 duration=resolution,
                 step=resolution
             )
-            return SlidingWindowFeature(output.cpu().numpy(), resolution)
+            return SlidingWindowFeature(output.numpy(), resolution)
 
-        return output.transpose(-1, -2).cpu().numpy()
+        if isinstance(waveform, np.ndarray):
+            return output.numpy()
+
+        return output
 
 
 class ChunkWiseModel:
@@ -74,11 +89,12 @@ class ChunkWiseModel:
     def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures]) -> torch.Tensor:
         with torch.no_grad():
             inputs = resolve_features(waveform).to(self.model.device)
+            inputs = rearrange(inputs, "batch sample channel -> batch channel sample")
             if weights is not None:
                 weights = resolve_features(weights).to(self.model.device)
-                batch_size, num_speakers, _ = weights.shape
+                batch_size, _, num_speakers = weights.shape
                 inputs = inputs.repeat(1, num_speakers, 1)
-                weights = rearrange(weights, "batch spk frame -> (batch spk) frame")
+                weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
                 inputs = rearrange(inputs, "batch spk sample -> (batch spk) 1 sample")
                 output = rearrange(
                     self.model(inputs, weights=weights),
@@ -106,27 +122,37 @@ class OverlappedSpeechPenalty:
         self.gamma = gamma
         self.beta = beta
 
-    def __call__(self, segmentation: SlidingWindowFeature) -> SlidingWindowFeature:
-        # TODO batchify
-        weights = torch.from_numpy(segmentation.data).float().T
+    def __call__(self, segmentation: TemporalFeatures) -> TemporalFeatures:
+        weights = resolve_features(segmentation)  # shape (batch, frames, speakers)
         with torch.no_grad():
-            probs = torch.softmax(self.beta * weights, dim=0)
+            probs = torch.softmax(self.beta * weights, dim=-1)
             weights = torch.pow(weights, self.gamma) * torch.pow(probs, self.gamma)
             weights[weights < 1e-8] = 1e-8
-        return SlidingWindowFeature(weights.T.numpy(), segmentation.sliding_window)
+        if isinstance(segmentation, SlidingWindowFeature):
+            return SlidingWindowFeature(weights.cpu().numpy(), segmentation.sliding_window)
+        if isinstance(segmentation, np.ndarray):
+            return weights.cpu().numpy()
+        return weights
 
 
 class EmbeddingNormalization:
     def __init__(self, norm: Union[float, torch.Tensor] = 1):
         self.norm = norm
+        # Add batch dimension if missing
+        if isinstance(self.norm, torch.Tensor) and self.norm.ndim == 2:
+            self.norm = self.norm.unsqueeze(0)
 
     def __call__(self, embeddings: torch.Tensor) -> torch.Tensor:
-        # TODO batchify
+        # Add batch dimension if missing
+        if embeddings.ndim == 2:
+            embeddings = embeddings.unsqueeze(0)
         if isinstance(self.norm, torch.Tensor):
-            assert self.norm.shape[0] == embeddings.shape[0]
+            batch_size1, num_speakers1, _ = self.norm.shape
+            batch_size2, num_speakers2, _ = embeddings.shape
+            assert batch_size1 == batch_size2 and num_speakers1 == num_speakers2
         with torch.no_grad():
-            norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=1, keepdim=True)
-        return norm_embs
+            norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=-1, keepdim=True)
+        return norm_embs.squeeze()
 
 
 class AggregationStrategy:
