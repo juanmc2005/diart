@@ -19,6 +19,7 @@ parser.add_argument("--delta", default=1, type=float, help="Maximum distance thr
 parser.add_argument("--gamma", default=3, type=float, help="Parameter gamma for overlapped speech penalty")
 parser.add_argument("--beta", default=10, type=float, help="Parameter beta for overlapped speech penalty")
 parser.add_argument("--max-speakers", default=20, type=int, help="Maximum number of identifiable speakers")
+parser.add_argument("--no-plot", dest="no_plot", action="store_true", help="Skip plotting for faster inference")
 parser.add_argument(
     "--output", type=str,
     help="Output directory to store the RTTM. Defaults to home directory "
@@ -55,16 +56,23 @@ else:
     output_dir = Path("~/").expanduser() if args.output is None else Path(args.output)
     audio_source = src.MicrophoneAudioSource(args.sample_rate)
 
-# Build pipeline from audio source and stream predictions to a real-time plot
-pipeline.from_source(audio_source).pipe(
-    ops.do(RTTMWriter(path=output_dir / "output.rttm")),
-    dops.buffer_output(
-        duration=config.duration,
-        step=config.step,
-        latency=config.latency,
-        sample_rate=audio_source.sample_rate
-    ),
-).subscribe(RealTimePlot(config.duration, config.latency))
+# Build pipeline from audio source and stream predictions
+rttm_writer = RTTMWriter(path=output_dir / "output.rttm")
+observable = pipeline.from_source(audio_source)
+if args.no_plot:
+    # Write RTTM file only
+    observable.subscribe(rttm_writer)
+else:
+    # Write RTTM file + buffering and real-time plot
+    observable.pipe(
+        ops.do(rttm_writer),
+        dops.buffer_output(
+            duration=config.duration,
+            step=config.step,
+            latency=config.latency,
+            sample_rate=audio_source.sample_rate
+        ),
+    ).subscribe(RealTimePlot(config.duration, config.latency))
 
 # Read audio source as a stream
 if args.source == "microphone":
