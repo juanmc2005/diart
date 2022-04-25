@@ -56,11 +56,66 @@ class PipelineConfig:
         return None
 
 
-class OnlineSpeakerDiarization:
+class OnlineSpeakerTracking:
     def __init__(self, config: PipelineConfig):
         self.config = config
 
-    def from_source(self, source: src.AudioSource, output_waveform: bool = True) -> rx.Observable:
+    def from_model_streams(
+        self,
+        uri: Text,
+        end_time: Optional[float],
+        segmentation_stream: rx.Observable,
+        embedding_stream: rx.Observable,
+        audio_chunk_stream: Optional[rx.Observable] = None,
+    ) -> rx.Observable:
+        # Initialize clustering and aggregation modules
+        clustering = fn.OnlineSpeakerClustering(
+            self.config.tau_active,
+            self.config.rho_update,
+            self.config.delta_new,
+            "cosine",
+            self.config.max_speakers,
+        )
+        aggregation = fn.DelayedAggregation(
+            self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
+        )
+        binarize = fn.Binarize(uri, self.config.tau_active)
+
+        # Join segmentation and embedding streams to update a background clustering model
+        #  while regulating latency and binarizing the output
+        pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
+            ops.starmap(clustering),
+            # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
+            dops.buffer_slide(aggregation.num_overlapping_windows),
+            # Aggregate overlapping output windows
+            ops.map(aggregation),
+            # Binarize output
+            ops.map(binarize),
+        )
+        # Add corresponding waveform to the output
+        if audio_chunk_stream is not None:
+            window_selector = fn.DelayedAggregation(
+                self.config.step, self.config.latency, strategy="first", stream_end=end_time
+            )
+            waveform_stream = audio_chunk_stream.pipe(
+                dops.buffer_slide(window_selector.num_overlapping_windows),
+                ops.map(window_selector),
+            )
+            return rx.zip(pipeline, waveform_stream)
+        # No waveform needed, add None for consistency
+        return pipeline.pipe(ops.map(lambda ann: (ann, None)))
+
+
+class OnlineSpeakerDiarization:
+    def __init__(self, config: PipelineConfig):
+        self.config = config
+        self.speaker_tracking = OnlineSpeakerTracking(config)
+
+    def from_source(
+        self,
+        source: src.AudioSource,
+        output_waveform: bool = True
+    ) -> rx.Observable:
         msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
         assert source.sample_rate == self.config.sample_rate, msg
         # Regularize the stream to a specific chunk duration and step
@@ -70,9 +125,7 @@ class OnlineSpeakerDiarization:
                 dops.regularize_stream(self.config.duration, self.config.step, source.sample_rate)
             )
         # Branch the stream to calculate chunk segmentation
-        segmentation_stream = regular_stream.pipe(
-            ops.map(self.config.segmentation)
-        )
+        segmentation_stream = regular_stream.pipe(ops.map(self.config.segmentation))
         # Join audio and segmentation stream to calculate speaker embeddings
         osp = fn.OverlappedSpeechPenalty(gamma=self.config.gamma, beta=self.config.beta)
         embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
@@ -80,75 +133,39 @@ class OnlineSpeakerDiarization:
             ops.starmap(self.config.embedding),
             ops.map(fn.EmbeddingNormalization(norm=1))
         )
-        # Join segmentation and embedding streams to update a background clustering model
-        #  while regulating latency and binarizing the output
-        clustering = fn.OnlineSpeakerClustering(
-            self.config.tau_active,
-            self.config.rho_update,
-            self.config.delta_new,
-            "cosine",
-            self.config.max_speakers,
-        )
         end_time = self.config.get_end_time(source)
-        aggregation = fn.DelayedAggregation(
-            self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
+        chunk_stream = regular_stream if output_waveform else None
+        return self.speaker_tracking.from_model_streams(
+            source.uri, end_time, segmentation_stream, embedding_stream, chunk_stream
         )
-        pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
-            ops.starmap(clustering),
-            # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
-            dops.buffer_slide(aggregation.num_overlapping_windows),
-            # Aggregate overlapping output windows
-            ops.map(aggregation),
-            # Binarize output
-            ops.map(fn.Binarize(source.uri, self.config.tau_active)),
-        )
-        # Add corresponding waveform to the output
-        if output_waveform:
-            window_selector = fn.DelayedAggregation(
-                self.config.step, self.config.latency, strategy="first", stream_end=end_time
-            )
-            waveform_stream = regular_stream.pipe(
-                dops.buffer_slide(window_selector.num_overlapping_windows),
-                ops.map(window_selector),
-            )
-            return rx.zip(pipeline, waveform_stream)
-        # No waveform needed, add None for consistency
-        return pipeline.pipe(ops.map(lambda ann: (ann, None)))
 
-
-class BatchedOnlineSpeakerDiarization:
-    def __init__(self, config: PipelineConfig, batch_size: int = 32):
-        self.config = config
-        self.batch_size = batch_size
-        self.chunk_loader = src.ChunkLoader(
+    def from_file(
+        self,
+        file: Union[Text, Path],
+        output_waveform: bool = False,
+        batch_size: int = 32
+    ) -> rx.Observable:
+        # Audio file information
+        file = Path(file)
+        chunk_loader = src.ChunkLoader(
             self.config.sample_rate, self.config.duration, self.config.step
         )
+        uri = file.name.split(".")[0]
+        end_time = chunk_loader.audio.get_duration(file) % self.config.step
 
-    def run(self, file: Union[Text, Path], output_waveform: bool = False) -> rx.Observable:
-        print("Preprocessing...")
-        file = Path(file)
+        # Initialize pipeline modules
         osp = fn.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
         emb_norm = fn.EmbeddingNormalization(norm=1)
-        clustering = fn.OnlineSpeakerClustering(
-            self.config.tau_active,
-            self.config.rho_update,
-            self.config.delta_new,
-            "cosine",
-            self.config.max_speakers,
-        )
-        end_time = self.chunk_loader.audio.get_duration(file) % self.config.step
-        aggregation = fn.DelayedAggregation(
-            self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
-        )
 
+        # Pre-calculate segmentation and embeddings
         chunks = rearrange(
-            self.chunk_loader.get_chunks(file),
+            chunk_loader.get_chunks(file),
             "chunk channel sample -> chunk sample channel"
         )
         num_chunks = chunks.shape[0]
         segmentation, embeddings = [], []
-        for i in range(0, num_chunks, self.batch_size):
-            i_end = i + self.batch_size
+        for i in range(0, num_chunks, batch_size):
+            i_end = i + batch_size
             if i_end > num_chunks:
                 i_end = num_chunks
             batch = chunks[i:i_end]
@@ -157,49 +174,24 @@ class BatchedOnlineSpeakerDiarization:
             embeddings.append(emb_norm(self.config.embedding(batch, osp(seg))))
         segmentation = np.vstack(segmentation)
         embeddings = torch.vstack(embeddings)
-        print("Done")
 
-        # Join segmentation and embedding streams to update a background clustering model
-        #  while regulating latency and binarizing the output
+        # Stream pre-calculated segmentation, embeddings and chunks
         resolution = self.config.duration / segmentation.shape[1]
         segmentation_stream = rx.range(0, num_chunks).pipe(
             ops.map(lambda i: SlidingWindowFeature(
-                segmentation[i],
-                SlidingWindow(
-                    start=i * self.config.step,
-                    duration=resolution,
-                    step=resolution,
-                )
+                segmentation[i], SlidingWindow(resolution, resolution, i * self.config.step)
             ))
         )
         embedding_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
-        pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
-            ops.starmap(clustering),
-            # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
-            dops.buffer_slide(aggregation.num_overlapping_windows),
-            # Aggregate overlapping output windows
-            ops.map(aggregation),
-            # Binarize output
-            ops.map(fn.Binarize(file.name, self.config.tau_active)),
-        )
-        # Add corresponding waveform to the output
+        wav_resolution = 1 / self.config.sample_rate
+        chunk_stream = None
         if output_waveform:
-            window_selector = fn.DelayedAggregation(
-                self.config.step, self.config.latency, strategy="first", stream_end=end_time
-            )
-            waveform_resolution = 1 / self.config.sample_rate
-            waveform_stream = rx.range(0, num_chunks).pipe(
+            chunk_stream = rx.range(0, num_chunks).pipe(
                 ops.map(lambda i: SlidingWindowFeature(
-                    chunks[i],
-                    SlidingWindow(
-                        start=i * self.config.step,
-                        duration=waveform_resolution,
-                        step=waveform_resolution,
-                    )
-                )),
-                dops.buffer_slide(window_selector.num_overlapping_windows),
-                ops.map(window_selector),
+                    chunks[i], SlidingWindow(wav_resolution, wav_resolution, i * self.config.step)
+                ))
             )
-            return rx.zip(pipeline, waveform_stream)
-        # No waveform needed, add None for consistency
-        return pipeline.pipe(ops.map(lambda ann: (ann, None)))
+
+        return self.speaker_tracking.from_model_streams(
+            uri, end_time, segmentation_stream, embedding_stream, chunk_stream
+        )
