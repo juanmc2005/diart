@@ -123,7 +123,14 @@ Diart is the official implementation of the paper *[Overlap-aware low-latency on
 If you found diart useful, please make sure to cite our paper:
 
 ```bibtex
-Awaiting paper publication (ASRU 2021).
+@inproceedings{diart,  
+  author={Coria, Juan M. and Bredin, Hervé and Ghannay, Sahar and Rosset, Sophie},  
+  booktitle={2021 IEEE Automatic Speech Recognition and Understanding Workshop (ASRU)},   
+  title={Overlap-Aware Low-Latency Online Speaker Diarization Based on End-to-End Local Segmentation}, 
+  year={2021},
+  pages={1139-1146},
+  doi={10.1109/ASRU51503.2021.9688044},
+}
 ```
 
 ##  Reproducibility
