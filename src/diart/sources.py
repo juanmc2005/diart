@@ -37,11 +37,17 @@ class ChunkLoader:
         self.step_samples = int(round(step_duration * sample_rate))
 
     def get_chunks(self, file: AudioFile) -> np.ndarray:
+        # FIXME last chunk should be padded instead of ignored
         waveform, _ = self.audio(file)
         return rearrange(
             waveform.unfold(1, self.window_samples, self.step_samples),
             "channel chunk frame -> chunk channel frame",
         ).numpy()
+
+    def num_chunks(self, file: AudioFile) -> int:
+        # FIXME last chunk should be padded instead of ignored
+        num_samples = self.audio.get_duration(file) * self.audio.sample_rate
+        return int((num_samples - self.window_samples + self.step_samples) // self.step_samples)
 
 
 class AudioSource:
