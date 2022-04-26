@@ -22,12 +22,6 @@
 
 You can visualize the real-time speaker diarization of an audio stream with the built-in demo script.
 
-## To set up PortAudio on Google Colab Running on Python 3.7 (As of 10th MARCH 2022) : 
-
-
-`!apt install libasound2-dev portaudio19-dev libportaudio2 libportaudiocpp0 ffmpeg
-`
-
 ### Stream a recorded conversation
 
 ```shell
