@@ -1,4 +1,6 @@
-from typing import Union, Optional, List, Literal, Iterable, Tuple
+from typing import Union, Optional, List, Iterable, Tuple
+from typing_extensions import Literal 
+
 
 import numpy as np
 import torch

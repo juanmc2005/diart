@@ -1,6 +1,7 @@
 from pathlib import Path
 from traceback import print_exc
-from typing import Literal, Union, Text, Optional, Tuple
+from typing import Union, Text, Optional, Tuple
+from typing_extensions import Literal
 
 import matplotlib.pyplot as plt
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
