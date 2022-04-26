@@ -22,13 +22,6 @@
 
 You can visualize the real-time speaker diarization of an audio stream with the built-in demo script.
 
-## Set up PortAudio on Local Windows Environment 
-
-Refer sounddevice docs :  https://python-sounddevice.readthedocs.io/en/0.4.4/
-
-PortAudio Docs : http://portaudio.com/docs/v19-doxydocs/tutorial_start.html
-
-
 ## To set up PortAudio on Google Colab Running on Python 3.7 (As of 10th MARCH 2022) : 
 
 
