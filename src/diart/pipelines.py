@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from typing import Optional, Union, Text
 
@@ -8,6 +9,7 @@ import torch
 from einops import rearrange
 from pyannote.audio.pipelines.utils import PipelineModel
 from pyannote.core import SlidingWindowFeature, SlidingWindow
+from tqdm import tqdm
 
 from . import functional as fn
 from . import operators as dops
@@ -29,6 +31,8 @@ class PipelineConfig:
         beta: float = 10,
         max_speakers: int = 20,
     ):
+        # TODO move models to pipeline
+        # TODO support gpu
         self.segmentation = fn.FrameWiseModel(segmentation)
         self.duration = duration
         if self.duration is None:
@@ -143,7 +147,8 @@ class OnlineSpeakerDiarization:
         self,
         file: Union[Text, Path],
         output_waveform: bool = False,
-        batch_size: int = 32
+        batch_size: int = 32,
+        verbose: bool = False,
     ) -> rx.Observable:
         # Audio file information
         file = Path(file)
@@ -157,14 +162,23 @@ class OnlineSpeakerDiarization:
         osp = fn.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
         emb_norm = fn.EmbeddingNormalization(norm=1)
 
-        # Pre-calculate segmentation and embeddings
+        # Split audio into chunks
         chunks = rearrange(
             chunk_loader.get_chunks(file),
             "chunk channel sample -> chunk sample channel"
         )
         num_chunks = chunks.shape[0]
+
+        # Set progress if needed
+        iterator = range(0, num_chunks, batch_size)
+        if verbose:
+            desc = "Extracting segmentation and embeddings"
+            total = int(math.ceil(num_chunks / batch_size))
+            iterator = tqdm(iterator, desc=desc, total=total, unit="batch", leave=False)
+
+        # Pre-calculate segmentation and embeddings
         segmentation, embeddings = [], []
-        for i in range(0, num_chunks, batch_size):
+        for i in iterator:
             i_end = i + batch_size
             if i_end > num_chunks:
                 i_end = num_chunks
