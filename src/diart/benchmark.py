@@ -13,7 +13,7 @@ from diart.sinks import RTTMWriter
 # Define script arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("root", type=str, help="Directory with audio files <conversation>.(wav|flac|m4a|...)")
-parser.add_argument("reference", type=str, help="Directory with RTTM files <conversation>.rttm")
+parser.add_argument("--reference", type=str, help="Directory with RTTM files <conversation>.rttm")
 parser.add_argument("--step", default=0.5, type=float, help="Source sliding window step")
 parser.add_argument("--latency", default=0.5, type=float, help="System latency")
 parser.add_argument("--tau", default=0.5, type=float, help="Activity threshold tau active")
@@ -28,13 +28,12 @@ parser.add_argument("--gpu", dest="gpu", action="store_true", help="Add this fla
 args = parser.parse_args()
 
 args.root = Path(args.root)
-args.reference = Path(args.reference)
+assert args.root.is_dir(), "Root argument must be a directory"
+if args.reference is not None:
+    args.reference = Path(args.reference)
+    assert args.reference.is_dir(), "Reference argument must be a directory"
 args.output = args.root if args.output is None else Path(args.output)
 args.output.mkdir(parents=True, exist_ok=True)
-
-assert args.root.is_dir(), "Root argument must be a directory"
-assert args.reference.is_dir(), "Reference argument must be a directory"
-assert args.output.is_dir(), "Output argument must be a directory"
 
 # Define online speaker diarization pipeline
 config = PipelineConfig(
@@ -79,9 +78,10 @@ for filepath in args.root.expanduser().iterdir():
         source.read()
 
 # Run evaluation
-metric = DiarizationErrorRate(collar=0, skip_overlap=False)
-for ref_path in args.reference.iterdir():
-    ref = load_rttm(ref_path).popitem()[1]
-    hyp = load_rttm(args.output / ref_path.name).popitem()[1]
-    metric(ref, hyp)
-print(f"Diarization Error Rate: {100 * abs(metric):.1f}")
+if args.reference is not None:
+    metric = DiarizationErrorRate(collar=0, skip_overlap=False)
+    for ref_path in args.reference.iterdir():
+        ref = load_rttm(ref_path).popitem()[1]
+        hyp = load_rttm(args.output / ref_path.name).popitem()[1]
+        metric(ref, hyp)
+    print(f"Diarization Error Rate: {100 * abs(metric):.1f}")
