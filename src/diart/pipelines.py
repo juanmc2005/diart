@@ -30,34 +30,24 @@ class PipelineConfig:
         gamma: float = 3,
         beta: float = 10,
         max_speakers: int = 20,
+        device: Optional[torch.device] = None,
     ):
-        # TODO move models to pipeline
-        # TODO support gpu
-        self.segmentation = fn.FrameWiseModel(segmentation)
-        self.duration = duration
-        if self.duration is None:
-            self.duration = self.segmentation.model.specifications.duration
-        self.embedding = fn.ChunkWiseModel(embedding)
+        self.segmentation = segmentation
+        self.embedding = embedding
+        self.requested_duration = duration
         self.step = step
         self.latency = latency
         if self.latency is None:
             self.latency = self.step
-        assert self.step <= self.latency <= self.duration, "Invalid latency requested"
         self.tau_active = tau_active
         self.rho_update = rho_update
         self.delta_new = delta_new
         self.gamma = gamma
         self.beta = beta
         self.max_speakers = max_speakers
-
-    @property
-    def sample_rate(self) -> int:
-        return self.segmentation.model.audio.sample_rate
-
-    def get_end_time(self, source: src.AudioSource) -> Optional[float]:
-        if source.duration is not None:
-            return source.duration - source.duration % self.step
-        return None
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cpu")
 
 
 class OnlineSpeakerTracking:
@@ -113,31 +103,49 @@ class OnlineSpeakerTracking:
 class OnlineSpeakerDiarization:
     def __init__(self, config: PipelineConfig):
         self.config = config
+        # TODO support gpu
+        self.segmentation = fn.FrameWiseModel(config.segmentation)
+        self.embedding = fn.ChunkWiseModel(config.embedding)
         self.speaker_tracking = OnlineSpeakerTracking(config)
+        msg = "Invalid latency requested"
+        assert self.config.step <= self.config.latency <= self.duration, msg
+
+    @property
+    def sample_rate(self) -> int:
+        """Sample rate expected by the segmentation model"""
+        return self.segmentation.sample_rate
+
+    @property
+    def duration(self) -> float:
+        """Chunk duration (in seconds). Defaults to segmentation model duration"""
+        duration = self.config.requested_duration
+        if duration is None:
+            duration = self.segmentation.duration
+        return duration
 
     def from_source(
         self,
         source: src.AudioSource,
         output_waveform: bool = True
     ) -> rx.Observable:
-        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
-        assert source.sample_rate == self.config.sample_rate, msg
+        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.sample_rate}"
+        assert source.sample_rate == self.sample_rate, msg
         # Regularize the stream to a specific chunk duration and step
         regular_stream = source.stream
         if not source.is_regular:
             regular_stream = source.stream.pipe(
-                dops.regularize_stream(self.config.duration, self.config.step, source.sample_rate)
+                dops.regularize_stream(self.duration, self.config.step, source.sample_rate)
             )
         # Branch the stream to calculate chunk segmentation
-        segmentation_stream = regular_stream.pipe(ops.map(self.config.segmentation))
+        segmentation_stream = regular_stream.pipe(ops.map(self.segmentation))
         # Join audio and segmentation stream to calculate speaker embeddings
         osp = fn.OverlappedSpeechPenalty(gamma=self.config.gamma, beta=self.config.beta)
         embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
             ops.starmap(lambda wave, seg: (wave, osp(seg))),
-            ops.starmap(self.config.embedding),
+            ops.starmap(self.embedding),
             ops.map(fn.EmbeddingNormalization(norm=1))
         )
-        end_time = self.config.get_end_time(source)
+        end_time = source.end_time(self.config.step)
         chunk_stream = regular_stream if output_waveform else None
         return self.speaker_tracking.from_model_streams(
             source.uri, end_time, segmentation_stream, embedding_stream, chunk_stream
@@ -153,7 +161,7 @@ class OnlineSpeakerDiarization:
         # Audio file information
         file = Path(file)
         chunk_loader = src.ChunkLoader(
-            self.config.sample_rate, self.config.duration, self.config.step
+            self.sample_rate, self.duration, self.config.step
         )
         uri = file.name.split(".")[0]
         end_time = chunk_loader.audio.get_duration(file) % self.config.step
@@ -183,21 +191,21 @@ class OnlineSpeakerDiarization:
             if i_end > num_chunks:
                 i_end = num_chunks
             batch = chunks[i:i_end]
-            seg = self.config.segmentation(batch)
+            seg = self.segmentation(batch)
             segmentation.append(seg)
-            embeddings.append(emb_norm(self.config.embedding(batch, osp(seg))))
+            embeddings.append(emb_norm(self.embedding(batch, osp(seg))))
         segmentation = np.vstack(segmentation)
         embeddings = torch.vstack(embeddings)
 
         # Stream pre-calculated segmentation, embeddings and chunks
-        resolution = self.config.duration / segmentation.shape[1]
+        resolution = self.duration / segmentation.shape[1]
         segmentation_stream = rx.range(0, num_chunks).pipe(
             ops.map(lambda i: SlidingWindowFeature(
                 segmentation[i], SlidingWindow(resolution, resolution, i * self.config.step)
             ))
         )
         embedding_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
-        wav_resolution = 1 / self.config.sample_rate
+        wav_resolution = 1 / self.sample_rate
         chunk_stream = None
         if output_waveform:
             chunk_stream = rx.range(0, num_chunks).pipe(
@@ -206,6 +214,7 @@ class OnlineSpeakerDiarization:
                 ))
             )
 
+        # Build speaker tracking pipeline
         return self.speaker_tracking.from_model_streams(
             uri, end_time, segmentation_stream, embedding_stream, chunk_stream
         )

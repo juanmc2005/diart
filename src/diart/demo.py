@@ -12,7 +12,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("source", type=str, help="Path to an audio file | 'microphone'")
 parser.add_argument("--step", default=0.5, type=float, help="Source sliding window step")
 parser.add_argument("--latency", default=0.5, type=float, help="System latency")
-parser.add_argument("--sample-rate", default=16000, type=int, help="Source sample rate")
 parser.add_argument("--tau", default=0.5, type=float, help="Activity threshold tau active")
 parser.add_argument("--rho", default=0.3, type=float, help="Speech duration threshold rho update")
 parser.add_argument("--delta", default=1, type=float, help="Maximum distance threshold delta new")
@@ -37,6 +36,7 @@ config = PipelineConfig(
     gamma=args.gamma,
     beta=args.beta,
     max_speakers=args.max_speakers,
+    device=None,  # TODO support GPU
 )
 pipeline = OnlineSpeakerDiarization(config)
 
@@ -49,12 +49,12 @@ if args.source != "microphone":
         file=args.source,
         uri=uri,
         reader=src.RegularAudioFileReader(
-            args.sample_rate, config.duration, config.step
+            pipeline.sample_rate, pipeline.duration, config.step
         ),
     )
 else:
     output_dir = Path("~/").expanduser() if args.output is None else Path(args.output)
-    audio_source = src.MicrophoneAudioSource(args.sample_rate)
+    audio_source = src.MicrophoneAudioSource(pipeline.sample_rate)
 
 # Build pipeline from audio source and stream predictions
 rttm_writer = RTTMWriter(path=output_dir / "output.rttm")
@@ -67,12 +67,12 @@ else:
     observable.pipe(
         ops.do(rttm_writer),
         dops.buffer_output(
-            duration=config.duration,
+            duration=pipeline.duration,
             step=config.step,
             latency=config.latency,
-            sample_rate=audio_source.sample_rate
+            sample_rate=pipeline.sample_rate
         ),
-    ).subscribe(RealTimePlot(config.duration, config.latency))
+    ).subscribe(RealTimePlot(pipeline.duration, config.latency))
 
 # Read audio source as a stream
 if args.source == "microphone":
