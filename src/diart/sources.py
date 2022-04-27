@@ -77,6 +77,19 @@ class AudioSource:
         """The duration of the stream if known. Defaults to None (unknown duration)"""
         return None
 
+    def end_time(self, step: float) -> Optional[float]:
+        """
+        If the duration is known, return the end time of the last chunk
+
+        Parameters
+        ----------
+        step: float
+            Step duration in seconds.
+        """
+        if self.duration is not None:
+            return self.duration - self.duration % step
+        return None
+
     def read(self):
         """Start reading the source and yielding samples through the stream"""
         raise NotImplementedError
