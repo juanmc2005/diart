@@ -50,6 +50,14 @@ class FrameWiseModel:
             device = get_devices(needs=1)[0]
         self.model.to(device)
 
+    @property
+    def sample_rate(self) -> int:
+        return self.model.audio.sample_rate
+
+    @property
+    def duration(self) -> float:
+        return self.model.specifications.duration
+
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         with torch.no_grad():
             wave = rearrange(resolve_features(waveform), "batch sample channel -> batch channel sample")
@@ -64,7 +72,7 @@ class FrameWiseModel:
         # Wrap if a SlidingWindowFeature was given as input
         if isinstance(waveform, SlidingWindowFeature):
             # Temporal resolution of the output
-            resolution = self.model.specifications.duration / num_frames
+            resolution = self.duration / num_frames
             # Temporal shift to keep track of current start time
             resolution = SlidingWindow(
                 start=waveform.sliding_window.start,
