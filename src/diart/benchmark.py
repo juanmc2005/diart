@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+import torch
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 
@@ -23,6 +24,7 @@ parser.add_argument("--beta", default=10, type=float, help="Parameter beta for o
 parser.add_argument("--max-speakers", default=20, type=int, help="Maximum number of identifiable speakers")
 parser.add_argument("--batch-size", default=32, type=int, help="For segmentation and embedding pre-calculation")
 parser.add_argument("--output", type=str, help="Output directory to store the RTTMs. Defaults to `root`")
+parser.add_argument("--gpu", dest="gpu", action="store_true", help="Add this flag to run on GPU")
 args = parser.parse_args()
 
 args.root = Path(args.root)
@@ -44,6 +46,7 @@ config = PipelineConfig(
     gamma=args.gamma,
     beta=args.beta,
     max_speakers=args.max_speakers,
+    device=torch.device("cuda") if args.gpu else None,
 )
 pipeline = OnlineSpeakerDiarization(config)
 

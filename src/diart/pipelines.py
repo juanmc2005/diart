@@ -103,9 +103,8 @@ class OnlineSpeakerTracking:
 class OnlineSpeakerDiarization:
     def __init__(self, config: PipelineConfig):
         self.config = config
-        # TODO support gpu
-        self.segmentation = fn.FrameWiseModel(config.segmentation)
-        self.embedding = fn.ChunkWiseModel(config.embedding)
+        self.segmentation = fn.FrameWiseModel(config.segmentation, self.config.device)
+        self.embedding = fn.ChunkWiseModel(config.embedding, self.config.device)
         self.speaker_tracking = OnlineSpeakerTracking(config)
         msg = "Invalid latency requested"
         assert self.config.step <= self.config.latency <= self.duration, msg
