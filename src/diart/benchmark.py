@@ -3,7 +3,6 @@ from pathlib import Path
 
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
-from tqdm import tqdm
 
 import diart.operators as dops
 import diart.sources as src
@@ -49,24 +48,37 @@ config = PipelineConfig(
 pipeline = OnlineSpeakerDiarization(config)
 
 # Run inference
-audio_files = list(args.root.expanduser().iterdir())
-pbar = tqdm(total=len(audio_files), unit="file")
 chunk_loader = src.ChunkLoader(pipeline.sample_rate, pipeline.duration, config.step)
-for filepath in audio_files:
-    pbar.set_description(f"Processing {filepath.stem}")
+for filepath in args.root.expanduser().iterdir():
     num_chunks = chunk_loader.num_chunks(filepath)
-    # TODO run fully online if batch_size < 2
-    pipeline.from_file(filepath, batch_size=args.batch_size, verbose=True).pipe(
-        dops.progress(f"Streaming {filepath.stem}", total=num_chunks, leave=False)
+
+    # Stream fully online if batch size is 1 or lower
+    source = None
+    if args.batch_size < 2:
+        source = src.FileAudioSource(
+            filepath,
+            filepath.stem,
+            src.RegularAudioFileReader(pipeline.sample_rate, pipeline.duration, config.step),
+            # Benchmark the processing time of a single chunk
+            profile=True,
+        )
+        observable = pipeline.from_source(source, output_waveform=False)
+    else:
+        observable = pipeline.from_file(filepath, batch_size=args.batch_size, verbose=True)
+
+    observable.pipe(
+        dops.progress(f"Streaming {filepath.stem}", total=num_chunks, leave=source is None)
     ).subscribe(
         RTTMWriter(path=args.output / f"{filepath.stem}.rttm")
     )
-    pbar.update()
-pbar.close()
+
+    if source is not None:
+        source.read()
 
 # Run evaluation
 metric = DiarizationErrorRate(collar=0, skip_overlap=False)
 for ref_path in args.reference.iterdir():
     ref = load_rttm(ref_path).popitem()[1]
     hyp = load_rttm(args.output / ref_path.name).popitem()[1]
+    metric(ref, hyp)
 print(f"Diarization Error Rate: {100 * abs(metric):.1f}")

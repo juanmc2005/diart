@@ -163,7 +163,7 @@ class OnlineSpeakerDiarization:
         chunk_loader = src.ChunkLoader(
             self.sample_rate, self.duration, self.config.step
         )
-        uri = file.name.split(".")[0]
+        uri = file.stem
         end_time = chunk_loader.audio.get_duration(file) % self.config.step
 
         # Initialize pipeline modules
@@ -180,7 +180,7 @@ class OnlineSpeakerDiarization:
         # Set progress if needed
         iterator = range(0, num_chunks, batch_size)
         if verbose:
-            desc = "Extracting segmentation and embeddings"
+            desc = f"Pre-calculating {uri}"
             total = int(math.ceil(num_chunks / batch_size))
             iterator = tqdm(iterator, desc=desc, total=total, unit="batch", leave=False)
 
