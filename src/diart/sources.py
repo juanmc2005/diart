@@ -212,17 +212,22 @@ class FileAudioSource(AudioSource):
         Unique identifier of the audio source.
     reader: AudioFileReader
         Determines how the file will be read.
+    emit_timestamp: bool
+        If True, emit the current time (time.monotonic())
+        alongside the waveform. Defaults to False.
     """
     def __init__(
         self,
         file: AudioFile,
         uri: Text,
-        reader: AudioFileReader
+        reader: AudioFileReader,
+        emit_timestamp: bool = False
     ):
         super().__init__(uri, reader.sample_rate)
         self.reader = reader
         self._duration = self.reader.get_duration(file)
         self.file = file
+        self.emit_timestamp = emit_timestamp
 
     @property
     def is_regular(self) -> bool:
@@ -238,7 +243,10 @@ class FileAudioSource(AudioSource):
         """Send each chunk of samples through the stream"""
         for waveform in self.reader.iterate(self.file):
             try:
-                self.stream.on_next(waveform)
+                item = waveform
+                if self.emit_timestamp:
+                    item = (waveform, time.monotonic())
+                self.stream.on_next(item)
             except Exception as e:
                 self.stream.on_error(e)
         self.stream.on_completed()
