@@ -1,9 +1,11 @@
 import argparse
 from pathlib import Path
 
+import rx.operators as ops
+import torch
+
 import diart.operators as dops
 import diart.sources as src
-import rx.operators as ops
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 from diart.sinks import RealTimePlot, RTTMWriter
 
@@ -19,6 +21,7 @@ parser.add_argument("--gamma", default=3, type=float, help="Parameter gamma for 
 parser.add_argument("--beta", default=10, type=float, help="Parameter beta for overlapped speech penalty")
 parser.add_argument("--max-speakers", default=20, type=int, help="Maximum number of identifiable speakers")
 parser.add_argument("--no-plot", dest="no_plot", action="store_true", help="Skip plotting for faster inference")
+parser.add_argument("--gpu", dest="gpu", action="store_true", help="Add this flag to run on GPU")
 parser.add_argument(
     "--output", type=str,
     help="Output directory to store the RTTM. Defaults to home directory "
@@ -36,7 +39,7 @@ config = PipelineConfig(
     gamma=args.gamma,
     beta=args.beta,
     max_speakers=args.max_speakers,
-    device=None,  # TODO support GPU
+    device=torch.device("cuda") if args.gpu else None,
 )
 pipeline = OnlineSpeakerDiarization(config)
 
