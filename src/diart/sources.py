@@ -1,7 +1,7 @@
 import random
 import time
 from queue import SimpleQueue
-from typing import Tuple, Text, Optional, Iterable
+from typing import Tuple, Text, Optional, Iterable, List
 
 import numpy as np
 import sounddevice as sd
@@ -212,22 +212,21 @@ class FileAudioSource(AudioSource):
         Unique identifier of the audio source.
     reader: AudioFileReader
         Determines how the file will be read.
-    emit_timestamp: bool
-        If True, emit the current time (time.monotonic())
-        alongside the waveform. Defaults to False.
+    profile: bool
+        If True, prints the average processing time of emitting a chunk. Defaults to False.
     """
     def __init__(
         self,
         file: AudioFile,
         uri: Text,
         reader: AudioFileReader,
-        emit_timestamp: bool = False
+        profile: bool = False,
     ):
         super().__init__(uri, reader.sample_rate)
         self.reader = reader
         self._duration = self.reader.get_duration(file)
         self.file = file
-        self.emit_timestamp = emit_timestamp
+        self.profile = profile
 
     @property
     def is_regular(self) -> bool:
@@ -239,17 +238,30 @@ class FileAudioSource(AudioSource):
         """The duration of a file is known"""
         return self._duration
 
+    def _check_print_time(self, times: List[float]):
+        if self.profile:
+            print(
+                f"File {self.uri}: took {np.mean(times).item():.2f} seconds/chunk "
+                f"(+/- {np.std(times).item():.2f} seconds/chunk) "
+                f"-- based on {len(times)} inputs"
+            )
+
     def read(self):
         """Send each chunk of samples through the stream"""
+        times = []
         for waveform in self.reader.iterate(self.file):
             try:
-                item = waveform
-                if self.emit_timestamp:
-                    item = (waveform, time.monotonic())
-                self.stream.on_next(item)
+                if self.profile:
+                    start_time = time.monotonic()
+                    self.stream.on_next(waveform)
+                    times.append(time.monotonic() - start_time)
+                else:
+                    self.stream.on_next(waveform)
             except Exception as e:
+                self._check_print_time(times)
                 self.stream.on_error(e)
         self.stream.on_completed()
+        self._check_print_time(times)
 
 
 class MicrophoneAudioSource(AudioSource):
