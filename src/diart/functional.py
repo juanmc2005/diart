@@ -72,7 +72,8 @@ class FrameWiseModel:
         # Wrap if a SlidingWindowFeature was given as input
         if isinstance(waveform, SlidingWindowFeature):
             # Temporal resolution of the output
-            resolution = self.duration / num_frames
+            duration = wave.shape[-1] / self.sample_rate
+            resolution = duration / num_frames
             # Temporal shift to keep track of current start time
             resolution = SlidingWindow(
                 start=waveform.sliding_window.start,
