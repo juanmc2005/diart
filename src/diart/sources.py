@@ -46,8 +46,8 @@ class ChunkLoader:
 
     def num_chunks(self, file: AudioFile) -> int:
         # FIXME last chunk should be padded instead of ignored
-        num_samples = self.audio.get_duration(file) * self.audio.sample_rate
-        return int((num_samples - self.window_samples + self.step_samples) // self.step_samples)
+        numerator = self.audio.get_duration(file) - self.window_duration + self.step_duration
+        return int(numerator // self.step_duration)
 
 
 class AudioSource:
