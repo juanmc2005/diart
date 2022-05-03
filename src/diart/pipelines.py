@@ -193,9 +193,13 @@ class OnlineSpeakerDiarization:
             seg = self.segmentation(batch)
             # Edge case: add batch dimension if i == i_end + 1
             if seg.ndim == 2:
-                seg.unsqueeze(0)
+                seg = seg[np.newaxis]
+            emb = emb_norm(self.embedding(batch, osp(seg)))
+            # Edge case: add batch dimension if i == i_end + 1
+            if emb.ndim == 2:
+                emb = emb.unsqueeze(0)
             segmentation.append(seg)
-            embeddings.append(emb_norm(self.embedding(batch, osp(seg))))
+            embeddings.append(emb)
         segmentation = np.vstack(segmentation)
         embeddings = torch.vstack(embeddings)
 
