@@ -191,6 +191,9 @@ class OnlineSpeakerDiarization:
                 i_end = num_chunks
             batch = chunks[i:i_end]
             seg = self.segmentation(batch)
+            # Edge case: add batch dimension if i == i_end + 1
+            if seg.ndim == 2:
+                seg.unsqueeze(0)
             segmentation.append(seg)
             embeddings.append(emb_norm(self.embedding(batch, osp(seg))))
         segmentation = np.vstack(segmentation)
