@@ -84,4 +84,6 @@ if args.reference is not None:
         ref = load_rttm(ref_path).popitem()[1]
         hyp = load_rttm(args.output / ref_path.name).popitem()[1]
         metric(ref, hyp)
-    print(f"Diarization Error Rate: {100 * abs(metric):.1f}")
+    print()
+    metric.report(display=True)
+    print()
