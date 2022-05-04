@@ -77,6 +77,11 @@ class AudioSource:
         """The duration of the stream if known. Defaults to None (unknown duration)"""
         return None
 
+    @property
+    def length(self) -> Optional[int]:
+        """Return the number of audio chunks emitted by this source"""
+        return None
+
     def read(self):
         """Start reading the source and yielding samples through the stream"""
         raise NotImplementedError
@@ -106,6 +111,9 @@ class AudioFileReader:
 
     def get_duration(self, file: AudioFile) -> float:
         return self.audio.get_duration(file)
+
+    def get_num_chunks(self, file: AudioFile) -> Optional[int]:
+        return None
 
     def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
         """Return an iterable over the file's samples"""
@@ -138,6 +146,10 @@ class RegularAudioFileReader(AudioFileReader):
     @property
     def is_regular(self) -> bool:
         return True
+
+    def get_num_chunks(self, file: AudioFile) -> Optional[int]:
+        """Return the number of chunks emitted for `file`"""
+        return self.chunk_loader.num_chunks(file)
 
     def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
         chunks = self.chunk_loader.get_chunks(file)
@@ -217,13 +229,18 @@ class FileAudioSource(AudioSource):
 
     @property
     def is_regular(self) -> bool:
-        """The regularity depends on the reader"""
+        # The regularity depends on the reader
         return self.reader.is_regular
 
     @property
     def duration(self) -> Optional[float]:
-        """The duration of a file is known"""
+        # The duration of a file is known
         return self._duration
+
+    @property
+    def length(self) -> Optional[int]:
+        # Only the reader can know how many chunks are going to be emitted
+        return self.reader.get_num_chunks(self.file)
 
     def _check_print_time(self, times: List[float]):
         if self.profile:
@@ -239,6 +256,7 @@ class FileAudioSource(AudioSource):
         for waveform in self.reader.iterate(self.file):
             try:
                 if self.profile:
+                    # Profiling assumes that on_next is blocking
                     start_time = time.monotonic()
                     self.stream.on_next(waveform)
                     times.append(time.monotonic() - start_time)

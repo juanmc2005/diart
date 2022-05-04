@@ -46,11 +46,10 @@ pipeline = OnlineSpeakerDiarization(config)
 # Manage audio source
 if args.source != "microphone":
     args.source = Path(args.source).expanduser()
-    uri = args.source.name.split(".")[0]
     output_dir = args.source.parent if args.output is None else Path(args.output)
     audio_source = src.FileAudioSource(
         file=args.source,
-        uri=uri,
+        uri=args.source.stem,
         reader=src.RegularAudioFileReader(
             pipeline.sample_rate, pipeline.duration, config.step
         ),
@@ -60,8 +59,10 @@ else:
     audio_source = src.MicrophoneAudioSource(pipeline.sample_rate)
 
 # Build pipeline from audio source and stream predictions
-rttm_writer = RTTMWriter(path=output_dir / "output.rttm")
-observable = pipeline.from_source(audio_source)
+rttm_writer = RTTMWriter(path=output_dir / f"{audio_source.uri}.rttm")
+observable = pipeline.from_source(audio_source).pipe(
+    dops.progress(f"Streaming {audio_source.uri}", total=audio_source.length, leave=True)
+)
 if args.no_plot:
     # Write RTTM file only
     observable.subscribe(rttm_writer)
@@ -78,6 +79,4 @@ else:
     ).subscribe(RealTimePlot(pipeline.duration, config.latency))
 
 # Read audio source as a stream
-if args.source == "microphone":
-    print("Recording...")
 audio_source.read()
