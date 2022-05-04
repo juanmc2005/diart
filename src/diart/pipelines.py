@@ -49,6 +49,17 @@ class PipelineConfig:
         if self.device is None:
             self.device = torch.device("cpu")
 
+    def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
+        """
+        If the duration is known, return the end time of the last chunk
+
+        Parameters
+        ----------
+        conv_duration: float
+            Duration of a conversation in seconds.
+        """
+        return conv_duration - conv_duration % self.step
+
 
 class OnlineSpeakerTracking:
     def __init__(self, config: PipelineConfig):
@@ -57,11 +68,14 @@ class OnlineSpeakerTracking:
     def from_model_streams(
         self,
         uri: Text,
-        end_time: Optional[float],
+        source_duration: Optional[float],
         segmentation_stream: rx.Observable,
         embedding_stream: rx.Observable,
         audio_chunk_stream: Optional[rx.Observable] = None,
     ) -> rx.Observable:
+        end_time = None
+        if source_duration is not None:
+            end_time = self.config.last_chunk_end_time(source_duration)
         # Initialize clustering and aggregation modules
         clustering = fn.OnlineSpeakerClustering(
             self.config.tau_active,
@@ -144,10 +158,9 @@ class OnlineSpeakerDiarization:
             ops.starmap(self.embedding),
             ops.map(fn.EmbeddingNormalization(norm=1))
         )
-        end_time = source.end_time(self.config.step)
         chunk_stream = regular_stream if output_waveform else None
         return self.speaker_tracking.from_model_streams(
-            source.uri, end_time, segmentation_stream, embedding_stream, chunk_stream
+            source.uri, source.duration, segmentation_stream, embedding_stream, chunk_stream
         )
 
     def from_file(
@@ -162,9 +175,6 @@ class OnlineSpeakerDiarization:
         chunk_loader = src.ChunkLoader(
             self.sample_rate, self.duration, self.config.step
         )
-        uri = file.stem
-        duration = chunk_loader.audio.get_duration(file)
-        end_time = duration - duration % self.config.step
 
         # Initialize pipeline modules
         osp = fn.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
@@ -180,7 +190,7 @@ class OnlineSpeakerDiarization:
         # Set progress if needed
         iterator = range(0, num_chunks, batch_size)
         if verbose:
-            desc = f"Pre-calculating {uri}"
+            desc = f"Pre-calculating {file.stem}"
             total = int(math.ceil(num_chunks / batch_size))
             iterator = tqdm(iterator, desc=desc, total=total, unit="batch", leave=False)
 
@@ -222,6 +232,7 @@ class OnlineSpeakerDiarization:
             )
 
         # Build speaker tracking pipeline
+        duration = chunk_loader.audio.get_duration(file)
         return self.speaker_tracking.from_model_streams(
-            uri, end_time, segmentation_stream, embedding_stream, chunk_stream
+            file.stem, duration, segmentation_stream, embedding_stream, chunk_stream
         )
