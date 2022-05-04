@@ -163,7 +163,8 @@ class OnlineSpeakerDiarization:
             self.sample_rate, self.duration, self.config.step
         )
         uri = file.stem
-        end_time = chunk_loader.audio.get_duration(file) % self.config.step
+        duration = chunk_loader.audio.get_duration(file)
+        end_time = duration - duration % self.config.step
 
         # Initialize pipeline modules
         osp = fn.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
