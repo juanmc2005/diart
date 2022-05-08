@@ -155,7 +155,7 @@ python -m diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422
 ```
 
 `diart.benchmark` runs a faster inference and evaluation by pre-calculating model outputs in batches.
-More options about benchmarking can be found by running `python -m diart.benchmark -h`.
+See `python -m diart.benchmark -h` for more options.
 
 For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
