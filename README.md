@@ -18,23 +18,21 @@
 <img width="51%" src="/visualization.gif" title="Real-time diarization example" />
 </p>
 
-## Demo
-
-You can visualize the real-time speaker diarization of an audio stream with the built-in demo script.
+## Getting started
 
 ### Stream a recorded conversation
 
 ```shell
-python -m diart.demo /path/to/audio.wav
+python -m diart.stream /path/to/audio.wav
 ```
 
 ### Stream from your microphone
 
 ```shell
-python -m diart.demo microphone
+python -m diart.stream microphone
 ```
 
-See `python -m diart.demo -h` for more information.
+See `python -m diart.stream -h` for more options.
 
 ## Build your own pipeline
 
@@ -142,13 +140,13 @@ Its performance is very close to what is reported in the paper (and sometimes ev
 
 To obtain the best results, make sure to use the following hyper-parameters:
 
-Dataset     | latency | tau    | rho    | delta 
-------------|---------|--------|--------|------
-DIHARD III  | any     | 0.555  | 0.422  | 1.517  
-AMI         | any     | 0.507  | 0.006  | 1.057  
-VoxConverse | any     | 0.576  | 0.915  | 0.648  
-DIHARD II   | 1s      | 0.619  | 0.326  | 0.997  
-DIHARD II   | 5s      | 0.555  | 0.422  | 1.517
+| Dataset     | latency | tau    | rho    | delta |
+|-------------|---------|--------|--------|-------|
+| DIHARD III  | any     | 0.555  | 0.422  | 1.517 |
+| AMI         | any     | 0.507  | 0.006  | 1.057 |
+| VoxConverse | any     | 0.576  | 0.915  | 0.648 |
+| DIHARD II   | 1s      | 0.619  | 0.326  | 0.997 |
+| DIHARD II   | 5s      | 0.555  | 0.422  | 1.517 |
 
 `diart.benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
 
