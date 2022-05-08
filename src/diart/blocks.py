@@ -42,7 +42,7 @@ def resolve_features(features: TemporalFeatures) -> torch.Tensor:
     return data.float()
 
 
-class FrameWiseModel:
+class FramewiseModel:
     def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
         self.model = get_model(model)
         self.model.eval()
@@ -88,7 +88,7 @@ class FrameWiseModel:
         return output
 
 
-class ChunkWiseModel:
+class ChunkwiseModel:
     def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
         self.model = get_model(model)
         self.model.eval()

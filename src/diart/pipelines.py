@@ -11,7 +11,7 @@ from pyannote.audio.pipelines.utils import PipelineModel
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from tqdm import tqdm
 
-from . import functional as fn
+from . import blocks
 from . import operators as dops
 from . import sources as src
 
@@ -77,17 +77,17 @@ class OnlineSpeakerTracking:
         if source_duration is not None:
             end_time = self.config.last_chunk_end_time(source_duration)
         # Initialize clustering and aggregation modules
-        clustering = fn.OnlineSpeakerClustering(
+        clustering = blocks.OnlineSpeakerClustering(
             self.config.tau_active,
             self.config.rho_update,
             self.config.delta_new,
             "cosine",
             self.config.max_speakers,
         )
-        aggregation = fn.DelayedAggregation(
+        aggregation = blocks.DelayedAggregation(
             self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
         )
-        binarize = fn.Binarize(uri, self.config.tau_active)
+        binarize = blocks.Binarize(uri, self.config.tau_active)
 
         # Join segmentation and embedding streams to update a background clustering model
         #  while regulating latency and binarizing the output
@@ -102,7 +102,7 @@ class OnlineSpeakerTracking:
         )
         # Add corresponding waveform to the output
         if audio_chunk_stream is not None:
-            window_selector = fn.DelayedAggregation(
+            window_selector = blocks.DelayedAggregation(
                 self.config.step, self.config.latency, strategy="first", stream_end=end_time
             )
             waveform_stream = audio_chunk_stream.pipe(
@@ -117,8 +117,8 @@ class OnlineSpeakerTracking:
 class OnlineSpeakerDiarization:
     def __init__(self, config: PipelineConfig):
         self.config = config
-        self.segmentation = fn.FrameWiseModel(config.segmentation, self.config.device)
-        self.embedding = fn.ChunkWiseModel(config.embedding, self.config.device)
+        self.segmentation = blocks.FramewiseModel(config.segmentation, self.config.device)
+        self.embedding = blocks.ChunkwiseModel(config.embedding, self.config.device)
         self.speaker_tracking = OnlineSpeakerTracking(config)
         msg = "Invalid latency requested"
         assert self.config.step <= self.config.latency <= self.duration, msg
@@ -152,11 +152,11 @@ class OnlineSpeakerDiarization:
         # Branch the stream to calculate chunk segmentation
         segmentation_stream = regular_stream.pipe(ops.map(self.segmentation))
         # Join audio and segmentation stream to calculate speaker embeddings
-        osp = fn.OverlappedSpeechPenalty(gamma=self.config.gamma, beta=self.config.beta)
+        osp = blocks.OverlappedSpeechPenalty(gamma=self.config.gamma, beta=self.config.beta)
         embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
             ops.starmap(lambda wave, seg: (wave, osp(seg))),
             ops.starmap(self.embedding),
-            ops.map(fn.EmbeddingNormalization(norm=1))
+            ops.map(blocks.EmbeddingNormalization(norm=1))
         )
         chunk_stream = regular_stream if output_waveform else None
         return self.speaker_tracking.from_model_streams(
@@ -177,8 +177,8 @@ class OnlineSpeakerDiarization:
         )
 
         # Initialize pipeline modules
-        osp = fn.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
-        emb_norm = fn.EmbeddingNormalization(norm=1)
+        osp = blocks.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
+        emb_norm = blocks.EmbeddingNormalization(norm=1)
 
         # Split audio into chunks
         chunks = rearrange(
