@@ -37,7 +37,7 @@ See `python -m diart.stream -h` for more options.
 ## Build your own pipeline
 
 Diart provides building blocks that can be combined to do speaker diarization on an audio stream.
-The streaming implementation is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `functional` module is completely independent.
+Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
 
 ### Example
 
@@ -48,16 +48,16 @@ import rx
 import rx.operators as ops
 import diart.operators as myops
 from diart.sources import MicrophoneAudioSource
-import diart.functional as fn
+import diart.blocks as blocks
 
 sample_rate = 16000
 mic = MicrophoneAudioSource(sample_rate)
 
 # Initialize independent modules
-segmentation = fn.FrameWiseModel("pyannote/segmentation")
-embedding = fn.ChunkWiseModel("pyannote/embedding")
-osp = fn.OverlappedSpeechPenalty(gamma=3, beta=10)
-normalization = fn.EmbeddingNormalization(norm=1)
+segmentation = blocks.FramewiseModel("pyannote/segmentation")
+embedding = blocks.ChunkwiseModel("pyannote/embedding")
+osp = blocks.OverlappedSpeechPenalty(gamma=3, beta=10)
+normalization = blocks.EmbeddingNormalization(norm=1)
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
 regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate))
