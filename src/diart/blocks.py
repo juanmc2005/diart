@@ -165,6 +165,43 @@ class EmbeddingNormalization:
         return norm_embs.squeeze()
 
 
+class OverlapAwareSpeakerEmbedding:
+    """
+    Extract overlap-aware speaker embeddings given an audio chunk and its segmentation.
+
+    Parameters
+    ----------
+    model: pyannote.audio.Model, Text or Dict
+        The embedding model. It must take a waveform and weights as input.
+    gamma: float, optional
+        Exponent to lower low-confidence predictions.
+        Defaults to 3.
+    beta: float, optional
+        Softmax's temperature parameter (actually 1/beta) to lower joint speaker activations.
+        Defaults to 10.
+    norm: float or torch.Tensor of shape (batch, speakers, 1) where batch is optional
+        The target norm for the embeddings. It can be different for each speaker.
+        Defaults to 1.
+    device: Optional[torch.device]
+        The device on which to run the embedding model.
+        Defaults to GPU if available or CPU if not.
+    """
+    def __init__(
+        self,
+        model: PipelineModel,
+        gamma: float = 3,
+        beta: float = 10,
+        norm: Union[float, torch.Tensor] = 1,
+        device: Optional[torch.device] = None,
+    ):
+        self.embedding = ChunkwiseModel(model, device)
+        self.osp = OverlappedSpeechPenalty(gamma, beta)
+        self.normalize = EmbeddingNormalization(norm)
+
+    def __call__(self, waveform: TemporalFeatures, segmentation: TemporalFeatures) -> torch.Tensor:
+        return self.normalize(self.embedding(waveform, self.osp(segmentation)))
+
+
 class AggregationStrategy:
     """Abstract class representing a strategy to aggregate overlapping buffers"""
 
