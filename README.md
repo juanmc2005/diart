@@ -46,29 +46,25 @@ Obtain overlap-aware speaker embeddings from a microphone stream
 ```python
 import rx
 import rx.operators as ops
-import diart.operators as myops
+import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
-import diart.blocks as blocks
+from diart.blocks import FramewiseModel, OverlapAwareSpeakerEmbedding
 
 sample_rate = 16000
 mic = MicrophoneAudioSource(sample_rate)
 
 # Initialize independent modules
-segmentation = blocks.FramewiseModel("pyannote/segmentation")
-embedding = blocks.ChunkwiseModel("pyannote/embedding")
-osp = blocks.OverlappedSpeechPenalty(gamma=3, beta=10)
-normalization = blocks.EmbeddingNormalization(norm=1)
+segmentation = FramewiseModel("pyannote/segmentation")
+embedding = OverlapAwareSpeakerEmbedding("pyannote/embedding")
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
-regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate))
+regular_stream = mic.stream.pipe(dops.regularize_stream(sample_rate))
 # Branch the microphone stream to calculate segmentation
 segmentation_stream = regular_stream.pipe(ops.map(segmentation))
 # Join audio and segmentation stream to calculate speaker embeddings
-embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
-    ops.starmap(lambda wave, seg: (wave, osp(seg))),
-    ops.starmap(embedding),
-    ops.map(normalization)
-)
+embedding_stream = rx.zip(
+    regular_stream, segmentation_stream
+).pipe(ops.starmap(embedding))
 
 embedding_stream.subscribe(on_next=lambda emb: print(emb.shape))
 
@@ -89,11 +85,11 @@ torch.Size([4, 512])
 1) Create environment:
 
 ```shell
-conda create -n diarization python=3.8
-conda activate diarization
+conda create -n diart python=3.8
+conda activate diart
 ```
 
-2) Install the latest PyTorch version following the [official instructions](https://pytorch.org/get-started/locally/#start-locally)
+2) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
 
 3) Install pyannote.audio 2.0 (currently in development)
 ```shell
