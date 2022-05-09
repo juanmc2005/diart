@@ -117,11 +117,13 @@ class OnlineSpeakerTracking:
 class OnlineSpeakerDiarization:
     def __init__(self, config: PipelineConfig):
         self.config = config
-        self.segmentation = blocks.FramewiseModel(config.segmentation, self.config.device)
-        self.embedding = blocks.ChunkwiseModel(config.embedding, self.config.device)
+        self.segmentation = blocks.FramewiseModel(config.segmentation, config.device)
+        self.embedding = blocks.OverlapAwareSpeakerEmbedding(
+            config.embedding, config.gamma, config.beta, norm=1, device=config.device
+        )
         self.speaker_tracking = OnlineSpeakerTracking(config)
         msg = "Invalid latency requested"
-        assert self.config.step <= self.config.latency <= self.duration, msg
+        assert config.step <= config.latency <= self.duration, msg
 
     @property
     def sample_rate(self) -> int:
@@ -150,17 +152,12 @@ class OnlineSpeakerDiarization:
                 dops.regularize_stream(self.duration, self.config.step, source.sample_rate)
             )
         # Branch the stream to calculate chunk segmentation
-        segmentation_stream = regular_stream.pipe(ops.map(self.segmentation))
-        # Join audio and segmentation stream to calculate speaker embeddings
-        osp = blocks.OverlappedSpeechPenalty(gamma=self.config.gamma, beta=self.config.beta)
-        embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
-            ops.starmap(lambda wave, seg: (wave, osp(seg))),
-            ops.starmap(self.embedding),
-            ops.map(blocks.EmbeddingNormalization(norm=1))
-        )
+        seg_stream = regular_stream.pipe(ops.map(self.segmentation))
+        # Join audio and segmentation stream to calculate overlap-aware speaker embeddings
+        emb_stream = rx.zip(regular_stream, seg_stream).pipe(ops.starmap(self.embedding))
         chunk_stream = regular_stream if output_waveform else None
         return self.speaker_tracking.from_model_streams(
-            source.uri, source.duration, segmentation_stream, embedding_stream, chunk_stream
+            source.uri, source.duration, seg_stream, emb_stream, chunk_stream
         )
 
     def from_file(
@@ -175,10 +172,6 @@ class OnlineSpeakerDiarization:
         chunk_loader = src.ChunkLoader(
             self.sample_rate, self.duration, self.config.step
         )
-
-        # Initialize pipeline modules
-        osp = blocks.OverlappedSpeechPenalty(self.config.gamma, self.config.beta)
-        emb_norm = blocks.EmbeddingNormalization(norm=1)
 
         # Split audio into chunks
         chunks = rearrange(
@@ -205,7 +198,7 @@ class OnlineSpeakerDiarization:
             # Edge case: add batch dimension if i == i_end + 1
             if seg.ndim == 2:
                 seg = seg[np.newaxis]
-            emb = emb_norm(self.embedding(batch, osp(seg)))
+            emb = self.embedding(batch, seg)
             # Edge case: add batch dimension if i == i_end + 1
             if emb.ndim == 2:
                 emb = emb.unsqueeze(0)
@@ -216,12 +209,12 @@ class OnlineSpeakerDiarization:
 
         # Stream pre-calculated segmentation, embeddings and chunks
         resolution = self.duration / segmentation.shape[1]
-        segmentation_stream = rx.range(0, num_chunks).pipe(
+        seg_stream = rx.range(0, num_chunks).pipe(
             ops.map(lambda i: SlidingWindowFeature(
                 segmentation[i], SlidingWindow(resolution, resolution, i * self.config.step)
             ))
         )
-        embedding_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
+        emb_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
         wav_resolution = 1 / self.sample_rate
         chunk_stream = None
         if output_waveform:
@@ -234,5 +227,5 @@ class OnlineSpeakerDiarization:
         # Build speaker tracking pipeline
         duration = chunk_loader.audio.get_duration(file)
         return self.speaker_tracking.from_model_streams(
-            file.stem, duration, segmentation_stream, embedding_stream, chunk_stream
+            file.stem, duration, seg_stream, emb_stream, chunk_stream
         )
