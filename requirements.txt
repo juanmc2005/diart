@@ -5,4 +5,5 @@ scipy>=1.6.0
 sounddevice>=0.4.2
 einops>=0.3.0
 tqdm>=4.64.0
+pandas>=1.4.2
 git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
