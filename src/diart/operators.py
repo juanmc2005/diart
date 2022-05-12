@@ -269,7 +269,10 @@ def buffer_output(
             else:
                 # The buffer is full, shift values to the left and copy into last buffer chunk
                 waveform = np.roll(state.waveform.data, -num_step_samples, axis=0)
-                waveform[-num_step_samples:] = value.waveform.data
+                # If running on a file, the online prediction may be shorter depending on the latency
+                # The remaining audio at the end is appended, so value.waveform may be longer than num_step_samples
+                # In that case, we simply ignore the appended samples.
+                waveform[-num_step_samples:] = value.waveform.data[:num_step_samples]
 
             # Wrap waveform in a sliding window feature to include timestamps
             window = SlidingWindow(start=start_time, duration=resolution, step=resolution)

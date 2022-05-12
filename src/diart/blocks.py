@@ -368,6 +368,9 @@ class DelayedAggregation:
             )
         # Append rest of the outputs
         elif self.stream_end is not None and last_buffer.end == self.stream_end:
+            # FIXME instead of appending a larger chunk than expected when latency > step,
+            #  keep emitting windows until the signal ends.
+            #  This should be fixed at the observable level and not within the aggregation block.
             num_frames = output_window.data.shape[0]
             last_region = Segment(output_region.start, last_buffer.end)
             last_output = buffers[-1].crop(
