@@ -1,49 +1,14 @@
+import argparse
 from pathlib import Path
-from typing import Union, Text
 
-import rx.operators as ops
+import torch
 
-import diart.operators as dops
+import diart.argdoc as argdoc
 import diart.sources as src
-from diart.pipelines import OnlineSpeakerDiarization
-from diart.sinks import RealTimePlot, RTTMWriter
-
-
-class RealTimeInference:
-    def __init__(self, output_path: Union[Text, Path], do_plot: bool = True):
-        self.output_path = Path(output_path).expanduser()
-        self.output_path.mkdir(parents=True, exist_ok=True)
-        self.do_plot = do_plot
-
-    def __call__(self, pipeline: OnlineSpeakerDiarization, source: src.AudioSource):
-        rttm_writer = RTTMWriter(path=self.output_path / f"{source.uri}.rttm")
-        observable = pipeline.from_source(source).pipe(
-            dops.progress(f"Streaming {source.uri}", total=source.length, leave=True)
-        )
-        if not self.do_plot:
-            # Write RTTM file only
-            observable.subscribe(rttm_writer)
-        else:
-            # Write RTTM file + buffering and real-time plot
-            observable.pipe(
-                ops.do(rttm_writer),
-                dops.buffer_output(
-                    duration=pipeline.duration,
-                    step=pipeline.config.step,
-                    latency=pipeline.config.latency,
-                    sample_rate=pipeline.sample_rate
-                ),
-            ).subscribe(RealTimePlot(pipeline.duration, pipeline.config.latency))
-        # Stream audio through the pipeline
-        source.read()
-
+from diart.inference import RealTimeInference
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
 if __name__ == "__main__":
-    import argparse
-    import torch
-    import diart.argdoc as argdoc
-    from diart.pipelines import PipelineConfig
-
     # Define script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=str, help="Path to an audio file | 'microphone'")
