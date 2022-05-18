@@ -126,7 +126,9 @@ class Benchmark:
             None if the reference is not provided.
         """
         chunk_loader = src.ChunkLoader(pipeline.sample_rate, pipeline.duration, pipeline.config.step)
-        for filepath in self.speech_path.iterdir():
+        audio_file_paths = list(self.speech_path.iterdir())
+        num_audio_files = len(audio_file_paths)
+        for i, filepath in enumerate(audio_file_paths):
             num_chunks = chunk_loader.num_chunks(filepath)
 
             # Stream fully online if batch size is 1 or lower
@@ -141,10 +143,18 @@ class Benchmark:
                 )
                 observable = pipeline.from_source(source, output_waveform=False)
             else:
-                observable = pipeline.from_file(filepath, batch_size=batch_size, verbose=True)
+                observable = pipeline.from_file(
+                    filepath,
+                    batch_size=batch_size,
+                    desc=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
+                )
 
             observable.pipe(
-                dops.progress(f"Streaming {filepath.stem}", total=num_chunks, leave=source is None)
+                dops.progress(
+                    desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+                    total=num_chunks,
+                    leave=source is None
+                )
             ).subscribe(
                 RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm")
             )
