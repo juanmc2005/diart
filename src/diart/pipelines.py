@@ -165,7 +165,7 @@ class OnlineSpeakerDiarization:
         file: Union[Text, Path],
         output_waveform: bool = False,
         batch_size: int = 32,
-        verbose: bool = False,
+        desc: Optional[Text] = None,
     ) -> rx.Observable:
         # Audio file information
         file = Path(file)
@@ -182,8 +182,7 @@ class OnlineSpeakerDiarization:
 
         # Set progress if needed
         iterator = range(0, num_chunks, batch_size)
-        if verbose:
-            desc = f"Pre-calculating {file.stem}"
+        if desc is not None:
             total = int(math.ceil(num_chunks / batch_size))
             iterator = tqdm(iterator, desc=desc, total=total, unit="batch", leave=False)
 
