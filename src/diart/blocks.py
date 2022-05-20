@@ -14,32 +14,83 @@ from .mapping import SpeakerMap, SpeakerMapBuilder
 TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
 
-def resolve_features(features: TemporalFeatures) -> torch.Tensor:
+class TemporalFeatureFormatter:
     """
-    Transform features into a `torch.Tensor` and add batch dimension if missing.
-
-    Parameters
-    ----------
-    features: Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
-        Shape (frames, channels) or (batch, frames, channels)
-
-    Returns
-    -------
-    transformed_features: torch.Tensor, shape (batch, frames, channels)
+    Manages the typing and format of temporal features.
+    When casting temporal features as torch.Tensor, it remembers its
+    type and format so it can lately restore it on other temporal features.
     """
-    # As torch.Tensor with shape (..., channels, frames)
-    if isinstance(features, SlidingWindowFeature):
-        data = torch.from_numpy(features.data)
-    elif isinstance(features, np.ndarray):
-        data = torch.from_numpy(features)
-    else:
-        data = features
-    # Make sure there's a batch dimension
-    msg = "Temporal features must be 2D or 3D"
-    assert data.ndim in (2, 3), msg
-    if data.ndim == 2:
-        data = data.unsqueeze(0)
-    return data.float()
+    def __init__(self):
+        self._type = None
+        self._duration: Optional[float] = None
+        self._start_time: Optional[float] = None
+
+    def cast(self, features: TemporalFeatures) -> torch.Tensor:
+        """
+        Transform features into a `torch.Tensor` and add batch dimension if missing.
+        Save formatting to internal state.
+
+        Parameters
+        ----------
+        features: SlidingWindowFeature or numpy.ndarray or torch.Tensor
+            Shape (frames, channels) or (batch, frames, channels)
+
+        Returns
+        -------
+        features: torch.Tensor, shape (batch, frames, dim)
+        """
+        # As torch.Tensor with shape (..., features, frames)
+        if isinstance(features, SlidingWindowFeature):
+            msg = "Features sliding window duration and step must be equal"
+            assert features.sliding_window.duration == features.sliding_window.step, msg
+            self._duration = features.data.shape[0] * features.sliding_window.duration
+            self._start_time = features.sliding_window.start
+            self._type = SlidingWindowFeature
+            data = torch.from_numpy(features.data)
+        elif isinstance(features, np.ndarray):
+            self._type = np.ndarray
+            data = torch.from_numpy(features)
+        elif isinstance(features, torch.Tensor):
+            self._type = torch.Tensor
+            data = features
+        else:
+            msg = "Unknown format. Provide one of SlidingWindowFeature, numpy.ndarray, torch.Tensor"
+            raise ValueError(msg)
+        # Make sure there's a batch dimension
+        msg = "Temporal features must be 2D or 3D"
+        assert data.ndim in (2, 3), msg
+        if data.ndim == 2:
+            data = data.unsqueeze(0)
+        return data.float()
+
+    def restore_type(self, features: torch.Tensor) -> TemporalFeatures:
+        """
+        Cast `features` to the internal type and remove batch dimension if redundant.
+
+        Parameters
+        ----------
+        features: torch.Tensor, shape (batch, frames, dim)
+            Batched temporal features.
+        Returns
+        -------
+        formatted_features: SlidingWindowFeature or numpy.ndarray or torch.Tensor
+            The shape is the same as input `features`.
+        """
+        assert self._type is not None, "No type found to restore"
+
+        batch_size, num_frames, _ = features.shape
+        if batch_size == 1 and self._type == SlidingWindowFeature:
+            # Temporal resolution of the output
+            resolution = self._duration / num_frames
+            # Temporal shift to keep track of current start time
+            resolution = SlidingWindow(start=self._start_time, duration=resolution, step=resolution)
+            # Wrap in a SlidingWindowFeature
+            return SlidingWindowFeature(features.squeeze(dim=0).cpu().numpy(), resolution)
+
+        if self._type == np.ndarray:
+            return features.cpu().numpy()
+
+        return features
 
 
 class FramewiseModel:
@@ -59,33 +110,11 @@ class FramewiseModel:
         return self.model.specifications.duration
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
+        formatter = TemporalFeatureFormatter()
         with torch.no_grad():
-            wave = rearrange(resolve_features(waveform), "batch sample channel -> batch channel sample")
+            wave = rearrange(formatter.cast(waveform), "batch sample channel -> batch channel sample")
             output = self.model(wave.to(self.model.device)).cpu()
-
-        batch_size, num_frames, _ = output.shape
-
-        # Remove batch dimension if batch size is 1
-        if output.shape[0] == 1:
-            output = output[0]
-
-        # Wrap if a SlidingWindowFeature was given as input
-        if isinstance(waveform, SlidingWindowFeature):
-            # Temporal resolution of the output
-            duration = wave.shape[-1] / self.sample_rate
-            resolution = duration / num_frames
-            # Temporal shift to keep track of current start time
-            resolution = SlidingWindow(
-                start=waveform.sliding_window.start,
-                duration=resolution,
-                step=resolution
-            )
-            return SlidingWindowFeature(output.numpy(), resolution)
-
-        if isinstance(waveform, np.ndarray):
-            return output.numpy()
-
-        return output
+        return formatter.restore_type(output)
 
 
 class ChunkwiseModel:
@@ -97,11 +126,12 @@ class ChunkwiseModel:
         self.model.to(device)
 
     def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures]) -> torch.Tensor:
+        formatter = TemporalFeatureFormatter()
         with torch.no_grad():
-            inputs = resolve_features(waveform).to(self.model.device)
+            inputs = formatter.cast(waveform).to(self.model.device)
             inputs = rearrange(inputs, "batch sample channel -> batch channel sample")
             if weights is not None:
-                weights = resolve_features(weights).to(self.model.device)
+                weights = formatter.cast(weights).to(self.model.device)
                 batch_size, _, num_speakers = weights.shape
                 inputs = inputs.repeat(1, num_speakers, 1)
                 weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
@@ -133,16 +163,13 @@ class OverlappedSpeechPenalty:
         self.beta = beta
 
     def __call__(self, segmentation: TemporalFeatures) -> TemporalFeatures:
-        weights = resolve_features(segmentation)  # shape (batch, frames, speakers)
+        formatter = TemporalFeatureFormatter()
+        weights = formatter.cast(segmentation)  # shape (batch, frames, speakers)
         with torch.no_grad():
             probs = torch.softmax(self.beta * weights, dim=-1)
             weights = torch.pow(weights, self.gamma) * torch.pow(probs, self.gamma)
             weights[weights < 1e-8] = 1e-8
-        if isinstance(segmentation, SlidingWindowFeature):
-            return SlidingWindowFeature(weights.cpu().numpy(), segmentation.sliding_window)
-        if isinstance(segmentation, np.ndarray):
-            return weights.cpu().numpy()
-        return weights
+        return formatter.restore_type(weights)
 
 
 class EmbeddingNormalization:
