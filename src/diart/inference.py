@@ -16,7 +16,7 @@ from diart.sinks import RTTMWriter, RealTimePlot
 class RealTimeInference:
     """
     Streams an audio source to an online speaker diarization pipeline.
-    It writes predictions to an output directory in RTTM format, and also plot predictions in real time.
+    It writes predictions to an output directory in RTTM format and plots them in real time.
 
     Parameters
     ----------
