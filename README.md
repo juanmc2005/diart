@@ -14,10 +14,7 @@
 <br/>
 
 <p align="center">
-<img width="50%" src="/snippet.png" title="Code snippet" />
-</p>
-<p align="center">
-<img width="100%" src="/visualization.gif" title="Real-time diarization example" />
+<img width="100%" src="/demo.gif" title="Real-time diarization example" />
 </p>
 
 ## Install
