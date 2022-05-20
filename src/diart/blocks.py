@@ -33,7 +33,7 @@ class TemporalFeatureFormatter:
         Parameters
         ----------
         features: SlidingWindowFeature or numpy.ndarray or torch.Tensor
-            Shape (frames, channels) or (batch, frames, channels)
+            Shape (frames, dim) or (batch, frames, dim)
 
         Returns
         -------
@@ -56,6 +56,7 @@ class TemporalFeatureFormatter:
         else:
             msg = "Unknown format. Provide one of SlidingWindowFeature, numpy.ndarray, torch.Tensor"
             raise ValueError(msg)
+
         # Make sure there's a batch dimension
         msg = "Temporal features must be 2D or 3D"
         assert data.ndim in (2, 3), msg
@@ -73,8 +74,7 @@ class TemporalFeatureFormatter:
             Batched temporal features.
         Returns
         -------
-        formatted_features: SlidingWindowFeature or numpy.ndarray or torch.Tensor
-            The shape is the same as input `features`.
+        new_features: SlidingWindowFeature or numpy.ndarray or torch.Tensor, shape (batch, frames, dim)
         """
         assert self._type is not None, "No type found to restore"
 
