@@ -14,19 +14,42 @@
 <br/>
 
 <p align="center">
-<img width="48%" src="/snippet.png" title="Code snippet" />
-<img width="51%" src="/visualization.gif" title="Real-time diarization example" />
+<img width="50%" src="/snippet.png" title="Code snippet" />
+</p>
+<p align="center">
+<img width="100%" src="/visualization.gif" title="Real-time diarization example" />
 </p>
 
-## Getting started
+## Install
 
-### Stream a recorded conversation
+1) Create environment:
+
+```shell
+conda create -n diart python=3.8
+conda activate diart
+```
+
+2) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
+
+3) Install pyannote.audio 2.0 (currently in development)
+```shell
+pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
+```
+
+4) Install diart:
+```shell
+pip install diart
+```
+
+## Stream your own audio
+
+### A recorded conversation
 
 ```shell
 python -m diart.stream /path/to/audio.wav
 ```
 
-### Stream from your microphone
+### From your microphone
 
 ```shell
 python -m diart.stream microphone
@@ -34,14 +57,32 @@ python -m diart.stream microphone
 
 See `python -m diart.stream -h` for more options.
 
+## Inference API
+
+Run a customized real-time speaker diarization pipeline over an audio stream with `diart.inference.RealTimeInference`:
+
+```python
+from diart.sources import MicrophoneAudioSource
+from diart.inference import RealTimeInference
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+
+pipeline = OnlineSpeakerDiarization(PipelineConfig())
+audio_source = MicrophoneAudioSource(pipeline.sample_rate)
+inference = RealTimeInference("/output/path", do_plot=True)
+
+inference(pipeline, audio_source)
+```
+
+For faster inference and evaluation on a dataset we recommend to use `Benchmark` (see our notes on [reproducibility](#reproducibility))
+
 ## Build your own pipeline
 
-Diart provides building blocks that can be combined to do speaker diarization on an audio stream.
+Diart also provides building blocks that can be combined to create your own pipeline.
 Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
 
 ### Example
 
-Obtain overlap-aware speaker embeddings from a microphone stream
+Obtain overlap-aware speaker embeddings from a microphone stream:
 
 ```python
 import rx
@@ -78,27 +119,6 @@ torch.Size([4, 512])
 torch.Size([4, 512])
 torch.Size([4, 512])
 ...
-```
-
-## Install
-
-1) Create environment:
-
-```shell
-conda create -n diart python=3.8
-conda activate diart
-```
-
-2) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
-
-3) Install pyannote.audio 2.0 (currently in development)
-```shell
-pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
-```
-
-4) Install diart:
-```shell
-pip install diart
 ```
 
 ## Powered by research
@@ -144,13 +164,32 @@ To obtain the best results, make sure to use the following hyper-parameters:
 | DIHARD II   | 1s      | 0.619  | 0.326  | 0.997 |
 | DIHARD II   | 5s      | 0.555  | 0.422  | 1.517 |
 
-`diart.benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
+`diart.benchmark` and `diart.inference.Benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
 
 ```shell
 python -m diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --output /out/dir
 ```
 
-`diart.benchmark` runs a faster inference and evaluation by pre-calculating model outputs in batches.
+or using the inference API:
+
+```python
+from diart.inference import Benchmark
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+
+config = PipelineConfig(
+    step=0.5,
+    latency=0.5,
+    tau_active=0.555,
+    rho_update=0.422,
+    delta_new=1.517
+)
+pipeline = OnlineSpeakerDiarization(config)
+benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir")
+
+benchmark(pipeline, batch_size=32)
+```
+
+This runs a faster inference by pre-calculating model outputs in batches.
 See `python -m diart.benchmark -h` for more options.
 
 For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
