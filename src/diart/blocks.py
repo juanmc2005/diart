@@ -9,7 +9,7 @@ from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeatu
 from einops import rearrange
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
-from .types import TemporalFeatures, TemporalFeatureFormatter
+from .features import TemporalFeatures, TemporalFeatureFormatter
 
 
 class FramewiseModel:

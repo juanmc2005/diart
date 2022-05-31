@@ -33,22 +33,23 @@ class TemporalFeatureFormatterState:
 
 
 class SlidingWindowFeatureFormatterState(TemporalFeatureFormatterState):
-    def __init__(self, start_time: float, resolution: float):
-        self.start_time = start_time
-        self.resolution = resolution
+    def __init__(self, duration: float):
+        self.duration = duration
+        self._cur_start_time = 0
 
     def to_tensor(self, features: SlidingWindowFeature) -> torch.Tensor:
         msg = "Features sliding window duration and step must be equal"
         assert features.sliding_window.duration == features.sliding_window.step, msg
+        self._cur_start_time = features.sliding_window.start
         return torch.from_numpy(features.data)
 
     def to_internal_type(self, features: torch.Tensor) -> TemporalFeatures:
         batch_size, num_frames, _ = features.shape
         assert batch_size == 1, "Batched SlidingWindowFeature objects are not supported"
+        # Calculate resolution
+        resolution = self.duration / num_frames
         # Temporal shift to keep track of current start time
-        resolution = SlidingWindow(
-            start=self.start_time, duration=self.resolution, step=self.resolution
-        )
+        resolution = SlidingWindow(start=self._cur_start_time, duration=resolution, step=resolution)
         return SlidingWindowFeature(features.squeeze(dim=0).cpu().numpy(), resolution)
 
 
@@ -85,8 +86,7 @@ class TemporalFeatureFormatter:
             msg = "Features sliding window duration and step must be equal"
             assert features.sliding_window.duration == features.sliding_window.step, msg
             self.state = SlidingWindowFeatureFormatterState(
-                features.sliding_window.start,
-                features.sliding_window.duration,
+                features.data.shape[0] * features.sliding_window.duration,
             )
         elif isinstance(features, np.ndarray):
             self.state = NumpyArrayFormatterState()
