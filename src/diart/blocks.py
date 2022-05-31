@@ -3,7 +3,6 @@ from typing import Union, Optional, List, Iterable, Tuple
 import numpy as np
 import torch
 from einops import rearrange
-from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from typing_extensions import Literal
 
@@ -561,26 +560,25 @@ class OnlineSpeakerClustering:
 
 
 class Binarize:
-    def __init__(self, uri: str, tau_active: float):
+    def __init__(self, uri: str, threshold: float):
         self.uri = uri
-        self._binarize = PyanBinarize(
-            onset=tau_active,
-            offset=tau_active,
-            min_duration_on=0,
-            min_duration_off=0,
-        )
-
-    def _select(
-        self, scores: SlidingWindowFeature, speaker: int
-    ) -> SlidingWindowFeature:
-        return SlidingWindowFeature(
-            scores[:, speaker].reshape(-1, 1), scores.sliding_window
-        )
+        self.threshold = threshold
 
     def __call__(self, segmentation: SlidingWindowFeature) -> Annotation:
+        num_frames, num_speakers = segmentation.data.shape
+        timestamps = segmentation.sliding_window
+        is_active = segmentation.data.T > self.threshold  # shape (speakers, frames)
+        # Artificially add last inactive frame to close any remaining speaker turns
+        is_active = np.append(is_active, [[False]] * num_speakers, axis=1)
         annotation = Annotation(uri=self.uri, modality="speech")
-        for speaker in range(segmentation.data.shape[1]):
-            turns = self._binarize(self._select(segmentation, speaker))
-            for speaker_turn in turns.itersegments():
-                annotation[speaker_turn, speaker] = f"speaker{speaker}"
+        for spk in range(num_speakers):
+            start = timestamps[0].middle
+            for t in range(num_frames):
+                # Any (False, True) start a speaker turn at "True" index
+                if not is_active[spk, t] and is_active[spk, t + 1]:
+                    start = timestamps[t + 1].middle
+                # Any (True, False) end a speaker turn at "False" index
+                elif is_active[spk, t] and not is_active[spk, t + 1]:
+                    region = Segment(start, timestamps[t + 1].middle)
+                    annotation[region, spk] = f"speaker{spk}"
         return annotation
