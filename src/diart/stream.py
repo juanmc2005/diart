@@ -21,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument("--beta", default=10, type=float, help=f"{argdoc.BETA}. Defaults to 10")
     parser.add_argument("--max-speakers", default=20, type=int, help=f"{argdoc.MAX_SPEAKERS}. Defaults to 20")
     parser.add_argument("--no-plot", dest="no_plot", action="store_true", help="Skip plotting for faster inference")
-    parser.add_argument("--gpu", dest="gpu", action="store_true", help=argdoc.GPU)
+    parser.add_argument("--cpu", dest="cpu", action="store_true", help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
     args = parser.parse_args()
 
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         gamma=args.gamma,
         beta=args.beta,
         max_speakers=args.max_speakers,
-        device=torch.device("cuda") if args.gpu else None,
+        device=torch.device("cpu") if args.cpu else None,
     ))
 
     # Manage audio source
@@ -46,12 +46,14 @@ if __name__ == "__main__":
             file=args.source,
             uri=args.source.stem,
             reader=src.RegularAudioFileReader(
-                pipeline.sample_rate, pipeline.duration, pipeline.config.step
+                pipeline.config.sample_rate,
+                pipeline.config.duration,
+                pipeline.config.step,
             ),
         )
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
-        audio_source = src.MicrophoneAudioSource(pipeline.sample_rate)
+        audio_source = src.MicrophoneAudioSource(pipeline.config.sample_rate)
 
     # Run online inference
     RealTimeInference(args.output, do_plot=not args.no_plot)(pipeline, audio_source)

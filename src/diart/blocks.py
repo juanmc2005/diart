@@ -1,15 +1,14 @@
 from typing import Union, Optional, List, Iterable, Tuple
-from typing_extensions import Literal
 
 import numpy as np
 import torch
-from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
+from einops import rearrange
 from pyannote.audio.utils.signal import Binarize as PyanBinarize
 from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
-from einops import rearrange
+from typing_extensions import Literal
 
 from .mapping import SpeakerMap, SpeakerMapBuilder
-
+from .models import SegmentationModel, EmbeddingModel
 
 TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
@@ -42,26 +41,31 @@ def resolve_features(features: TemporalFeatures) -> torch.Tensor:
     return data.float()
 
 
-class FramewiseModel:
-    def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
-        self.model = get_model(model)
+class SpeakerSegmentation:
+    def __init__(self, model: SegmentationModel, device: Optional[torch.device] = None):
+        self.model = model
         self.model.eval()
-        if device is None:
-            device = get_devices(needs=1)[0]
-        self.model.to(device)
-
-    @property
-    def sample_rate(self) -> int:
-        return self.model.audio.sample_rate
-
-    @property
-    def duration(self) -> float:
-        return self.model.specifications.duration
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cpu")
+        self.model.to(self.device)
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
+        """
+        Calculate the speaker segmentation of input audio.
+
+        Parameters
+        ----------
+        waveform: TemporalFeatures, shape (samples, channels) or (batch, samples, channels)
+
+        Returns
+        -------
+        speaker_segmentation: TemporalFeatures, shape (batch, frames, speakers)
+            The batch dimension is omitted if waveform is a `SlidingWindowFeature`.
+        """
         with torch.no_grad():
             wave = rearrange(resolve_features(waveform), "batch sample channel -> batch channel sample")
-            output = self.model(wave.to(self.model.device)).cpu()
+            output = self.model(wave.to(self.device)).cpu()
 
         batch_size, num_frames, _ = output.shape
 
@@ -72,7 +76,7 @@ class FramewiseModel:
         # Wrap if a SlidingWindowFeature was given as input
         if isinstance(waveform, SlidingWindowFeature):
             # Temporal resolution of the output
-            duration = wave.shape[-1] / self.sample_rate
+            duration = wave.shape[-1] / self.model.get_sample_rate()
             resolution = duration / num_frames
             # Temporal shift to keep track of current start time
             resolution = SlidingWindow(
@@ -88,26 +92,44 @@ class FramewiseModel:
         return output
 
 
-class ChunkwiseModel:
-    def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
-        self.model = get_model(model)
+class SpeakerEmbedding:
+    def __init__(self, model: EmbeddingModel, device: Optional[torch.device] = None):
+        self.model = model
         self.model.eval()
-        if device is None:
-            device = get_devices(needs=1)[0]
-        self.model.to(device)
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cpu")
+        self.model.to(self.device)
 
-    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures]) -> torch.Tensor:
+    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None) -> torch.Tensor:
+        """
+        Calculate speaker embeddings of input audio.
+        If weights are given, calculate many speaker embeddings from the same waveform.
+
+        Parameters
+        ----------
+        waveform: TemporalFeatures, shape (samples, channels) or (batch, samples, channels)
+        weights: Optional[TemporalFeatures], shape (frames, speakers) or (batch, frames, speakers)
+            Per-speaker and per-frame weights. Defaults to no weights.
+
+        Returns
+        -------
+        embeddings: torch.Tensor
+            If weights are provided, the shape is (batch, speakers, embedding_dim),
+            otherwise the shape is (batch, embedding_dim).
+            If batch size == 1, the batch dimension is omitted.
+        """
         with torch.no_grad():
-            inputs = resolve_features(waveform).to(self.model.device)
+            inputs = resolve_features(waveform).to(self.device)
             inputs = rearrange(inputs, "batch sample channel -> batch channel sample")
             if weights is not None:
-                weights = resolve_features(weights).to(self.model.device)
+                weights = resolve_features(weights).to(self.device)
                 batch_size, _, num_speakers = weights.shape
                 inputs = inputs.repeat(1, num_speakers, 1)
                 weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
                 inputs = rearrange(inputs, "batch spk sample -> (batch spk) 1 sample")
                 output = rearrange(
-                    self.model(inputs, weights=weights),
+                    self.model(inputs, weights),
                     "(batch spk) feat -> batch spk feat",
                     batch=batch_size,
                     spk=num_speakers
@@ -125,7 +147,7 @@ class OverlappedSpeechPenalty:
         Exponent to lower low-confidence predictions.
         Defaults to 3.
     beta: float, optional
-        Softmax's temperature parameter (actually 1/beta) to lower joint speaker activations.
+        Temperature parameter (actually 1/beta) to lower joint speaker activations.
         Defaults to 10.
     """
     def __init__(self, gamma: float = 3, beta: float = 10):
@@ -171,8 +193,8 @@ class OverlapAwareSpeakerEmbedding:
 
     Parameters
     ----------
-    model: pyannote.audio.Model, Text or Dict
-        The embedding model. It must take a waveform and weights as input.
+    model: EmbeddingModel
+        A pre-trained embedding model.
     gamma: float, optional
         Exponent to lower low-confidence predictions.
         Defaults to 3.
@@ -188,13 +210,13 @@ class OverlapAwareSpeakerEmbedding:
     """
     def __init__(
         self,
-        model: PipelineModel,
+        model: EmbeddingModel,
         gamma: float = 3,
         beta: float = 10,
         norm: Union[float, torch.Tensor] = 1,
         device: Optional[torch.device] = None,
     ):
-        self.embedding = ChunkwiseModel(model, device)
+        self.embedding = SpeakerEmbedding(model, device)
         self.osp = OverlappedSpeechPenalty(gamma, beta)
         self.normalize = EmbeddingNormalization(norm)
 
