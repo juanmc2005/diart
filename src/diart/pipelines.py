@@ -8,7 +8,6 @@ import rx.operators as ops
 import torch
 from einops import rearrange
 from pyannote.core import SlidingWindowFeature, SlidingWindow
-from pyannote.audio.pipelines.utils import get_devices
 from tqdm import tqdm
 
 from . import blocks
@@ -66,7 +65,7 @@ class PipelineConfig:
 
         self.device = device
         if self.device is None:
-            self.device = get_devices(needs=1)[0]
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
         """
