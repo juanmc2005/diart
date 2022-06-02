@@ -5,10 +5,11 @@
 </p>
 
 <p align="center">
-<img alt="PyPI" src="https://img.shields.io/pypi/v/diart?color=g">
-<img alt="GitHub top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
-<img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
-<img alt="GitHub" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="PyPI Version" src="https://img.shields.io/pypi/v/diart?color=g">
+<img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/diart?period=total&units=international_system&left_color=grey&right_color=brightgreen&left_text=downloads">
+<img alt="Top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="Code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
 </p>
 
 <br/>
