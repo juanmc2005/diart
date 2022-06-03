@@ -6,38 +6,9 @@ from einops import rearrange
 from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from typing_extensions import Literal
 
+from .features import TemporalFeatures, TemporalFeatureFormatter
 from .mapping import SpeakerMap, SpeakerMapBuilder
 from .models import SegmentationModel, EmbeddingModel
-
-TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
-
-
-def resolve_features(features: TemporalFeatures) -> torch.Tensor:
-    """
-    Transform features into a `torch.Tensor` and add batch dimension if missing.
-
-    Parameters
-    ----------
-    features: Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
-        Shape (frames, channels) or (batch, frames, channels)
-
-    Returns
-    -------
-    transformed_features: torch.Tensor, shape (batch, frames, channels)
-    """
-    # As torch.Tensor with shape (..., channels, frames)
-    if isinstance(features, SlidingWindowFeature):
-        data = torch.from_numpy(features.data)
-    elif isinstance(features, np.ndarray):
-        data = torch.from_numpy(features)
-    else:
-        data = features
-    # Make sure there's a batch dimension
-    msg = "Temporal features must be 2D or 3D"
-    assert data.ndim in (2, 3), msg
-    if data.ndim == 2:
-        data = data.unsqueeze(0)
-    return data.float()
 
 
 class SpeakerSegmentation:
@@ -48,6 +19,7 @@ class SpeakerSegmentation:
         if self.device is None:
             self.device = torch.device("cpu")
         self.model.to(self.device)
+        self.formatter = TemporalFeatureFormatter()
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         """
@@ -63,32 +35,9 @@ class SpeakerSegmentation:
             The batch dimension is omitted if waveform is a `SlidingWindowFeature`.
         """
         with torch.no_grad():
-            wave = rearrange(resolve_features(waveform), "batch sample channel -> batch channel sample")
+            wave = rearrange(self.formatter.cast(waveform), "batch sample channel -> batch channel sample")
             output = self.model(wave.to(self.device)).cpu()
-
-        batch_size, num_frames, _ = output.shape
-
-        # Remove batch dimension if batch size is 1
-        if output.shape[0] == 1:
-            output = output[0]
-
-        # Wrap if a SlidingWindowFeature was given as input
-        if isinstance(waveform, SlidingWindowFeature):
-            # Temporal resolution of the output
-            duration = wave.shape[-1] / self.model.get_sample_rate()
-            resolution = duration / num_frames
-            # Temporal shift to keep track of current start time
-            resolution = SlidingWindow(
-                start=waveform.sliding_window.start,
-                duration=resolution,
-                step=resolution
-            )
-            return SlidingWindowFeature(output.numpy(), resolution)
-
-        if isinstance(waveform, np.ndarray):
-            return output.numpy()
-
-        return output
+        return self.formatter.restore_type(output)
 
 
 class SpeakerEmbedding:
@@ -99,6 +48,8 @@ class SpeakerEmbedding:
         if self.device is None:
             self.device = torch.device("cpu")
         self.model.to(self.device)
+        self.waveform_formatter = TemporalFeatureFormatter()
+        self.weights_formatter = TemporalFeatureFormatter()
 
     def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None) -> torch.Tensor:
         """
@@ -119,10 +70,10 @@ class SpeakerEmbedding:
             If batch size == 1, the batch dimension is omitted.
         """
         with torch.no_grad():
-            inputs = resolve_features(waveform).to(self.device)
+            inputs = self.waveform_formatter.cast(waveform).to(self.device)
             inputs = rearrange(inputs, "batch sample channel -> batch channel sample")
             if weights is not None:
-                weights = resolve_features(weights).to(self.device)
+                weights = self.weights_formatter.cast(weights).to(self.device)
                 batch_size, _, num_speakers = weights.shape
                 inputs = inputs.repeat(1, num_speakers, 1)
                 weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
@@ -152,18 +103,15 @@ class OverlappedSpeechPenalty:
     def __init__(self, gamma: float = 3, beta: float = 10):
         self.gamma = gamma
         self.beta = beta
+        self.formatter = TemporalFeatureFormatter()
 
     def __call__(self, segmentation: TemporalFeatures) -> TemporalFeatures:
-        weights = resolve_features(segmentation)  # shape (batch, frames, speakers)
+        weights = self.formatter.cast(segmentation)  # shape (batch, frames, speakers)
         with torch.no_grad():
             probs = torch.softmax(self.beta * weights, dim=-1)
             weights = torch.pow(weights, self.gamma) * torch.pow(probs, self.gamma)
             weights[weights < 1e-8] = 1e-8
-        if isinstance(segmentation, SlidingWindowFeature):
-            return SlidingWindowFeature(weights.cpu().numpy(), segmentation.sliding_window)
-        if isinstance(segmentation, np.ndarray):
-            return weights.cpu().numpy()
-        return weights
+        return self.formatter.restore_type(weights)
 
 
 class EmbeddingNormalization:
