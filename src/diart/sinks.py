@@ -1,13 +1,13 @@
 from pathlib import Path
 from traceback import print_exc
 from typing import Union, Text, Optional, Tuple
-from typing_extensions import Literal
 
 import matplotlib.pyplot as plt
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
+from typing_extensions import Literal
 
 
 class RTTMWriter(Observer):

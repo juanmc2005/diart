@@ -2,7 +2,12 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from pyannote.audio.pipelines.utils import PipelineModel, get_model
+
+try:
+    import pyannote.audio.pipelines.utils as pyannote
+    _has_pyannote = True
+except ImportError:
+    _has_pyannote = False
 
 
 class SegmentationModel(nn.Module):
@@ -11,11 +16,24 @@ class SegmentationModel(nn.Module):
     """
 
     @staticmethod
-    def from_pyannote(model: PipelineModel) -> 'SegmentationModel':
+    def from_pyannote(model) -> 'SegmentationModel':
+        """
+        Returns a `SegmentationModel` wrapping a pyannote model.
+
+        Parameters
+        ----------
+        model: pyannote.PipelineModel
+
+        Returns
+        -------
+        wrapper: SegmentationModel
+        """
+        assert _has_pyannote, "No pyannote.audio installation found"
+
         class PyannoteSegmentationModel(SegmentationModel):
-            def __init__(self, pyannote_model: PipelineModel):
+            def __init__(self, pyannote_model):
                 super().__init__()
-                self.model = get_model(pyannote_model)
+                self.model = pyannote.get_model(pyannote_model)
 
             def get_sample_rate(self) -> int:
                 return self.model.audio.sample_rate
@@ -55,18 +73,39 @@ class EmbeddingModel(nn.Module):
     """Minimal interface for an embedding model."""
 
     @staticmethod
-    def from_pyannote(model: PipelineModel) -> 'EmbeddingModel':
-        class PyannoteEmbeddingModel(EmbeddingModel):
-            def __init__(self, pyannote_model: PipelineModel):
-                super().__init__()
-                self.model = get_model(pyannote_model)
+    def from_pyannote(model) -> 'EmbeddingModel':
+        """
+        Returns an `EmbeddingModel` wrapping a pyannote model.
 
-            def __call__(self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+        Parameters
+        ----------
+        model: pyannote.PipelineModel
+
+        Returns
+        -------
+        wrapper: EmbeddingModel
+        """
+        assert _has_pyannote, "No pyannote.audio installation found"
+
+        class PyannoteEmbeddingModel(EmbeddingModel):
+            def __init__(self, pyannote_model):
+                super().__init__()
+                self.model = pyannote.get_model(pyannote_model)
+
+            def __call__(
+                self,
+                waveform: torch.Tensor,
+                weights: Optional[torch.Tensor] = None,
+            ) -> torch.Tensor:
                 return self.model(waveform, weights=weights)
 
         return PyannoteEmbeddingModel(model)
 
-    def __call__(self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def __call__(
+        self,
+        waveform: torch.Tensor,
+        weights: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Forward pass of an embedding model with optional weights.
 

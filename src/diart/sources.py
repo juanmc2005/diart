@@ -1,14 +1,19 @@
 import random
 import time
 from queue import SimpleQueue
-from typing import Tuple, Text, Optional, Iterable, List
+from typing import Tuple, Text, Optional, Iterable, List, Union
+from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
 from einops import rearrange
-from pyannote.audio.core.io import Audio, AudioFile
+# TODO replace with torchaudio
+from pyannote.audio.core.io import Audio
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
+
+
+FilePath = Union[Text, Path]
 
 
 class ChunkLoader:
@@ -36,7 +41,7 @@ class ChunkLoader:
         self.window_samples = int(round(window_duration * sample_rate))
         self.step_samples = int(round(step_duration * sample_rate))
 
-    def get_chunks(self, file: AudioFile) -> np.ndarray:
+    def get_chunks(self, file: FilePath) -> np.ndarray:
         waveform, _ = self.audio(file)
         _, num_samples = waveform.shape
         chunks = rearrange(
@@ -51,7 +56,7 @@ class ChunkLoader:
             return np.vstack([chunks, last_chunk])
         return chunks
 
-    def num_chunks(self, file: AudioFile) -> int:
+    def num_chunks(self, file: FilePath) -> int:
         numerator = self.audio.get_duration(file) - self.window_duration + self.step_duration
         return int(np.ceil(numerator / self.step_duration))
 
@@ -115,13 +120,13 @@ class AudioFileReader:
         A regular reading method always yields the same amount of samples."""
         return False
 
-    def get_duration(self, file: AudioFile) -> float:
+    def get_duration(self, file: FilePath) -> float:
         return self.audio.get_duration(file)
 
-    def get_num_chunks(self, file: AudioFile) -> Optional[int]:
+    def get_num_chunks(self, file: FilePath) -> Optional[int]:
         return None
 
-    def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
+    def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
         """Return an iterable over the file's samples"""
         raise NotImplementedError
 
@@ -153,11 +158,11 @@ class RegularAudioFileReader(AudioFileReader):
     def is_regular(self) -> bool:
         return True
 
-    def get_num_chunks(self, file: AudioFile) -> Optional[int]:
+    def get_num_chunks(self, file: FilePath) -> Optional[int]:
         """Return the number of chunks emitted for `file`"""
         return self.chunk_loader.num_chunks(file)
 
-    def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
+    def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
         chunks = self.chunk_loader.get_chunks(file)
         for i, chunk in enumerate(chunks):
             w = SlidingWindow(
@@ -192,7 +197,7 @@ class IrregularAudioFileReader(AudioFileReader):
         self.start, self.end = refresh_rate_range
         self.delay = simulate_delay
 
-    def iterate(self, file: AudioFile) -> Iterable[SlidingWindowFeature]:
+    def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
         waveform, _ = self.audio(file)
         total_samples = waveform.shape[1]
         i = 0
@@ -211,8 +216,8 @@ class FileAudioSource(AudioSource):
 
     Parameters
     ----------
-    file: AudioFile
-        The file to stream.
+    file: FilePath
+        Path to the file to stream.
     uri: Text
         Unique identifier of the audio source.
     reader: AudioFileReader
@@ -222,7 +227,7 @@ class FileAudioSource(AudioSource):
     """
     def __init__(
         self,
-        file: AudioFile,
+        file: FilePath,
         uri: Text,
         reader: AudioFileReader,
         profile: bool = False,
