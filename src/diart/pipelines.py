@@ -229,7 +229,7 @@ class OnlineSpeakerDiarization:
             )
 
         # Build speaker tracking pipeline
-        duration = chunk_loader.audio.get_duration(file)
+        duration = chunk_loader.loader.get_duration(file)
         return self.speaker_tracking.from_model_streams(
             file.stem, duration, seg_stream, emb_stream, chunk_stream
         )

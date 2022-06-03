@@ -1,19 +1,65 @@
 import random
 import time
+from pathlib import Path
 from queue import SimpleQueue
 from typing import Tuple, Text, Optional, Iterable, List, Union
-from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
+import torch
+import torchaudio
 from einops import rearrange
-# TODO replace with torchaudio
-from pyannote.audio.core.io import Audio
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
+from torchaudio.functional import resample
+
+torchaudio.set_audio_backend("soundfile")
 
 
 FilePath = Union[Text, Path]
+
+
+class AudioLoader:
+    def __init__(self, sample_rate: int, mono: bool = True):
+        self.sample_rate = sample_rate
+        self.mono = mono
+
+    def load(self, filepath: FilePath) -> torch.Tensor:
+        """
+        Load an audio file into a torch.Tensor.
+
+        Parameters
+        ----------
+        filepath : FilePath
+
+        Returns
+        -------
+        waveform : torch.Tensor, shape (channels, samples)
+        """
+        waveform, sample_rate = torchaudio.load(filepath)
+        # Get channel mean if mono
+        if self.mono and waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        # Resample if needed
+        if self.sample_rate != sample_rate:
+            waveform = resample(waveform, sample_rate, self.sample_rate)
+        return waveform
+
+    @staticmethod
+    def get_duration(filepath: FilePath) -> float:
+        """Get audio file duration in seconds.
+
+        Parameters
+        ----------
+        filepath : FilePath
+
+        Returns
+        -------
+        duration : float
+            Duration in seconds.
+        """
+        info = torchaudio.info(filepath)
+        return info.num_frames / info.sample_rate
 
 
 class ChunkLoader:
@@ -35,14 +81,14 @@ class ChunkLoader:
         window_duration: float,
         step_duration: float,
     ):
-        self.audio = Audio(sample_rate, mono=True)
+        self.loader = AudioLoader(sample_rate, mono=True)
         self.window_duration = window_duration
         self.step_duration = step_duration
         self.window_samples = int(round(window_duration * sample_rate))
         self.step_samples = int(round(step_duration * sample_rate))
 
     def get_chunks(self, file: FilePath) -> np.ndarray:
-        waveform, _ = self.audio(file)
+        waveform = self.loader.load(file)
         _, num_samples = waveform.shape
         chunks = rearrange(
             waveform.unfold(1, self.window_samples, self.step_samples),
@@ -57,7 +103,7 @@ class ChunkLoader:
         return chunks
 
     def num_chunks(self, file: FilePath) -> int:
-        numerator = self.audio.get_duration(file) - self.window_duration + self.step_duration
+        numerator = self.loader.get_duration(file) - self.window_duration + self.step_duration
         return int(np.ceil(numerator / self.step_duration))
 
 
@@ -107,12 +153,12 @@ class AudioFileReader:
         Sample rate of the audio file.
     """
     def __init__(self, sample_rate: int):
-        self.audio = Audio(sample_rate=sample_rate, mono=True)
+        self.loader = AudioLoader(sample_rate, mono=True)
         self.resolution = 1 / sample_rate
 
     @property
     def sample_rate(self) -> int:
-        return self.audio.sample_rate
+        return self.loader.sample_rate
 
     @property
     def is_regular(self) -> bool:
@@ -121,7 +167,7 @@ class AudioFileReader:
         return False
 
     def get_duration(self, file: FilePath) -> float:
-        return self.audio.get_duration(file)
+        return self.loader.get_duration(file)
 
     def get_num_chunks(self, file: FilePath) -> Optional[int]:
         return None
@@ -198,7 +244,7 @@ class IrregularAudioFileReader(AudioFileReader):
         self.delay = simulate_delay
 
     def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
-        waveform, _ = self.audio(file)
+        waveform = self.loader.load(file)
         total_samples = waveform.shape[1]
         i = 0
         while i < total_samples:
