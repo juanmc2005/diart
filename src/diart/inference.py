@@ -125,15 +125,13 @@ class Benchmark:
             DataFrame with detailed performance on each file, as well as average performance.
             None if the reference is not provided.
         """
-        chunk_loader = src.ChunkLoader(
-            pipeline.config.sample_rate,
-            pipeline.config.duration,
-            pipeline.config.step
-        )
+        loader = src.AudioLoader(pipeline.config.sample_rate, mono=True)
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         for i, filepath in enumerate(audio_file_paths):
-            num_chunks = chunk_loader.num_chunks(filepath)
+            num_chunks = loader.get_num_sliding_chunks(
+                filepath, pipeline.config.duration, pipeline.config.step
+            )
 
             # Stream fully online if batch size is 1 or lower
             source = None

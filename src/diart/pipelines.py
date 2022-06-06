@@ -1,6 +1,6 @@
 import math
 from pathlib import Path
-from typing import Optional, Union, Text
+from typing import Optional, Text
 
 import numpy as np
 import rx
@@ -167,20 +167,16 @@ class OnlineSpeakerDiarization:
 
     def from_file(
         self,
-        file: Union[Text, Path],
+        filepath: src.FilePath,
         output_waveform: bool = False,
         batch_size: int = 32,
         desc: Optional[Text] = None,
     ) -> rx.Observable:
-        # Audio file information
-        file = Path(file)
-        chunk_loader = src.ChunkLoader(
-            self.config.sample_rate, self.config.duration, self.config.step
-        )
+        loader = src.AudioLoader(self.config.sample_rate, mono=True)
 
         # Split audio into chunks
         chunks = rearrange(
-            chunk_loader.get_chunks(file),
+            loader.load_sliding_chunks(filepath, self.config.duration, self.config.step),
             "chunk channel sample -> chunk sample channel"
         )
         num_chunks = chunks.shape[0]
@@ -229,7 +225,6 @@ class OnlineSpeakerDiarization:
             )
 
         # Build speaker tracking pipeline
-        duration = chunk_loader.loader.get_duration(file)
         return self.speaker_tracking.from_model_streams(
-            file.stem, duration, seg_stream, emb_stream, chunk_stream
+            Path(filepath).stem, loader.get_duration(filepath), seg_stream, emb_stream, chunk_stream
         )

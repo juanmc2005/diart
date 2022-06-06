@@ -1,110 +1,14 @@
 import random
 import time
-from pathlib import Path
 from queue import SimpleQueue
-from typing import Tuple, Text, Optional, Iterable, List, Union
+from typing import Tuple, Text, Optional, Iterable, List
 
 import numpy as np
 import sounddevice as sd
-import torch
-import torchaudio
-from einops import rearrange
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
-from torchaudio.functional import resample
 
-torchaudio.set_audio_backend("soundfile")
-
-
-FilePath = Union[Text, Path]
-
-
-class AudioLoader:
-    def __init__(self, sample_rate: int, mono: bool = True):
-        self.sample_rate = sample_rate
-        self.mono = mono
-
-    def load(self, filepath: FilePath) -> torch.Tensor:
-        """
-        Load an audio file into a torch.Tensor.
-
-        Parameters
-        ----------
-        filepath : FilePath
-
-        Returns
-        -------
-        waveform : torch.Tensor, shape (channels, samples)
-        """
-        waveform, sample_rate = torchaudio.load(filepath)
-        # Get channel mean if mono
-        if self.mono and waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
-        # Resample if needed
-        if self.sample_rate != sample_rate:
-            waveform = resample(waveform, sample_rate, self.sample_rate)
-        return waveform
-
-    @staticmethod
-    def get_duration(filepath: FilePath) -> float:
-        """Get audio file duration in seconds.
-
-        Parameters
-        ----------
-        filepath : FilePath
-
-        Returns
-        -------
-        duration : float
-            Duration in seconds.
-        """
-        info = torchaudio.info(filepath)
-        return info.num_frames / info.sample_rate
-
-
-class ChunkLoader:
-    """Loads an audio file and chunks it according to a given window and step size.
-
-    Parameters
-    ----------
-    sample_rate: int
-        Sample rate to load audio.
-    window_duration: float
-        Duration of the chunk in seconds.
-    step_duration: float
-        Duration of the step between chunks in seconds.
-    """
-
-    def __init__(
-        self,
-        sample_rate: int,
-        window_duration: float,
-        step_duration: float,
-    ):
-        self.loader = AudioLoader(sample_rate, mono=True)
-        self.window_duration = window_duration
-        self.step_duration = step_duration
-        self.window_samples = int(round(window_duration * sample_rate))
-        self.step_samples = int(round(step_duration * sample_rate))
-
-    def get_chunks(self, file: FilePath) -> np.ndarray:
-        waveform = self.loader.load(file)
-        _, num_samples = waveform.shape
-        chunks = rearrange(
-            waveform.unfold(1, self.window_samples, self.step_samples),
-            "channel chunk frame -> chunk channel frame",
-        ).numpy()
-        # Add padded last chunk
-        if num_samples - self.window_samples % self.step_samples > 0:
-            last_chunk = waveform[:, chunks.shape[0] * self.step_samples:].unsqueeze(0).numpy()
-            diff_samples = self.window_samples - last_chunk.shape[-1]
-            last_chunk = np.concatenate([last_chunk, np.zeros((1, 1, diff_samples))], axis=-1)
-            return np.vstack([chunks, last_chunk])
-        return chunks
-
-    def num_chunks(self, file: FilePath) -> int:
-        numerator = self.loader.get_duration(file) - self.window_duration + self.step_duration
-        return int(np.ceil(numerator / self.step_duration))
+from .audio import FilePath, AudioLoader
 
 
 class AudioSource:
@@ -184,7 +88,7 @@ class RegularAudioFileReader(AudioFileReader):
     ----------
     sample_rate: int
         Sample rate of the audio file.
-    window_duration: float
+    chunk_duration: float
         Duration of each chunk of samples (window) in seconds.
     step_duration: float
         Step duration between chunks in seconds.
@@ -192,27 +96,26 @@ class RegularAudioFileReader(AudioFileReader):
     def __init__(
         self,
         sample_rate: int,
-        window_duration: float,
+        chunk_duration: float,
         step_duration: float,
     ):
         super().__init__(sample_rate)
-        self.chunk_loader = ChunkLoader(
-            sample_rate, window_duration, step_duration
-        )
+        self.chunk_duration = chunk_duration
+        self.step_duration = step_duration
 
     @property
     def is_regular(self) -> bool:
         return True
 
-    def get_num_chunks(self, file: FilePath) -> Optional[int]:
-        """Return the number of chunks emitted for `file`"""
-        return self.chunk_loader.num_chunks(file)
+    def get_num_chunks(self, filepath: FilePath) -> Optional[int]:
+        """Return the number of chunks that will be emitted for a given file"""
+        return self.loader.get_num_sliding_chunks(filepath, self.chunk_duration, self.step_duration)
 
     def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
-        chunks = self.chunk_loader.get_chunks(file)
+        chunks = self.loader.load_sliding_chunks(file, self.chunk_duration, self.step_duration)
         for i, chunk in enumerate(chunks):
             w = SlidingWindow(
-                start=i * self.chunk_loader.step_duration,
+                start=i * self.step_duration,
                 duration=self.resolution,
                 step=self.resolution
             )
