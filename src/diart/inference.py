@@ -139,11 +139,9 @@ class Benchmark:
                 source = src.FileAudioSource(
                     filepath,
                     filepath.stem,
-                    src.RegularAudioFileReader(
-                        pipeline.config.sample_rate,
-                        pipeline.config.duration,
-                        pipeline.config.step
-                    ),
+                    pipeline.config.sample_rate,
+                    pipeline.config.duration,
+                    pipeline.config.step,
                     # Benchmark the processing time of a single chunk
                     profile=True,
                 )
