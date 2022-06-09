@@ -87,11 +87,7 @@ class OnlineSpeakerTracking:
     def get_end_time(self, duration: Optional[float]) -> Optional[float]:
         return None if duration is None else self.config.last_chunk_end_time(duration)
 
-    def get_operators(
-        self,
-        source_uri: Text,
-        source_duration: Optional[float],
-    ) -> List[dops.Operator]:
+    def get_operators(self, source: src.AudioSource) -> List[dops.Operator]:
         clustering = blocks.OnlineSpeakerClustering(
             self.config.tau_active,
             self.config.rho_update,
@@ -99,14 +95,14 @@ class OnlineSpeakerTracking:
             "cosine",
             self.config.max_speakers,
         )
-        end_time = self.get_end_time(source_duration)
+        end_time = self.get_end_time(source.duration)
         pred_aggregation = blocks.DelayedAggregation(
             self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
         )
         audio_aggregation = blocks.DelayedAggregation(
             self.config.step, self.config.latency, strategy="first", stream_end=end_time
         )
-        binarize = blocks.Binarize(source_uri, self.config.tau_active)
+        binarize = blocks.Binarize(source.uri, self.config.tau_active)
         return [
             # Identify global speakers with online clustering
             ops.starmap(lambda wav, seg, emb: (wav, clustering(seg, emb))),
@@ -134,7 +130,7 @@ class OnlineSpeakerDiarization:
         msg = f"Latency should be in the range [{config.step}, {config.duration}]"
         assert config.step <= config.latency <= config.duration, msg
 
-    def from_source(self, source: src.AudioSource) -> rx.Observable:
+    def from_audio_source(self, source: src.AudioSource) -> rx.Observable:
         msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
         assert source.sample_rate == self.config.sample_rate, msg
         operators = []
@@ -150,75 +146,10 @@ class OnlineSpeakerDiarization:
             ops.starmap(lambda wav, seg: (wav, seg, self.embedding(wav, seg))),
         ]
         # Add speaker tracking
-        operators += self.speaker_tracking.get_operators(source.uri, source.duration)
+        operators += self.speaker_tracking.get_operators(source)
         if self.profile:
             return dops.profile(source.stream, operators)
         return source.stream.pipe(*operators)
 
-    def from_file(
-        self,
-        filepath: src.FilePath,
-        output_waveform: bool = False,
-        batch_size: int = 32,
-        desc: Optional[Text] = None,
-    ) -> rx.Observable:
-        loader = src.AudioLoader(self.config.sample_rate, mono=True)
-
-        # Split audio into chunks
-        chunks = rearrange(
-            loader.load_sliding_chunks(filepath, self.config.duration, self.config.step),
-            "chunk channel sample -> chunk sample channel"
-        )
-        num_chunks = chunks.shape[0]
-
-        # Set progress if needed
-        iterator = range(0, num_chunks, batch_size)
-        if desc is not None:
-            total = int(math.ceil(num_chunks / batch_size))
-            iterator = tqdm(iterator, desc=desc, total=total, unit="batch", leave=False)
-
-        # Pre-calculate segmentation and embeddings
-        segmentation, embeddings = [], []
-        for i in iterator:
-            i_end = i + batch_size
-            if i_end > num_chunks:
-                i_end = num_chunks
-            batch = chunks[i:i_end]
-            seg = self.segmentation(batch)
-            # Edge case: add batch dimension if i == i_end + 1
-            if seg.ndim == 2:
-                seg = seg[np.newaxis]
-            emb = self.embedding(batch, seg)
-            # Edge case: add batch dimension if i == i_end + 1
-            if emb.ndim == 2:
-                emb = emb.unsqueeze(0)
-            segmentation.append(seg)
-            embeddings.append(emb)
-        segmentation = np.vstack(segmentation)
-        embeddings = torch.vstack(embeddings)
-
-        # Stream pre-calculated segmentation, embeddings and chunks
-        resolution = self.config.duration / segmentation.shape[1]
-        seg_stream = rx.range(0, num_chunks).pipe(
-            ops.map(lambda i: SlidingWindowFeature(
-                segmentation[i], SlidingWindow(resolution, resolution, i * self.config.step)
-            ))
-        )
-        emb_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
-        wav_resolution = 1 / self.config.sample_rate
-        chunk_stream = None
-        if output_waveform:
-            chunk_stream = rx.range(0, num_chunks).pipe(
-                ops.map(lambda i: SlidingWindowFeature(
-                    chunks[i], SlidingWindow(wav_resolution, wav_resolution, i * self.config.step)
-                ))
-            )
-
-        # Build speaker tracking pipeline
-        return rx.zip(chunk_stream, seg_stream, emb_stream).pipe(
-            *self.speaker_tracking.get_operators(
-                Path(filepath).stem,
-                loader.get_duration(filepath),
-                output_waveform,
-            )
-        )
+    def from_feature_source(self, source: src.AudioSource) -> rx.Observable:
+        return source.stream.pipe(*self.speaker_tracking.get_operators(source))
