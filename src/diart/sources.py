@@ -1,7 +1,6 @@
-import random
 import time
 from queue import SimpleQueue
-from typing import Tuple, Text, Optional, Iterable, List
+from typing import Text, Optional, List
 
 import numpy as np
 import sounddevice as sd
@@ -48,118 +47,6 @@ class AudioSource:
         raise NotImplementedError
 
 
-class AudioFileReader:
-    """Represents a method for reading an audio file.
-
-    Parameters
-    ----------
-    sample_rate: int
-        Sample rate of the audio file.
-    """
-    def __init__(self, sample_rate: int):
-        self.loader = AudioLoader(sample_rate, mono=True)
-        self.resolution = 1 / sample_rate
-
-    @property
-    def sample_rate(self) -> int:
-        return self.loader.sample_rate
-
-    @property
-    def is_regular(self) -> bool:
-        """Whether the reading is regular. Defaults to False.
-        A regular reading method always yields the same amount of samples."""
-        return False
-
-    def get_duration(self, file: FilePath) -> float:
-        return self.loader.get_duration(file)
-
-    def get_num_chunks(self, file: FilePath) -> Optional[int]:
-        return None
-
-    def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
-        """Return an iterable over the file's samples"""
-        raise NotImplementedError
-
-
-class RegularAudioFileReader(AudioFileReader):
-    """Reads a file always yielding the same number of samples with a given step.
-
-    Parameters
-    ----------
-    sample_rate: int
-        Sample rate of the audio file.
-    chunk_duration: float
-        Duration of each chunk of samples (window) in seconds.
-    step_duration: float
-        Step duration between chunks in seconds.
-    """
-    def __init__(
-        self,
-        sample_rate: int,
-        chunk_duration: float,
-        step_duration: float,
-    ):
-        super().__init__(sample_rate)
-        self.chunk_duration = chunk_duration
-        self.step_duration = step_duration
-
-    @property
-    def is_regular(self) -> bool:
-        return True
-
-    def get_num_chunks(self, filepath: FilePath) -> Optional[int]:
-        """Return the number of chunks that will be emitted for a given file"""
-        return self.loader.get_num_sliding_chunks(filepath, self.chunk_duration, self.step_duration)
-
-    def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
-        chunks = self.loader.load_sliding_chunks(file, self.chunk_duration, self.step_duration)
-        for i, chunk in enumerate(chunks):
-            w = SlidingWindow(
-                start=i * self.step_duration,
-                duration=self.resolution,
-                step=self.resolution
-            )
-            yield SlidingWindowFeature(chunk.T, w)
-
-
-class IrregularAudioFileReader(AudioFileReader):
-    """Reads an audio file yielding a different number of non-overlapping samples in each event.
-    This class is useful to simulate how a system would work in unreliable reading conditions.
-
-    Parameters
-    ----------
-    sample_rate: int
-        Sample rate of the audio file.
-    refresh_rate_range: (float, float)
-        Duration range within which to determine the number of samples to yield (in seconds).
-    simulate_delay: bool
-        Whether to simulate that the samples are being read in real time before they are yielded.
-        Defaults to False (no delay).
-    """
-    def __init__(
-        self,
-        sample_rate: int,
-        refresh_rate_range: Tuple[float, float],
-        simulate_delay: bool = False,
-    ):
-        super().__init__(sample_rate)
-        self.start, self.end = refresh_rate_range
-        self.delay = simulate_delay
-
-    def iterate(self, file: FilePath) -> Iterable[SlidingWindowFeature]:
-        waveform = self.loader.load(file)
-        total_samples = waveform.shape[1]
-        i = 0
-        while i < total_samples:
-            rnd_duration = random.uniform(self.start, self.end)
-            if self.delay:
-                time.sleep(rnd_duration)
-            num_samples = int(round(rnd_duration * self.sample_rate))
-            last_i = i
-            i += num_samples
-            yield waveform[:, last_i:i]
-
-
 class FileAudioSource(AudioSource):
     """Represents an audio source tied to a file.
 
@@ -169,8 +56,12 @@ class FileAudioSource(AudioSource):
         Path to the file to stream.
     uri: Text
         Unique identifier of the audio source.
-    reader: AudioFileReader
-        Determines how the file will be read.
+    sample_rate: int
+        Sample rate of the chunks emitted.
+    chunk_duration: float
+        Duration of each chunk in seconds. Defaults to 5s.
+    step_duration: float
+        Duration of the step between consecutive chunks in seconds. Defaults to 500ms.
     profile: bool
         If True, prints the average processing time of emitting a chunk. Defaults to False.
     """
@@ -178,19 +69,24 @@ class FileAudioSource(AudioSource):
         self,
         file: FilePath,
         uri: Text,
-        reader: AudioFileReader,
+        sample_rate: int,
+        chunk_duration: float = 5,
+        step_duration: float = 0.5,
         profile: bool = False,
     ):
-        super().__init__(uri, reader.sample_rate)
-        self.reader = reader
-        self._duration = self.reader.get_duration(file)
+        super().__init__(uri, sample_rate)
+        self.loader = AudioLoader(sample_rate, mono=True)
+        self._duration = self.loader.get_duration(file)
         self.file = file
+        self.chunk_duration = chunk_duration
+        self.step_duration = step_duration
         self.profile = profile
+        self.resolution = 1 / sample_rate
 
     @property
     def is_regular(self) -> bool:
-        # The regularity depends on the reader
-        return self.reader.is_regular
+        # An audio file is always a regular source
+        return True
 
     @property
     def duration(self) -> Optional[float]:
@@ -199,8 +95,9 @@ class FileAudioSource(AudioSource):
 
     @property
     def length(self) -> Optional[int]:
-        # Only the reader can know how many chunks are going to be emitted
-        return self.reader.get_num_chunks(self.file)
+        return self.loader.get_num_sliding_chunks(
+            self.file, self.chunk_duration, self.step_duration
+        )
 
     def _check_print_time(self, times: List[float]):
         if self.profile:
@@ -213,15 +110,24 @@ class FileAudioSource(AudioSource):
     def read(self):
         """Send each chunk of samples through the stream"""
         times = []
-        for waveform in self.reader.iterate(self.file):
+        chunks = self.loader.load_sliding_chunks(
+            self.file, self.chunk_duration, self.step_duration
+        )
+        for i, waveform in enumerate(chunks):
+            window = SlidingWindow(
+                start=i * self.step_duration,
+                duration=self.resolution,
+                step=self.resolution
+            )
+            chunk = SlidingWindowFeature(waveform.T, window)
             try:
                 if self.profile:
                     # Profiling assumes that on_next is blocking
                     start_time = time.monotonic()
-                    self.stream.on_next(waveform)
+                    self.stream.on_next(chunk)
                     times.append(time.monotonic() - start_time)
                 else:
-                    self.stream.on_next(waveform)
+                    self.stream.on_next(chunk)
             except Exception as e:
                 self._check_print_time(times)
                 self.stream.on_error(e)

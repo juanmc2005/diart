@@ -43,13 +43,11 @@ if __name__ == "__main__":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
         audio_source = src.FileAudioSource(
-            file=args.source,
-            uri=args.source.stem,
-            reader=src.RegularAudioFileReader(
-                pipeline.config.sample_rate,
-                pipeline.config.duration,
-                pipeline.config.step,
-            ),
+            args.source,
+            args.source.stem,
+            pipeline.config.sample_rate,
+            pipeline.config.duration,
+            pipeline.config.step,
         )
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
