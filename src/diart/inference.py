@@ -143,7 +143,7 @@ class Benchmark:
                     pipeline.config.duration,
                     pipeline.config.step,
                 )
-                observable = pipeline.from_source(source, output_waveform=False)
+                observable = pipeline.from_source(source)
             else:
                 observable = pipeline.from_file(
                     filepath,

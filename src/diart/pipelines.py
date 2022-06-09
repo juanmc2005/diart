@@ -91,7 +91,6 @@ class OnlineSpeakerTracking:
         self,
         source_uri: Text,
         source_duration: Optional[float],
-        output_waveform: bool = True
     ) -> List[dops.Operator]:
         clustering = blocks.OnlineSpeakerClustering(
             self.config.tau_active,
@@ -119,7 +118,7 @@ class OnlineSpeakerTracking:
                 audio_aggregation(wav_buffer), pred_aggregation(pred_buffer)
             )),
             # Binarize output
-            ops.starmap(lambda wav, pred: (binarize(pred), wav if output_waveform else None)),
+            ops.starmap(lambda wav, pred: (binarize(pred), wav)),
         ]
 
 
@@ -135,7 +134,7 @@ class OnlineSpeakerDiarization:
         msg = f"Latency should be in the range [{config.step}, {config.duration}]"
         assert config.step <= config.latency <= config.duration, msg
 
-    def from_source(self, source: src.AudioSource, output_waveform: bool = True) -> rx.Observable:
+    def from_source(self, source: src.AudioSource) -> rx.Observable:
         msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
         assert source.sample_rate == self.config.sample_rate, msg
         operators = []
@@ -151,7 +150,7 @@ class OnlineSpeakerDiarization:
             ops.starmap(lambda wav, seg: (wav, seg, self.embedding(wav, seg))),
         ]
         # Add speaker tracking
-        operators += self.speaker_tracking.get_operators(source.uri, source.duration, output_waveform)
+        operators += self.speaker_tracking.get_operators(source.uri, source.duration)
         if self.profile:
             return dops.profile(source.stream, operators)
         return source.stream.pipe(*operators)
