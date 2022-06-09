@@ -142,8 +142,6 @@ class Benchmark:
                     pipeline.config.sample_rate,
                     pipeline.config.duration,
                     pipeline.config.step,
-                    # Benchmark the processing time of a single chunk
-                    profile=True,
                 )
                 observable = pipeline.from_source(source, output_waveform=False)
             else:
