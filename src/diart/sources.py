@@ -1,8 +1,6 @@
-import time
 from queue import SimpleQueue
-from typing import Text, Optional, List
+from typing import Text, Optional
 
-import numpy as np
 import sounddevice as sd
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
@@ -62,8 +60,6 @@ class FileAudioSource(AudioSource):
         Duration of each chunk in seconds. Defaults to 5s.
     step_duration: float
         Duration of the step between consecutive chunks in seconds. Defaults to 500ms.
-    profile: bool
-        If True, prints the average processing time of emitting a chunk. Defaults to False.
     """
     def __init__(
         self,
@@ -72,7 +68,6 @@ class FileAudioSource(AudioSource):
         sample_rate: int,
         chunk_duration: float = 5,
         step_duration: float = 0.5,
-        profile: bool = False,
     ):
         super().__init__(uri, sample_rate)
         self.loader = AudioLoader(sample_rate, mono=True)
@@ -80,7 +75,6 @@ class FileAudioSource(AudioSource):
         self.file = file
         self.chunk_duration = chunk_duration
         self.step_duration = step_duration
-        self.profile = profile
         self.resolution = 1 / sample_rate
 
     @property
@@ -99,17 +93,8 @@ class FileAudioSource(AudioSource):
             self.file, self.chunk_duration, self.step_duration
         )
 
-    def _check_print_time(self, times: List[float]):
-        if self.profile:
-            print(
-                f"File {self.uri}: took {np.mean(times).item():.2f} seconds/chunk "
-                f"(+/- {np.std(times).item():.2f} seconds/chunk) "
-                f"-- based on {len(times)} inputs"
-            )
-
     def read(self):
         """Send each chunk of samples through the stream"""
-        times = []
         chunks = self.loader.load_sliding_chunks(
             self.file, self.chunk_duration, self.step_duration
         )
@@ -121,18 +106,10 @@ class FileAudioSource(AudioSource):
             )
             chunk = SlidingWindowFeature(waveform.T, window)
             try:
-                if self.profile:
-                    # Profiling assumes that on_next is blocking
-                    start_time = time.monotonic()
-                    self.stream.on_next(chunk)
-                    times.append(time.monotonic() - start_time)
-                else:
-                    self.stream.on_next(chunk)
+                self.stream.on_next(chunk)
             except Exception as e:
-                self._check_print_time(times)
                 self.stream.on_error(e)
         self.stream.on_completed()
-        self._check_print_time(times)
 
 
 class MicrophoneAudioSource(AudioSource):

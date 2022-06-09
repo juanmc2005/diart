@@ -36,7 +36,7 @@ if __name__ == "__main__":
         beta=args.beta,
         max_speakers=args.max_speakers,
         device=torch.device("cpu") if args.cpu else None,
-    ))
+    ), profile=True)
 
     # Manage audio source
     if args.source != "microphone":
