@@ -59,12 +59,12 @@ class RealTimeInference:
             observable.pipe(
                 ops.do(rttm_writer),
                 dops.buffer_output(
-                    duration=pipeline.duration,
+                    duration=pipeline.config.duration,
                     step=pipeline.config.step,
                     latency=pipeline.config.latency,
-                    sample_rate=pipeline.sample_rate
+                    sample_rate=pipeline.config.sample_rate
                 ),
-            ).subscribe(RealTimePlot(pipeline.duration, pipeline.config.latency))
+            ).subscribe(RealTimePlot(pipeline.config.duration, pipeline.config.latency))
         # Stream audio through the pipeline
         source.read()
 
@@ -125,11 +125,13 @@ class Benchmark:
             DataFrame with detailed performance on each file, as well as average performance.
             None if the reference is not provided.
         """
-        chunk_loader = src.ChunkLoader(pipeline.sample_rate, pipeline.duration, pipeline.config.step)
+        loader = src.AudioLoader(pipeline.config.sample_rate, mono=True)
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         for i, filepath in enumerate(audio_file_paths):
-            num_chunks = chunk_loader.num_chunks(filepath)
+            num_chunks = loader.get_num_sliding_chunks(
+                filepath, pipeline.config.duration, pipeline.config.step
+            )
 
             # Stream fully online if batch size is 1 or lower
             source = None
@@ -137,7 +139,11 @@ class Benchmark:
                 source = src.FileAudioSource(
                     filepath,
                     filepath.stem,
-                    src.RegularAudioFileReader(pipeline.sample_rate, pipeline.duration, pipeline.config.step),
+                    src.RegularAudioFileReader(
+                        pipeline.config.sample_rate,
+                        pipeline.config.duration,
+                        pipeline.config.step
+                    ),
                     # Benchmark the processing time of a single chunk
                     profile=True,
                 )

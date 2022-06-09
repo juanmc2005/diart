@@ -1,17 +1,17 @@
 import math
 from pathlib import Path
-from typing import Optional, Union, Text
+from typing import Optional, Text
 
 import numpy as np
 import rx
 import rx.operators as ops
 import torch
 from einops import rearrange
-from pyannote.audio.pipelines.utils import PipelineModel
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from tqdm import tqdm
 
 from . import blocks
+from . import models as m
 from . import operators as dops
 from . import sources as src
 
@@ -19,8 +19,8 @@ from . import sources as src
 class PipelineConfig:
     def __init__(
         self,
-        segmentation: PipelineModel = "pyannote/segmentation",
-        embedding: PipelineModel = "pyannote/embedding",
+        segmentation: Optional[m.SegmentationModel] = None,
+        embedding: Optional[m.EmbeddingModel] = None,
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[float] = None,
@@ -32,22 +32,40 @@ class PipelineConfig:
         max_speakers: int = 20,
         device: Optional[torch.device] = None,
     ):
+        # Default segmentation model is pyannote/segmentation
         self.segmentation = segmentation
+        if self.segmentation is None:
+            self.segmentation = m.SegmentationModel.from_pyannote("pyannote/segmentation")
+
+        # Default duration is the one given by the segmentation model
+        self.duration = duration
+        if self.duration is None:
+            self.duration = self.segmentation.get_duration()
+
+        # Expected sample rate is given by the segmentation model
+        self.sample_rate = self.segmentation.get_sample_rate()
+
+        # Default embedding model is pyannote/embedding
         self.embedding = embedding
-        self.requested_duration = duration
+        if self.embedding is None:
+            self.embedding = m.EmbeddingModel.from_pyannote("pyannote/embedding")
+
+        # Latency defaults to the step duration
         self.step = step
         self.latency = latency
         if self.latency is None:
             self.latency = self.step
+
         self.tau_active = tau_active
         self.rho_update = rho_update
         self.delta_new = delta_new
         self.gamma = gamma
         self.beta = beta
         self.max_speakers = max_speakers
+
         self.device = device
         if self.device is None:
-            self.device = torch.device("cpu")
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
         """
@@ -117,39 +135,26 @@ class OnlineSpeakerTracking:
 class OnlineSpeakerDiarization:
     def __init__(self, config: PipelineConfig):
         self.config = config
-        self.segmentation = blocks.FramewiseModel(config.segmentation, config.device)
+        self.segmentation = blocks.SpeakerSegmentation(config.segmentation, config.device)
         self.embedding = blocks.OverlapAwareSpeakerEmbedding(
             config.embedding, config.gamma, config.beta, norm=1, device=config.device
         )
         self.speaker_tracking = OnlineSpeakerTracking(config)
-        msg = "Invalid latency requested"
-        assert config.step <= config.latency <= self.duration, msg
-
-    @property
-    def sample_rate(self) -> int:
-        """Sample rate expected by the segmentation model"""
-        return self.segmentation.sample_rate
-
-    @property
-    def duration(self) -> float:
-        """Chunk duration (in seconds). Defaults to segmentation model duration"""
-        duration = self.config.requested_duration
-        if duration is None:
-            duration = self.segmentation.duration
-        return duration
+        msg = f"Latency should be in the range [{config.step}, {config.duration}]"
+        assert config.step <= config.latency <= config.duration, msg
 
     def from_source(
         self,
         source: src.AudioSource,
         output_waveform: bool = True
     ) -> rx.Observable:
-        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.sample_rate}"
-        assert source.sample_rate == self.sample_rate, msg
+        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
+        assert source.sample_rate == self.config.sample_rate, msg
         # Regularize the stream to a specific chunk duration and step
         regular_stream = source.stream
         if not source.is_regular:
             regular_stream = source.stream.pipe(
-                dops.regularize_stream(self.duration, self.config.step, source.sample_rate)
+                dops.regularize_stream(self.config.duration, self.config.step, source.sample_rate)
             )
         # Branch the stream to calculate chunk segmentation
         seg_stream = regular_stream.pipe(ops.map(self.segmentation))
@@ -162,20 +167,16 @@ class OnlineSpeakerDiarization:
 
     def from_file(
         self,
-        file: Union[Text, Path],
+        filepath: src.FilePath,
         output_waveform: bool = False,
         batch_size: int = 32,
         desc: Optional[Text] = None,
     ) -> rx.Observable:
-        # Audio file information
-        file = Path(file)
-        chunk_loader = src.ChunkLoader(
-            self.sample_rate, self.duration, self.config.step
-        )
+        loader = src.AudioLoader(self.config.sample_rate, mono=True)
 
         # Split audio into chunks
         chunks = rearrange(
-            chunk_loader.get_chunks(file),
+            loader.load_sliding_chunks(filepath, self.config.duration, self.config.step),
             "chunk channel sample -> chunk sample channel"
         )
         num_chunks = chunks.shape[0]
@@ -207,14 +208,14 @@ class OnlineSpeakerDiarization:
         embeddings = torch.vstack(embeddings)
 
         # Stream pre-calculated segmentation, embeddings and chunks
-        resolution = self.duration / segmentation.shape[1]
+        resolution = self.config.duration / segmentation.shape[1]
         seg_stream = rx.range(0, num_chunks).pipe(
             ops.map(lambda i: SlidingWindowFeature(
                 segmentation[i], SlidingWindow(resolution, resolution, i * self.config.step)
             ))
         )
         emb_stream = rx.range(0, num_chunks).pipe(ops.map(lambda i: embeddings[i]))
-        wav_resolution = 1 / self.sample_rate
+        wav_resolution = 1 / self.config.sample_rate
         chunk_stream = None
         if output_waveform:
             chunk_stream = rx.range(0, num_chunks).pipe(
@@ -224,7 +225,6 @@ class OnlineSpeakerDiarization:
             )
 
         # Build speaker tracking pipeline
-        duration = chunk_loader.audio.get_duration(file)
         return self.speaker_tracking.from_model_streams(
-            file.stem, duration, seg_stream, emb_stream, chunk_stream
+            Path(filepath).stem, loader.get_duration(filepath), seg_stream, emb_stream, chunk_stream
         )

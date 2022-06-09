@@ -4,7 +4,6 @@ import numpy as np
 import torch
 from pyannote.core import SlidingWindow, SlidingWindowFeature
 
-
 TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
 

@@ -1,63 +1,85 @@
-from typing import Union, Optional, List, Iterable, Tuple
-from typing_extensions import Literal
+from typing import Union, Optional, List, Iterable, Tuple, Text
 
 import numpy as np
 import torch
-from pyannote.audio.pipelines.utils import PipelineModel, get_model, get_devices
-from pyannote.audio.utils.signal import Binarize as PyanBinarize
-from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from einops import rearrange
+from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
+from typing_extensions import Literal
 
-from .mapping import SpeakerMap, SpeakerMapBuilder
 from .features import TemporalFeatures, TemporalFeatureFormatter
+from .mapping import SpeakerMap, SpeakerMapBuilder
+from .models import SegmentationModel, EmbeddingModel
 
 
-class FramewiseModel:
-    def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
-        self.model = get_model(model)
+class SpeakerSegmentation:
+    def __init__(self, model: SegmentationModel, device: Optional[torch.device] = None):
+        self.model = model
         self.model.eval()
-        if device is None:
-            device = get_devices(needs=1)[0]
-        self.model.to(device)
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cpu")
+        self.model.to(self.device)
         self.formatter = TemporalFeatureFormatter()
 
-    @property
-    def sample_rate(self) -> int:
-        return self.model.audio.sample_rate
-
-    @property
-    def duration(self) -> float:
-        return self.model.specifications.duration
-
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
+        """
+        Calculate the speaker segmentation of input audio.
+
+        Parameters
+        ----------
+        waveform: TemporalFeatures, shape (samples, channels) or (batch, samples, channels)
+
+        Returns
+        -------
+        speaker_segmentation: TemporalFeatures, shape (batch, frames, speakers)
+            The batch dimension is omitted if waveform is a `SlidingWindowFeature`.
+        """
         with torch.no_grad():
             wave = rearrange(self.formatter.cast(waveform), "batch sample channel -> batch channel sample")
-            output = self.model(wave.to(self.model.device)).cpu()
+            output = self.model(wave.to(self.device)).cpu()
         return self.formatter.restore_type(output)
 
 
-class ChunkwiseModel:
-    def __init__(self, model: PipelineModel, device: Optional[torch.device] = None):
-        self.model = get_model(model)
+class SpeakerEmbedding:
+    def __init__(self, model: EmbeddingModel, device: Optional[torch.device] = None):
+        self.model = model
         self.model.eval()
-        if device is None:
-            device = get_devices(needs=1)[0]
-        self.model.to(device)
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cpu")
+        self.model.to(self.device)
         self.waveform_formatter = TemporalFeatureFormatter()
         self.weights_formatter = TemporalFeatureFormatter()
 
-    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures]) -> torch.Tensor:
+    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None) -> torch.Tensor:
+        """
+        Calculate speaker embeddings of input audio.
+        If weights are given, calculate many speaker embeddings from the same waveform.
+
+        Parameters
+        ----------
+        waveform: TemporalFeatures, shape (samples, channels) or (batch, samples, channels)
+        weights: Optional[TemporalFeatures], shape (frames, speakers) or (batch, frames, speakers)
+            Per-speaker and per-frame weights. Defaults to no weights.
+
+        Returns
+        -------
+        embeddings: torch.Tensor
+            If weights are provided, the shape is (batch, speakers, embedding_dim),
+            otherwise the shape is (batch, embedding_dim).
+            If batch size == 1, the batch dimension is omitted.
+        """
         with torch.no_grad():
-            inputs = self.waveform_formatter.cast(waveform).to(self.model.device)
+            inputs = self.waveform_formatter.cast(waveform).to(self.device)
             inputs = rearrange(inputs, "batch sample channel -> batch channel sample")
             if weights is not None:
-                weights = self.weights_formatter.cast(weights).to(self.model.device)
+                weights = self.weights_formatter.cast(weights).to(self.device)
                 batch_size, _, num_speakers = weights.shape
                 inputs = inputs.repeat(1, num_speakers, 1)
                 weights = rearrange(weights, "batch frame spk -> (batch spk) frame")
                 inputs = rearrange(inputs, "batch spk sample -> (batch spk) 1 sample")
                 output = rearrange(
-                    self.model(inputs, weights=weights),
+                    self.model(inputs, weights),
                     "(batch spk) feat -> batch spk feat",
                     batch=batch_size,
                     spk=num_speakers
@@ -75,7 +97,7 @@ class OverlappedSpeechPenalty:
         Exponent to lower low-confidence predictions.
         Defaults to 3.
     beta: float, optional
-        Softmax's temperature parameter (actually 1/beta) to lower joint speaker activations.
+        Temperature parameter (actually 1/beta) to lower joint speaker activations.
         Defaults to 10.
     """
     def __init__(self, gamma: float = 3, beta: float = 10):
@@ -118,8 +140,8 @@ class OverlapAwareSpeakerEmbedding:
 
     Parameters
     ----------
-    model: pyannote.audio.Model, Text or Dict
-        The embedding model. It must take a waveform and weights as input.
+    model: EmbeddingModel
+        A pre-trained embedding model.
     gamma: float, optional
         Exponent to lower low-confidence predictions.
         Defaults to 3.
@@ -135,13 +157,13 @@ class OverlapAwareSpeakerEmbedding:
     """
     def __init__(
         self,
-        model: PipelineModel,
+        model: EmbeddingModel,
         gamma: float = 3,
         beta: float = 10,
         norm: Union[float, torch.Tensor] = 1,
         device: Optional[torch.device] = None,
     ):
-        self.embedding = ChunkwiseModel(model, device)
+        self.embedding = SpeakerEmbedding(model, device)
         self.osp = OverlappedSpeechPenalty(gamma, beta)
         self.normalize = EmbeddingNormalization(norm)
 
@@ -486,26 +508,51 @@ class OnlineSpeakerClustering:
 
 
 class Binarize:
-    def __init__(self, uri: str, tau_active: float):
-        self.uri = uri
-        self._binarize = PyanBinarize(
-            onset=tau_active,
-            offset=tau_active,
-            min_duration_on=0,
-            min_duration_off=0,
-        )
+    """
+    Transform a speaker segmentation from the discrete-time domain
+    into a continuous-time speaker segmentation.
 
-    def _select(
-        self, scores: SlidingWindowFeature, speaker: int
-    ) -> SlidingWindowFeature:
-        return SlidingWindowFeature(
-            scores[:, speaker].reshape(-1, 1), scores.sliding_window
-        )
+    Parameters
+    ----------
+    uri: Text
+        Uri of the audio stream.
+    threshold: float
+        Probability threshold to determine if a speaker is active at a given frame.
+    """
+
+    def __init__(self, uri: Text, threshold: float):
+        self.uri = uri
+        self.threshold = threshold
 
     def __call__(self, segmentation: SlidingWindowFeature) -> Annotation:
+        """
+        Return the continuous-time segmentation
+        corresponding to the discrete-time input segmentation.
+
+        Parameters
+        ----------
+        segmentation: SlidingWindowFeature
+            Discrete-time speaker segmentation.
+
+        Returns
+        -------
+        annotation: Annotation
+            Continuous-time speaker segmentation.
+        """
+        num_frames, num_speakers = segmentation.data.shape
+        timestamps = segmentation.sliding_window
+        is_active = segmentation.data > self.threshold
+        # Artificially add last inactive frame to close any remaining speaker turns
+        is_active = np.append(is_active, [[False] * num_speakers], axis=0)
+        start_times = np.zeros(num_speakers) + timestamps[0].middle
         annotation = Annotation(uri=self.uri, modality="speech")
-        for speaker in range(segmentation.data.shape[1]):
-            turns = self._binarize(self._select(segmentation, speaker))
-            for speaker_turn in turns.itersegments():
-                annotation[speaker_turn, speaker] = f"speaker{speaker}"
+        for t in range(num_frames):
+            # Any (False, True) starts a speaker turn at "True" index
+            onsets = np.logical_and(np.logical_not(is_active[t]), is_active[t + 1])
+            start_times[onsets] = timestamps[t + 1].middle
+            # Any (True, False) ends a speaker turn at "False" index
+            offsets = np.logical_and(is_active[t], np.logical_not(is_active[t + 1]))
+            for spk in np.where(offsets)[0]:
+                region = Segment(start_times[spk], timestamps[t + 1].middle)
+                annotation[region, spk] = f"speaker{spk}"
         return annotation

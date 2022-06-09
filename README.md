@@ -29,9 +29,12 @@ conda activate diart
 2) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
 
 3) Install pyannote.audio 2.0 (currently in development)
+
 ```shell
 pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
 ```
+
+**Note:** starting from version 0.4, installing pyannote.audio is mandatory to run the default system or to use pyannote-based models. In any other case, this step can be ignored.
 
 4) Install diart:
 ```shell
@@ -63,8 +66,9 @@ from diart.sources import MicrophoneAudioSource
 from diart.inference import RealTimeInference
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
-pipeline = OnlineSpeakerDiarization(PipelineConfig())
-audio_source = MicrophoneAudioSource(pipeline.sample_rate)
+config = PipelineConfig()  # Default parameters
+pipeline = OnlineSpeakerDiarization(config)
+audio_source = MicrophoneAudioSource(config.sample_rate)
 inference = RealTimeInference("/output/path", do_plot=True)
 
 inference(pipeline, audio_source)
@@ -86,17 +90,18 @@ import rx
 import rx.operators as ops
 import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
-from diart.blocks import FramewiseModel, OverlapAwareSpeakerEmbedding
-
-sample_rate = 16000
-mic = MicrophoneAudioSource(sample_rate)
+from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
+from diart.models import SegmentationModel, EmbeddingModel
 
 # Initialize independent modules
-segmentation = FramewiseModel("pyannote/segmentation")
-embedding = OverlapAwareSpeakerEmbedding("pyannote/embedding")
+seg_model = SegmentationModel.from_pyannote("pyannote/segmentation")
+segmentation = SpeakerSegmentation(seg_model)
+emb_model = EmbeddingModel.from_pyannote("pyannote/embedding")
+embedding = OverlapAwareSpeakerEmbedding(emb_model)
+mic = MicrophoneAudioSource(seg_model.get_sample_rate())
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
-regular_stream = mic.stream.pipe(dops.regularize_stream(sample_rate))
+regular_stream = mic.stream.pipe(dops.regularize_stream(seg_model.get_sample_rate()))
 # Branch the microphone stream to calculate segmentation
 segmentation_stream = regular_stream.pipe(ops.map(segmentation))
 # Join audio and segmentation stream to calculate speaker embeddings
