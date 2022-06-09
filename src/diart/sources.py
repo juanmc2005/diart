@@ -1,13 +1,20 @@
+import math
 from queue import SimpleQueue
-from typing import Text, Optional
+from typing import Text, Optional, Callable
 
+import numpy as np
 import sounddevice as sd
+import torch
+from einops import rearrange
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
+from tqdm import tqdm
 
 from .audio import FilePath, AudioLoader
+from .features import TemporalFeatures
 
 
+# TODO rename this to something else since the same API is also used to stream features
 class AudioSource:
     """Represents a source of audio that can start streaming via the `stream` property.
 
@@ -109,6 +116,86 @@ class FileAudioSource(AudioSource):
                 self.stream.on_next(chunk)
             except Exception as e:
                 self.stream.on_error(e)
+        self.stream.on_completed()
+
+
+class PrecalculatedFeaturesAudioSource(FileAudioSource):
+    def __init__(
+        self,
+        file: FilePath,
+        uri: Text,
+        sample_rate: int,
+        segmentation: Callable[[TemporalFeatures], TemporalFeatures],
+        embedding: Callable[[TemporalFeatures, TemporalFeatures], TemporalFeatures],
+        chunk_duration: float = 5,
+        step_duration: float = 0.5,
+        batch_size: int = 32,
+        progress_msg: Optional[Text] = None,
+    ):
+        super().__init__(file, uri, sample_rate, chunk_duration, step_duration)
+        self.segmentation = segmentation
+        self.embedding = embedding
+        self.batch_size = batch_size
+        self.progress_msg = progress_msg
+
+    def read(self):
+        # Split audio into chunks
+        chunks = rearrange(
+            self.loader.load_sliding_chunks(
+                self.file, self.chunk_duration, self.step_duration
+            ),
+            "chunk channel sample -> chunk sample channel"
+        )
+        num_chunks = chunks.shape[0]
+
+        # Set progress if needed
+        iterator = range(0, num_chunks, self.batch_size)
+        if self.progress_msg is not None:
+            total = int(math.ceil(num_chunks / self.batch_size))
+            iterator = tqdm(iterator, desc=self.progress_msg, total=total, unit="batch", leave=False)
+
+        # Pre-calculate segmentation and embeddings
+        segmentation, embeddings = [], []
+        for i in iterator:
+            i_end = i + self.batch_size
+            if i_end > num_chunks:
+                i_end = num_chunks
+            batch = chunks[i:i_end]
+            seg = self.segmentation(batch)
+            # Edge case: add batch dimension if i == i_end + 1
+            if seg.ndim == 2:
+                seg = seg[np.newaxis]
+            emb = self.embedding(batch, seg)
+            # Edge case: add batch dimension if i == i_end + 1
+            if emb.ndim == 2:
+                emb = emb.unsqueeze(0)
+            segmentation.append(seg)
+            embeddings.append(emb)
+        segmentation = np.vstack(segmentation)
+        embeddings = torch.vstack(embeddings)
+
+        # Stream pre-calculated segmentation, embeddings and chunks
+        seg_resolution = self.chunk_duration / segmentation.shape[1]
+        for i in range(num_chunks):
+            chunk_window = SlidingWindow(
+                start=i * self.step_duration,
+                duration=self.resolution,
+                step=self.resolution,
+            )
+            seg_window = SlidingWindow(
+                start=i * self.step_duration,
+                duration=seg_resolution,
+                step=seg_resolution,
+            )
+            try:
+                self.stream.on_next((
+                    SlidingWindowFeature(chunks[i], chunk_window),
+                    SlidingWindowFeature(segmentation[i], seg_window),
+                    embeddings[i]
+                ))
+            except Exception as e:
+                self.stream.on_error(e)
+
         self.stream.on_completed()
 
 

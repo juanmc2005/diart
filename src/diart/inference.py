@@ -48,7 +48,7 @@ class RealTimeInference:
         """
         rttm_path = self.output_path / f"{source.uri}.rttm"
         rttm_writer = RTTMWriter(path=rttm_path)
-        observable = pipeline.from_source(source).pipe(
+        observable = pipeline.from_audio_source(source).pipe(
             dops.progress(f"Streaming {source.uri}", total=source.length, leave=True)
         )
         if not self.do_plot:
@@ -134,7 +134,6 @@ class Benchmark:
             )
 
             # Stream fully online if batch size is 1 or lower
-            source = None
             if batch_size < 2:
                 source = src.FileAudioSource(
                     filepath,
@@ -143,26 +142,31 @@ class Benchmark:
                     pipeline.config.duration,
                     pipeline.config.step,
                 )
-                observable = pipeline.from_source(source)
+                observable = pipeline.from_audio_source(source)
             else:
-                observable = pipeline.from_file(
+                source = src.PrecalculatedFeaturesAudioSource(
                     filepath,
-                    batch_size=batch_size,
-                    desc=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
+                    filepath.stem,
+                    pipeline.config.sample_rate,
+                    pipeline.segmentation,
+                    pipeline.embedding,
+                    pipeline.config.duration,
+                    pipeline.config.step,
+                    batch_size,
+                    # TODO decouple progress bar
+                    progress_msg=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
                 )
+                observable = pipeline.from_feature_source(source)
 
             observable.pipe(
                 dops.progress(
                     desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
                     total=num_chunks,
-                    leave=source is None
+                    leave=isinstance(source, src.PrecalculatedFeaturesAudioSource)
                 )
-            ).subscribe(
-                RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm")
-            )
+            ).subscribe(RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm"))
 
-            if source is not None:
-                source.read()
+            source.read()
 
         # Run evaluation
         if self.reference_path is not None:
