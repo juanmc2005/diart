@@ -1,15 +1,12 @@
 import argparse
 from pathlib import Path
 
-import torch
-
 import diart.argdoc as argdoc
 import diart.sources as src
 from diart.inference import RealTimeInference
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
 if __name__ == "__main__":
-    # Define script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=str, help="Path to an audio file | 'microphone'")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
@@ -26,32 +23,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define online speaker diarization pipeline
-    pipeline = OnlineSpeakerDiarization(PipelineConfig(
-        step=args.step,
-        latency=args.latency,
-        tau_active=args.tau,
-        rho_update=args.rho,
-        delta_new=args.delta,
-        gamma=args.gamma,
-        beta=args.beta,
-        max_speakers=args.max_speakers,
-        device=torch.device("cpu") if args.cpu else None,
-    ), profile=True)
+    config = PipelineConfig.from_namespace(args)
+    pipeline = OnlineSpeakerDiarization(config, profile=True)
 
     # Manage audio source
     if args.source != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
         audio_source = src.FileAudioSource(
-            args.source,
-            args.source.stem,
-            pipeline.config.sample_rate,
-            pipeline.config.duration,
-            pipeline.config.step,
+            args.source, config.sample_rate, config.duration, config.step
         )
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
-        audio_source = src.MicrophoneAudioSource(pipeline.config.sample_rate)
+        audio_source = src.MicrophoneAudioSource(config.sample_rate)
 
     # Run online inference
     RealTimeInference(args.output, do_plot=not args.no_plot)(pipeline, audio_source)

@@ -10,6 +10,10 @@ from rx.core import Observer
 from typing_extensions import Literal
 
 
+class WindowClosedException(Exception):
+    pass
+
+
 class RTTMWriter(Observer):
     def __init__(self, path: Union[Path, Text], patch_collar: float = 0.05):
         super().__init__()
@@ -57,6 +61,10 @@ class RealTimePlot(Observer):
         self.window_duration = duration
         self.latency = latency
         self.figure, self.axs, self.num_axs = None, None, -1
+        self.window_closed = False
+
+    def _on_window_closed(self, event):
+        self.window_closed = True
 
     def _init_num_axs(self):
         if self.num_axs == -1:
@@ -69,6 +77,7 @@ class RealTimePlot(Observer):
         self.figure, self.axs = plt.subplots(self.num_axs, 1, figsize=(10, 2 * self.num_axs))
         if self.num_axs == 1:
             self.axs = [self.axs]
+        self.figure.canvas.mpl_connect('close_event', self._on_window_closed)
 
     def _clear_axs(self):
         for i in range(self.num_axs):
@@ -82,6 +91,9 @@ class RealTimePlot(Observer):
         return Segment(start_time, end_time)
 
     def on_next(self, values: Tuple[Annotation, SlidingWindowFeature, float]):
+        if self.window_closed:
+            raise WindowClosedException
+
         prediction, waveform, real_time = values
         # Initialize figure if first call
         if self.figure is None:
@@ -111,5 +123,5 @@ class RealTimePlot(Observer):
         plt.pause(0.05)
 
     def on_error(self, error: Exception):
-        print_exc()
-        exit(1)
+        if not isinstance(error, WindowClosedException):
+            print_exc()

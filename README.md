@@ -102,7 +102,7 @@ embedding = OverlapAwareSpeakerEmbedding(emb_model)
 mic = MicrophoneAudioSource(seg_model.get_sample_rate())
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
-regular_stream = mic.stream.pipe(dops.regularize_stream(seg_model.get_sample_rate()))
+regular_stream = mic.stream.pipe(dops.regularize_audio_stream(seg_model.get_sample_rate()))
 # Branch the microphone stream to calculate segmentation
 segmentation_stream = regular_stream.pipe(ops.map(segmentation))
 # Join audio and segmentation stream to calculate speaker embeddings

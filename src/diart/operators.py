@@ -37,7 +37,7 @@ class AudioBufferState:
         return call_fn
 
 
-def regularize_stream(
+def regularize_audio_stream(
     duration: float = 5,
     step: float = 0.5,
     sample_rate: int = 16000
@@ -331,6 +331,7 @@ def profile(observable: rx.Observable, operations: List[Operator]) -> rx.Observa
         *operations,
         ops.do_action(
             on_next=lambda _: chronometer.stop(),
+            on_error=lambda _: chronometer.report(),
             on_completed=chronometer.report,
         )
     )
