@@ -1,14 +1,9 @@
-import math
-from pathlib import Path
-from typing import Optional, Text, List, Tuple
+from argparse import Namespace
+from typing import Optional, List
 
-import numpy as np
 import rx
 import rx.operators as ops
 import torch
-from einops import rearrange
-from pyannote.core import SlidingWindowFeature, SlidingWindow
-from tqdm import tqdm
 
 from . import blocks
 from . import models as m
@@ -68,6 +63,23 @@ class PipelineConfig:
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    @staticmethod
+    def from_namespace(args: Namespace) -> 'PipelineConfig':
+        return PipelineConfig(
+            segmentation=getattr(args, "segmentation", None),
+            embedding=getattr(args, "embedding", None),
+            duration=getattr(args, "duration", None),
+            step=args.step,
+            latency=args.latency,
+            tau_active=args.tau,
+            rho_update=args.rho,
+            delta_new=args.delta,
+            gamma=args.gamma,
+            beta=args.beta,
+            max_speakers=args.max_speakers,
+            device=torch.device("cpu") if args.cpu else None,
+        )
+
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
         """
         Return the end time of the last chunk for a given conversation duration.
@@ -109,7 +121,7 @@ class OnlineSpeakerTracking:
             # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
             dops.buffer_slide(pred_aggregation.num_overlapping_windows),
             # Aggregate overlapping output windows
-            ops.map(lambda buffers: utils.unzip(buffers)),
+            ops.map(utils.unzip),
             ops.starmap(lambda wav_buffer, pred_buffer: (
                 audio_aggregation(wav_buffer), pred_aggregation(pred_buffer)
             )),
@@ -136,7 +148,7 @@ class OnlineSpeakerDiarization:
         operators = []
         # Regularize the stream to a specific chunk duration and step
         if not source.is_regular:
-            operators.append(dops.regularize_stream(
+            operators.append(dops.regularize_audio_stream(
                 self.config.duration, self.config.step, source.sample_rate
             ))
         operators += [

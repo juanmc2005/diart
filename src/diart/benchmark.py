@@ -1,13 +1,10 @@
 import argparse
 
-import torch
-
 import diart.argdoc as argdoc
 from diart.inference import Benchmark
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
 if __name__ == "__main__":
-    # Define script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=str, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
     parser.add_argument("--reference", type=str, help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
@@ -24,20 +21,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to `root`")
     args = parser.parse_args()
 
-    # Set benchmark configuration
-    benchmark = Benchmark(args.root, args.reference, args.output)
-
-    # Define online speaker diarization pipeline
-    pipeline = OnlineSpeakerDiarization(PipelineConfig(
-        step=args.step,
-        latency=args.latency,
-        tau_active=args.tau,
-        rho_update=args.rho,
-        delta_new=args.delta,
-        gamma=args.gamma,
-        beta=args.beta,
-        max_speakers=args.max_speakers,
-        device=torch.device("cpu") if args.cpu else None,
-    ), profile=True)
-
-    benchmark(pipeline, args.batch_size)
+    Benchmark(args.root, args.reference, args.output)(
+        OnlineSpeakerDiarization(PipelineConfig.from_namespace(args), profile=True),
+        args.batch_size
+    )

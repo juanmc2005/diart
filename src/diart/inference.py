@@ -137,7 +137,6 @@ class Benchmark:
             if batch_size < 2:
                 source = src.FileAudioSource(
                     filepath,
-                    filepath.stem,
                     pipeline.config.sample_rate,
                     pipeline.config.duration,
                     pipeline.config.step,
@@ -146,14 +145,12 @@ class Benchmark:
             else:
                 source = src.PrecalculatedFeaturesAudioSource(
                     filepath,
-                    filepath.stem,
                     pipeline.config.sample_rate,
                     pipeline.segmentation,
                     pipeline.embedding,
                     pipeline.config.duration,
                     pipeline.config.step,
                     batch_size,
-                    # TODO decouple progress bar
                     progress_msg=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
                 )
                 observable = pipeline.from_feature_source(source)

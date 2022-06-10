@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 from queue import SimpleQueue
 from typing import Text, Optional, Callable
 
@@ -14,7 +15,6 @@ from .audio import FilePath, AudioLoader
 from .features import TemporalFeatures
 
 
-# TODO rename this to something else since the same API is also used to stream features
 class AudioSource:
     """Represents a source of audio that can start streaming via the `stream` property.
 
@@ -59,8 +59,6 @@ class FileAudioSource(AudioSource):
     ----------
     file: FilePath
         Path to the file to stream.
-    uri: Text
-        Unique identifier of the audio source.
     sample_rate: int
         Sample rate of the chunks emitted.
     chunk_duration: float
@@ -71,12 +69,11 @@ class FileAudioSource(AudioSource):
     def __init__(
         self,
         file: FilePath,
-        uri: Text,
         sample_rate: int,
         chunk_duration: float = 5,
         step_duration: float = 0.5,
     ):
-        super().__init__(uri, sample_rate)
+        super().__init__(Path(file).stem, sample_rate)
         self.loader = AudioLoader(sample_rate, mono=True)
         self._duration = self.loader.get_duration(file)
         self.file = file
@@ -123,7 +120,6 @@ class PrecalculatedFeaturesAudioSource(FileAudioSource):
     def __init__(
         self,
         file: FilePath,
-        uri: Text,
         sample_rate: int,
         segmentation: Callable[[TemporalFeatures], TemporalFeatures],
         embedding: Callable[[TemporalFeatures, TemporalFeatures], TemporalFeatures],
@@ -132,7 +128,7 @@ class PrecalculatedFeaturesAudioSource(FileAudioSource):
         batch_size: int = 32,
         progress_msg: Optional[Text] = None,
     ):
-        super().__init__(file, uri, sample_rate, chunk_duration, step_duration)
+        super().__init__(file, sample_rate, chunk_duration, step_duration)
         self.segmentation = segmentation
         self.embedding = embedding
         self.batch_size = batch_size
