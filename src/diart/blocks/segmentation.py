@@ -3,8 +3,8 @@ from typing import Optional
 import torch
 from einops import rearrange
 
-from features import TemporalFeatures, TemporalFeatureFormatter
-from models import SegmentationModel
+from ..features import TemporalFeatures, TemporalFeatureFormatter
+from ..models import SegmentationModel
 
 
 class SpeakerSegmentation:
