@@ -1,5 +1,4 @@
-from argparse import Namespace
-from typing import Optional, List
+from typing import Optional, List, Any
 
 import rx
 import rx.operators as ops
@@ -64,21 +63,24 @@ class PipelineConfig:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @staticmethod
-    def from_namespace(args: Namespace) -> 'PipelineConfig':
+    def from_namespace(args: Any) -> 'PipelineConfig':
         return PipelineConfig(
             segmentation=getattr(args, "segmentation", None),
             embedding=getattr(args, "embedding", None),
             duration=getattr(args, "duration", None),
             step=args.step,
             latency=args.latency,
-            tau_active=args.tau,
-            rho_update=args.rho,
-            delta_new=args.delta,
+            tau_active=args.tau_active,
+            rho_update=args.rho_update,
+            delta_new=args.delta_new,
             gamma=args.gamma,
             beta=args.beta,
             max_speakers=args.max_speakers,
-            device=torch.device("cpu") if args.cpu else None,
+            device=args.device,
         )
+
+    def copy(self) -> 'PipelineConfig':
+        return PipelineConfig.from_namespace(self)
 
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
         """
