@@ -107,7 +107,12 @@ class Benchmark:
             self.output_path = Path(output_path).expanduser()
             self.output_path.mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, pipeline: OnlineSpeakerDiarization, batch_size: int = 32) -> Optional[pd.DataFrame]:
+    def __call__(
+        self,
+        pipeline: OnlineSpeakerDiarization,
+        batch_size: int = 32,
+        verbose: bool = True
+    ) -> Optional[pd.DataFrame]:
         """
         Run a given pipeline on a set of audio files using
         pre-calculated segmentation and embeddings in batches.
@@ -118,6 +123,8 @@ class Benchmark:
             Configured speaker diarization pipeline.
         batch_size: int
             Batch size. Defaults to 32.
+        verbose: bool
+            Whether to log its progress. Defaults to True.
 
         Returns
         -------
@@ -143,6 +150,7 @@ class Benchmark:
                 )
                 observable = pipeline.from_audio_source(source)
             else:
+                msg = f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})"
                 source = src.PrecalculatedFeaturesAudioSource(
                     filepath,
                     pipeline.config.sample_rate,
@@ -151,17 +159,20 @@ class Benchmark:
                     pipeline.config.duration,
                     pipeline.config.step,
                     batch_size,
-                    progress_msg=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
+                    progress_msg=msg if verbose else None,
                 )
                 observable = pipeline.from_feature_source(source)
 
-            observable.pipe(
-                dops.progress(
-                    desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
-                    total=num_chunks,
-                    leave=isinstance(source, src.PrecalculatedFeaturesAudioSource)
+            if verbose:
+                observable = observable.pipe(
+                    dops.progress(
+                        desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+                        total=num_chunks,
+                        leave=isinstance(source, src.PrecalculatedFeaturesAudioSource)
+                    )
                 )
-            ).subscribe(RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm"))
+
+            observable.subscribe(RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm"))
 
             source.read()
 
@@ -173,4 +184,4 @@ class Benchmark:
                 hyp = load_rttm(self.output_path / ref_path.name).popitem()[1]
                 metric(ref, hyp)
 
-            return metric.report(display=True)
+            return metric.report(display=verbose)

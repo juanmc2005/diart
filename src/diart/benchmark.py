@@ -1,5 +1,7 @@
 import argparse
 
+import torch
+
 import diart.argdoc as argdoc
 from diart.inference import Benchmark
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
@@ -20,6 +22,11 @@ if __name__ == "__main__":
     parser.add_argument("--cpu", dest="cpu", action="store_true", help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to `root`")
     args = parser.parse_args()
+
+    args.device = torch.device("cpu") if args.cpu else None
+    args.tau_active = args.tau
+    args.rho_update = args.rho
+    args.delta_new = args.delta
 
     Benchmark(args.root, args.reference, args.output)(
         OnlineSpeakerDiarization(PipelineConfig.from_namespace(args), profile=True),
