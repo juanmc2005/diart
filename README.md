@@ -27,9 +27,16 @@ conda create -n diart python=3.8
 conda activate diart
 ```
 
-2) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
+2) Install `PortAudio` and `soundfile`:
 
-3) Install pyannote.audio 2.0 (currently in development)
+```shell
+conda install portaudio
+conda install pysoundfile -c conda-forge
+```
+
+3) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
+
+4) Install pyannote.audio 2.0 (currently in development)
 
 ```shell
 pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
@@ -37,7 +44,7 @@ pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyann
 
 **Note:** starting from version 0.4, installing pyannote.audio is mandatory to run the default system or to use pyannote-based models. In any other case, this step can be ignored.
 
-4) Install diart:
+5) Install diart:
 ```shell
 pip install diart
 ```
