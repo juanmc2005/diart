@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from pyannote.core import SlidingWindowFeature
 
-from mapping import SpeakerMap, SpeakerMapBuilder
+from ..mapping import SpeakerMap, SpeakerMapBuilder
 
 
 class OnlineSpeakerClustering:

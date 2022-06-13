@@ -3,8 +3,8 @@ from typing import Optional, Union
 import torch
 from einops import rearrange
 
-from features import TemporalFeatures, TemporalFeatureFormatter
-from models import EmbeddingModel
+from ..features import TemporalFeatures, TemporalFeatureFormatter
+from ..models import EmbeddingModel
 
 
 class SpeakerEmbedding:
