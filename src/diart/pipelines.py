@@ -26,6 +26,7 @@ class PipelineConfig:
         beta: float = 10,
         max_speakers: int = 20,
         device: Optional[torch.device] = None,
+        **kwargs,
     ):
         # Default segmentation model is pyannote/segmentation
         self.segmentation = segmentation
@@ -70,17 +71,14 @@ class PipelineConfig:
             duration=getattr(args, "duration", None),
             step=args.step,
             latency=args.latency,
-            tau_active=args.tau_active,
-            rho_update=args.rho_update,
-            delta_new=args.delta_new,
+            tau_active=args.tau,
+            rho_update=args.rho,
+            delta_new=args.delta,
             gamma=args.gamma,
             beta=args.beta,
             max_speakers=args.max_speakers,
             device=args.device,
         )
-
-    def copy(self) -> 'PipelineConfig':
-        return PipelineConfig.from_namespace(self)
 
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
         """Return the end time of the last chunk for a given conversation duration.

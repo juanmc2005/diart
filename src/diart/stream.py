@@ -23,11 +23,7 @@ if __name__ == "__main__":
     parser.add_argument("--cpu", dest="cpu", action="store_true", help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
     args = parser.parse_args()
-
     args.device = torch.device("cpu") if args.cpu else None
-    args.tau_active = args.tau
-    args.rho_update = args.rho
-    args.delta_new = args.delta
 
     # Define online speaker diarization pipeline
     config = PipelineConfig.from_namespace(args)
