@@ -12,13 +12,45 @@
 <img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
 </p>
 
+<div align="center">
+  <h4>
+    <a href="#installation">
+      Installation
+    </a>
+    <span> | </span>
+    <a href="#stream-your-own-audio">
+      Stream audio
+    </a>
+    <span> | </span>
+    <a href="#optimize-hyper-parameters-to-your-dataset">
+      Tune hyper-parameters
+    </a>
+    <span> | </span>
+    <a href="#build-your-own-pipeline">
+      Build pipelines
+    </a>
+    <span> | </span>
+    <a href="#powered-by-research">
+      Research
+    </a>
+    <span> | </span>
+    <a href="#citation">
+      Citation
+    </a>
+    <span> | </span>
+    <a href="#reproducibility">
+      Reproducibility
+    </a>
+  </h4>
+</div>
+
 <br/>
 
 <p align="center">
 <img width="100%" src="/demo.gif" title="Real-time diarization example" />
 </p>
 
-## Install
+## Installation
 
 1) Create environment:
 
@@ -51,13 +83,15 @@ pip install diart
 
 ## Stream your own audio
 
-### A recorded conversation
+### From the command line
+
+A recorded conversation:
 
 ```shell
 python -m diart.stream /path/to/audio.wav
 ```
 
-### From your microphone
+A live conversation:
 
 ```shell
 python -m diart.stream microphone
@@ -65,9 +99,9 @@ python -m diart.stream microphone
 
 See `python -m diart.stream -h` for more options.
 
-## Inference API
+### From python
 
-Run a customized real-time speaker diarization pipeline over an audio stream with `diart.inference.RealTimeInference`:
+Run a real-time speaker diarization pipeline over an audio stream with `RealTimeInference`:
 
 ```python
 from diart.sources import MicrophoneAudioSource
@@ -78,17 +112,16 @@ config = PipelineConfig()  # Default parameters
 pipeline = OnlineSpeakerDiarization(config)
 audio_source = MicrophoneAudioSource(config.sample_rate)
 inference = RealTimeInference("/output/path", do_plot=True)
-
 inference(pipeline, audio_source)
 ```
 
-For faster inference and evaluation on a dataset we recommend to use `Benchmark` (see our notes on [reproducibility](#reproducibility))
+For faster inference and evaluation on a dataset we recommend to use `Benchmark` instead (see our notes on [reproducibility](#reproducibility)).
 
-## Optimize hyper-parameters to your own dataset
+## Optimize hyper-parameters to your dataset
 
-Diart implements a hyper-parameter optimizer based on [optuna](https://github.com/optuna/optuna).
-`diart.optim.Optimizer` allows you to tune any pipeline to a custom dataset.
-More information on Optuna can be found [here](https://optuna.readthedocs.io/en/stable/index.html).
+Diart implements a hyper-parameter optimizer based on optuna that allows you to tune any pipeline to any dataset.
+
+[More about optuna](https://optuna.readthedocs.io/en/stable/index.html).
 
 ### A simple example
 
