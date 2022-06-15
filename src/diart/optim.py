@@ -25,54 +25,20 @@ RhoUpdate = HyperParameter("rho_update", low=0, high=1)
 DeltaNew = HyperParameter("delta_new", low=0, high=2)
 
 
-class OptimizationObjective:
+class Optimizer:
     def __init__(
         self,
         benchmark: Benchmark,
         base_config: PipelineConfig,
         hparams: Iterable[HyperParameter],
-    ):
-        self.benchmark = benchmark
-        self.base_config = base_config
-        self.hparams = hparams
-
-    def __call__(self, trial: Trial) -> float:
-        # Set suggested values for optimized hyper-parameters
-        trial_config = vars(self.base_config)
-        for hparam in self.hparams:
-            trial_config[hparam.name] = trial.suggest_uniform(
-                hparam.name, hparam.low, hparam.high
-            )
-
-        # Instantiate pipeline with the new configuration
-        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config))
-
-        # Prune trial if required
-        if trial.should_prune():
-            raise TrialPruned()
-
-        # Run pipeline over the dataset
-        report = self.benchmark(pipeline)
-
-        # Clean RTTM files
-        for tmp_file in self.benchmark.output_path.iterdir():
-            if tmp_file.name.endswith(".rttm"):
-                tmp_file.unlink()
-
-        # Extract DER from report
-        return report.loc["TOTAL", "diarization error rate"]["%"]
-
-
-class Optimizer:
-    def __init__(
-        self,
-        objective: OptimizationObjective,
         study_name: Optional[Text] = None,
         storage: Optional[Text] = None,
         sampler: Optional[BaseSampler] = None,
         pruner: Optional[BasePruner] = None,
     ):
-        self.objective = objective
+        self.benchmark = benchmark
+        self.base_config = base_config
+        self.hparams = hparams
         self.study = create_study(
             storage=self.default_storage if storage is None else storage,
             sampler=TPESampler() if sampler is None else sampler,
@@ -85,7 +51,7 @@ class Optimizer:
 
     @property
     def default_output_path(self) -> Path:
-        return self.objective.benchmark.output_path.parent
+        return self.benchmark.output_path.parent
 
     @property
     def default_study_name(self) -> Text:
@@ -112,6 +78,32 @@ class Optimizer:
         for name, value in study.best_params.items():
             values[f"best_{name}"] = value
         self._progress.set_postfix(OrderedDict(values))
+
+    def objective(self, trial: Trial) -> float:
+        # Set suggested values for optimized hyper-parameters
+        trial_config = vars(self.base_config)
+        for hparam in self.hparams:
+            trial_config[hparam.name] = trial.suggest_uniform(
+                hparam.name, hparam.low, hparam.high
+            )
+
+        # Instantiate pipeline with the new configuration
+        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config))
+
+        # Prune trial if required
+        if trial.should_prune():
+            raise TrialPruned()
+
+        # Run pipeline over the dataset
+        report = self.benchmark(pipeline)
+
+        # Clean RTTM files
+        for tmp_file in self.benchmark.output_path.iterdir():
+            if tmp_file.name.endswith(".rttm"):
+                tmp_file.unlink()
+
+        # Extract DER from report
+        return report.loc["TOTAL", "diarization error rate"]["%"]
 
     def optimize(self, num_iter: int, show_progress: bool = True):
         self._progress = None

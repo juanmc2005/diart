@@ -93,20 +93,20 @@ More information on Optuna can be found [here](https://optuna.readthedocs.io/en/
 ### A simple example
 
 ```python
-from diart.optim import OptimizationObjective, Optimizer, TauActive, RhoUpdate, DeltaNew
+from diart.optim import Optimizer, TauActive, RhoUpdate, DeltaNew
 from diart.pipelines import PipelineConfig
 from diart.inference import Benchmark
 
-# Benchmark runs and evaluates the pipeline with each configuration
+# Benchmark runs and evaluates the pipeline on a dataset
 benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir", show_report=False)
 # Base configuration for the pipeline we're going to tune
 base_config = PipelineConfig(duration=5, step=0.5, latency=5)
 # Hyper-parameters to optimize
 hparams = [TauActive, RhoUpdate, DeltaNew]
-# The objective implements an optimization step
-objective = OptimizationObjective(benchmark, base_config, hparams)
-# Run optimization for 100 iterations
-Optimizer(objective).optimize(num_iter=100, show_progress=True)
+# Optimizer implements the optimization loop
+optimizer = Optimizer(benchmark, base_config, hparams)
+# Run optimization
+optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
 ### Distributed optimization
@@ -118,10 +118,10 @@ More information on distributed optimization can be found [here](https://optuna.
 ```python
 from diart.optim import Optimizer
 
-objective = ...
+benchmark, base_config, hparams = ...
 study_name = "my_study"
 storage = "mysql://root@localhost/example"
-optimizer = Optimizer(objective, study_name, storage)
+optimizer = Optimizer(benchmark, base_config, hparams, study_name, storage)
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
