@@ -84,9 +84,50 @@ inference(pipeline, audio_source)
 
 For faster inference and evaluation on a dataset we recommend to use `Benchmark` (see our notes on [reproducibility](#reproducibility))
 
+## Optimize hyper-parameters to your own dataset
+
+Diart implements a hyper-parameter optimizer based on [optuna](https://github.com/optuna/optuna).
+`diart.optim.Optimizer` allows you to tune any pipeline to a custom dataset.
+More information on Optuna can be found [here](https://optuna.readthedocs.io/en/stable/index.html).
+
+### A simple example
+
+```python
+from diart.optim import OptimizationObjective, Optimizer, TauActive, RhoUpdate, DeltaNew
+from diart.pipelines import PipelineConfig
+from diart.inference import Benchmark
+
+# Benchmark runs and evaluates the pipeline with each configuration
+benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir", show_report=False)
+# Base configuration for the pipeline we're going to tune
+base_config = PipelineConfig(duration=5, step=0.5, latency=5)
+# Hyper-parameters to optimize
+hparams = [TauActive, RhoUpdate, DeltaNew]
+# The objective implements an optimization step
+objective = OptimizationObjective(benchmark, base_config, hparams)
+# Run optimization for 100 iterations
+Optimizer(objective).optimize(num_iter=100, show_progress=True)
+```
+
+### Distributed optimization
+
+For bigger datasets, it is sometimes more convenient to run optimization in parallel.
+If the same `study_name` and `storage` are given to the optimizer, all optimization processes will share the information from previous runs.
+More information on distributed optimization can be found [here](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py).
+
+```python
+from diart.optim import Optimizer
+
+objective = ...
+study_name = "my_study"
+storage = "mysql://root@localhost/example"
+optimizer = Optimizer(objective, study_name, storage)
+optimizer.optimize(num_iter=100, show_progress=True)
+```
+
 ## Build your own pipeline
 
-Diart also provides building blocks that can be combined to create your own pipeline.
+For a more advanced usage, diart also provides building blocks that can be combined to create your own pipelines.
 Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
 
 ### Example

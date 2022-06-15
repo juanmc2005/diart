@@ -92,6 +92,9 @@ class Benchmark:
         speech_path: Union[Text, Path],
         reference_path: Optional[Union[Text, Path]] = None,
         output_path: Optional[Union[Text, Path]] = None,
+        show_progress: bool = True,
+        show_report: bool = True,
+        batch_size: int = 32,
     ):
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
@@ -107,12 +110,11 @@ class Benchmark:
             self.output_path = Path(output_path).expanduser()
             self.output_path.mkdir(parents=True, exist_ok=True)
 
-    def __call__(
-        self,
-        pipeline: OnlineSpeakerDiarization,
-        batch_size: int = 32,
-        verbose: bool = True
-    ) -> Optional[pd.DataFrame]:
+        self.show_progress = show_progress
+        self.show_report = show_report
+        self.batch_size = batch_size
+
+    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Optional[pd.DataFrame]:
         """
         Run a given pipeline on a set of audio files using
         pre-calculated segmentation and embeddings in batches.
@@ -121,10 +123,6 @@ class Benchmark:
         ----------
         pipeline: OnlineSpeakerDiarization
             Configured speaker diarization pipeline.
-        batch_size: int
-            Batch size. Defaults to 32.
-        verbose: bool
-            Whether to log its progress. Defaults to True.
 
         Returns
         -------
@@ -141,7 +139,7 @@ class Benchmark:
             )
 
             # Stream fully online if batch size is 1 or lower
-            if batch_size < 2:
+            if self.batch_size < 2:
                 source = src.FileAudioSource(
                     filepath,
                     pipeline.config.sample_rate,
@@ -158,17 +156,17 @@ class Benchmark:
                     pipeline.embedding,
                     pipeline.config.duration,
                     pipeline.config.step,
-                    batch_size,
-                    progress_msg=msg if verbose else None,
+                    self.batch_size,
+                    progress_msg=msg if self.show_progress else None,
                 )
                 observable = pipeline.from_feature_source(source)
 
-            if verbose:
+            if self.show_progress:
                 observable = observable.pipe(
                     dops.progress(
                         desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
                         total=num_chunks,
-                        leave=isinstance(source, src.PrecalculatedFeaturesAudioSource)
+                        leave=False,
                     )
                 )
 
@@ -184,4 +182,4 @@ class Benchmark:
                 hyp = load_rttm(self.output_path / ref_path.name).popitem()[1]
                 metric(ref, hyp)
 
-            return metric.report(display=verbose)
+            return metric.report(display=self.show_report)
