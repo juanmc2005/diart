@@ -1,14 +1,14 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Text, Optional
+from typing import Iterable, Text, Optional, Union
 
 from optuna import TrialPruned, Study, create_study
-from optuna.pruners import BasePruner
-from optuna.samplers import TPESampler, BaseSampler
+from optuna.samplers import TPESampler
 from optuna.trial import Trial, FrozenTrial
 from tqdm import trange, tqdm
 
+from .audio import FilePath
 from .benchmark import Benchmark
 from .pipelines import PipelineConfig, OnlineSpeakerDiarization
 
@@ -31,35 +31,26 @@ class Optimizer:
         benchmark: Benchmark,
         base_config: PipelineConfig,
         hparams: Iterable[HyperParameter],
-        study_name: Optional[Text] = None,
-        storage: Optional[Text] = None,
-        sampler: Optional[BaseSampler] = None,
-        pruner: Optional[BasePruner] = None,
+        study_or_path: Union[FilePath, Study],
     ):
         self.benchmark = benchmark
         self.base_config = base_config
         self.hparams = hparams
-        self.study = create_study(
-            storage=self.default_storage if storage is None else storage,
-            sampler=TPESampler() if sampler is None else sampler,
-            pruner=pruner,
-            study_name=self.default_study_name if study_name is None else study_name,
-            direction="minimize",
-            load_if_exists=True,
-        )
         self._progress: Optional[tqdm] = None
 
-    @property
-    def default_output_path(self) -> Path:
-        return self.benchmark.output_path.parent
-
-    @property
-    def default_study_name(self) -> Text:
-        return self.default_output_path.name
-
-    @property
-    def default_storage(self) -> Text:
-        return "sqlite:///" + str(self.default_output_path / "trials.db")
+        if isinstance(study_or_path, Study):
+            self.study = study_or_path
+        elif isinstance(study_or_path, str) or isinstance(study_or_path, Path):
+            self.study = create_study(
+                storage="sqlite:///" + str(study_or_path / "trials.db"),
+                sampler=TPESampler(),
+                study_name=study_or_path.name,
+                direction="minimize",
+                load_if_exists=True,
+            )
+        else:
+            msg = f"Expected Study object or path-like, but got {type(study_or_path).__name__}"
+            raise ValueError(msg)
 
     @property
     def best_performance(self):
@@ -87,12 +78,12 @@ class Optimizer:
                 hparam.name, hparam.low, hparam.high
             )
 
-        # Instantiate pipeline with the new configuration
-        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config))
-
         # Prune trial if required
         if trial.should_prune():
             raise TrialPruned()
+
+        # Instantiate pipeline with the new configuration
+        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config), profile=False)
 
         # Run pipeline over the dataset
         report = self.benchmark(pipeline)
@@ -109,6 +100,8 @@ class Optimizer:
         self._progress = None
         if show_progress:
             self._progress = trange(num_iter)
-            last_trial = self.study.trials[-1].number
+            last_trial = -1
+            if self.study.trials:
+                last_trial = self.study.trials[-1].number
             self._progress.set_description(f"Trial {last_trial + 1}")
         self.study.optimize(self.objective, num_iter, callbacks=[self._callback])

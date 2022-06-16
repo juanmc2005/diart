@@ -18,15 +18,15 @@
       Installation
     </a>
     <span> | </span>
-    <a href="#stream-your-own-audio">
+    <a href="#stream-audio">
       Stream audio
     </a>
     <span> | </span>
-    <a href="#optimize-hyper-parameters-to-your-dataset">
+    <a href="#tune-hyper-parameters">
       Tune hyper-parameters
     </a>
     <span> | </span>
-    <a href="#build-your-own-pipeline">
+    <a href="#build-pipelines">
       Build pipelines
     </a>
     <span> | </span>
@@ -81,7 +81,7 @@ pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyann
 pip install diart
 ```
 
-## Stream your own audio
+## Stream audio
 
 ### From the command line
 
@@ -117,7 +117,7 @@ inference(pipeline, audio_source)
 
 For faster inference and evaluation on a dataset we recommend to use `Benchmark` instead (see our notes on [reproducibility](#reproducibility)).
 
-## Optimize hyper-parameters to your dataset
+## Tune hyper-parameters
 
 Diart implements a hyper-parameter optimizer based on optuna that allows you to tune any pipeline to any dataset.
 
@@ -137,30 +137,36 @@ base_config = PipelineConfig(duration=5, step=0.5, latency=5)
 # Hyper-parameters to optimize
 hparams = [TauActive, RhoUpdate, DeltaNew]
 # Optimizer implements the optimization loop
-optimizer = Optimizer(benchmark, base_config, hparams)
+optimizer = Optimizer(benchmark, base_config, hparams, "/db/out/dir")
 # Run optimization
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
+This will store temporary predictions in `/out/dir` and write results of each trial in an sqlite database `/db/out/dir/trials.db`.
+
 ### Distributed optimization
 
-For bigger datasets, it is sometimes more convenient to run optimization in parallel.
-If the same `study_name` and `storage` are given to the optimizer, all optimization processes will share the information from previous runs.
-More information on distributed optimization can be found [here](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py).
+For bigger datasets, it is sometimes more convenient to run multiple optimization processes in parallel.
+To do this, make sure that the output directory or the study given to the optimizer is the same in each process.
+Notice that the output directories of `Benchmark` MUST be different to avoid concurrency issues.
 
 ```python
 from diart.optim import Optimizer
+from diart.inference import Benchmark
 
-benchmark, base_config, hparams = ...
-study_name = "my_study"
-storage = "mysql://root@localhost/example"
-optimizer = Optimizer(benchmark, base_config, hparams, study_name, storage)
+ID = 0  # Worker identifier
+base_config, hparams = ...
+benchmark = Benchmark("/wav/dir", "/rttm/dir", f"/out/dir/worker_{ID}", show_report=False)
+optimizer = Optimizer(benchmark, base_config, hparams, "/db/out/dir")
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
-## Build your own pipeline
+It is recommended to use other databases like mysql instead of sqlite in distributed optimization.
+More on this [here](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py).
 
-For a more advanced usage, diart also provides building blocks that can be combined to create your own pipelines.
+## Build pipelines
+
+For a more advanced usage, diart also provides building blocks that can be combined to create your own pipeline.
 Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
 
 ### Example
