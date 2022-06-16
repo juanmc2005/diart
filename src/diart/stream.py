@@ -8,7 +8,8 @@ import diart.sources as src
 from diart.inference import RealTimeInference
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
-if __name__ == "__main__":
+
+def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=str, help="Path to an audio file | 'microphone'")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
@@ -20,8 +21,10 @@ if __name__ == "__main__":
     parser.add_argument("--beta", default=10, type=float, help=f"{argdoc.BETA}. Defaults to 10")
     parser.add_argument("--max-speakers", default=20, type=int, help=f"{argdoc.MAX_SPEAKERS}. Defaults to 20")
     parser.add_argument("--no-plot", dest="no_plot", action="store_true", help="Skip plotting for faster inference")
-    parser.add_argument("--cpu", dest="cpu", action="store_true", help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
-    parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
+    parser.add_argument("--cpu", dest="cpu", action="store_true",
+                        help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
+    parser.add_argument("--output", type=str,
+                        help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
     args = parser.parse_args()
     args.device = torch.device("cpu") if args.cpu else None
 
@@ -42,3 +45,7 @@ if __name__ == "__main__":
 
     # Run online inference
     RealTimeInference(args.output, do_plot=not args.no_plot)(pipeline, audio_source)
+
+
+if __name__ == "__main__":
+    run()

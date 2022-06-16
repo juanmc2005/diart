@@ -11,10 +11,12 @@ from diart.inference import Benchmark
 from diart.optim import Optimizer, HyperParameter
 from diart.pipelines import PipelineConfig
 
-if __name__ == "__main__":
+
+def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=str, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
-    parser.add_argument("--reference", required=True, type=str, help="Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
+    parser.add_argument("--reference", required=True, type=str,
+                        help="Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -24,10 +26,13 @@ if __name__ == "__main__":
     parser.add_argument("--beta", default=10, type=float, help=f"{argdoc.BETA}. Defaults to 10")
     parser.add_argument("--max-speakers", default=20, type=int, help=f"{argdoc.MAX_SPEAKERS}. Defaults to 20")
     parser.add_argument("--batch-size", default=32, type=int, help=f"{argdoc.BATCH_SIZE}. Defaults to 32")
-    parser.add_argument("--cpu", dest="cpu", action="store_true", help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
-    parser.add_argument("--hparams", nargs="+", default=("tau_active", "rho_update", "delta_new"), help="Hyper-parameters to optimize. Must match names in `PipelineConfig`. Defaults to tau_active, rho_update and delta_new")
+    parser.add_argument("--cpu", dest="cpu", action="store_true",
+                        help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
+    parser.add_argument("--hparams", nargs="+", default=("tau_active", "rho_update", "delta_new"),
+                        help="Hyper-parameters to optimize. Must match names in `PipelineConfig`. Defaults to tau_active, rho_update and delta_new")
     parser.add_argument("--num-iter", default=100, type=int, help="Number of optimization trials")
-    parser.add_argument("--storage", type=str, help="Optuna storage string. If provided, continue a previous study instead of creating one. The database name must match the study name")
+    parser.add_argument("--storage", type=str,
+                        help="Optuna storage string. If provided, continue a previous study instead of creating one. The database name must match the study name")
     parser.add_argument("--output", required=True, type=str, help="Working directory")
     args = parser.parse_args()
     args.output = Path(args.output)
@@ -66,3 +71,7 @@ if __name__ == "__main__":
 
     # Clean temporary directory
     work_path.rmdir()
+
+
+if __name__ == "__main__":
+    run()
