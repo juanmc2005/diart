@@ -22,6 +22,10 @@
       Stream audio
     </a>
     <span> | </span>
+    <a href="#add-your-model">
+      Add your model
+    </a>
+    <span> | </span>
     <a href="#tune-hyper-parameters">
       Tune hyper-parameters
     </a>
@@ -116,6 +120,37 @@ inference(pipeline, audio_source)
 ```
 
 For faster inference and evaluation on a dataset we recommend to use `Benchmark` instead (see our notes on [reproducibility](#reproducibility)).
+
+## Add your model
+
+Third-party segmentation and embedding models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel`:
+
+```python
+import torch
+from typing import Optional
+from diart.models import EmbeddingModel
+from diart.pipelines import PipelineConfig, OnlineSpeakerDiarization
+from diart.sources import MicrophoneAudioSource
+from diart.inference import RealTimeInference
+
+class MyEmbeddingModel(EmbeddingModel):
+    def __init__(self):
+        super().__init__()
+        self.my_pretrained_model = load("my_model.ckpt")
+    
+    def __call__(
+        self,
+        waveform: torch.Tensor,
+        weights: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return self.my_pretrained_model(waveform, weights)
+
+config = PipelineConfig(embedding=MyEmbeddingModel())
+pipeline = OnlineSpeakerDiarization(config)
+mic = MicrophoneAudioSource(config.sample_rate)
+inference = RealTimeInference("/out/dir")
+inference(pipeline, mic)
+```
 
 ## Tune hyper-parameters
 
