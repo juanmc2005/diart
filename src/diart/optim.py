@@ -19,6 +19,16 @@ class HyperParameter:
     low: float
     high: float
 
+    @staticmethod
+    def from_name(name: Text) -> 'HyperParameter':
+        if name == "tau_active":
+            return TauActive
+        if name == "rho_update":
+            return RhoUpdate
+        if name == "delta_new":
+            return DeltaNew
+        raise ValueError(f"Hyper-parameter '{name}' not recognized")
+
 
 TauActive = HyperParameter("tau_active", low=0, high=1)
 RhoUpdate = HyperParameter("rho_update", low=0, high=1)
@@ -42,9 +52,9 @@ class Optimizer:
             self.study = study_or_path
         elif isinstance(study_or_path, str) or isinstance(study_or_path, Path):
             self.study = create_study(
-                storage="sqlite:///" + str(study_or_path / "trials.db"),
+                storage="sqlite:///" + str(study_or_path / f"{study_or_path.stem}.db"),
                 sampler=TPESampler(),
-                study_name=study_or_path.name,
+                study_name=study_or_path.stem,
                 direction="minimize",
                 load_if_exists=True,
             )

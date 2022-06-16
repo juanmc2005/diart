@@ -119,11 +119,17 @@ For faster inference and evaluation on a dataset we recommend to use `Benchmark`
 
 ## Tune hyper-parameters
 
-Diart implements a hyper-parameter optimizer based on optuna that allows you to tune any pipeline to any dataset.
+Diart implements a hyper-parameter optimizer based on [optuna](https://optuna.readthedocs.io/en/stable/index.html) that allows you to tune any pipeline to any dataset.
 
-[More about optuna](https://optuna.readthedocs.io/en/stable/index.html).
+### From the command line
 
-### A simple example
+```shell
+python -m diart.tune /wav/dir --reference /rttm/dir --output /out/dir
+```
+
+See `python -m diart.tune -h` for more options.
+
+### From python
 
 ```python
 from diart.optim import Optimizer, TauActive, RhoUpdate, DeltaNew
@@ -131,38 +137,50 @@ from diart.pipelines import PipelineConfig
 from diart.inference import Benchmark
 
 # Benchmark runs and evaluates the pipeline on a dataset
-benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir", show_report=False)
+benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir/tmp", show_report=False)
 # Base configuration for the pipeline we're going to tune
-base_config = PipelineConfig(duration=5, step=0.5, latency=5)
+base_config = PipelineConfig()
 # Hyper-parameters to optimize
 hparams = [TauActive, RhoUpdate, DeltaNew]
 # Optimizer implements the optimization loop
-optimizer = Optimizer(benchmark, base_config, hparams, "/db/out/dir")
+optimizer = Optimizer(benchmark, base_config, hparams, "/out/dir")
 # Run optimization
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
-This will store temporary predictions in `/out/dir` and write results of each trial in an sqlite database `/db/out/dir/trials.db`.
+This will use `/out/dir/tmp` as a working directory and write results to an sqlite database in `/out/dir`.
 
 ### Distributed optimization
 
 For bigger datasets, it is sometimes more convenient to run multiple optimization processes in parallel.
-To do this, make sure that the output directory or the study given to the optimizer is the same in each process.
-Notice that the output directories of `Benchmark` MUST be different to avoid concurrency issues.
+To do this, create a study on a [recommended DBMS](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py) (e.g. MySQL or PostgreSQL) making sure that the study and database names match:
+
+```shell
+mysql -u root -e "CREATE DATABASE IF NOT EXISTS example"
+optuna create-study --study-name "example" --storage "mysql://root@localhost/example"
+```
+
+Then you can run multiple identical optimizers pointing to the database:
+
+```shell
+python -m diart.tune /wav/dir --reference /rttm/dir --output /out/dir --storage mysql://root@localhost/example
+```
+
+If you are using the python API, make sure that worker directories are different to avoid concurrency issues:
 
 ```python
 from diart.optim import Optimizer
 from diart.inference import Benchmark
+from optuna.samplers import TPESampler
+import optuna
 
 ID = 0  # Worker identifier
 base_config, hparams = ...
-benchmark = Benchmark("/wav/dir", "/rttm/dir", f"/out/dir/worker_{ID}", show_report=False)
-optimizer = Optimizer(benchmark, base_config, hparams, "/db/out/dir")
+benchmark = Benchmark("/wav/dir", "/rttm/dir", f"/out/dir/worker-{ID}", show_report=False)
+study = optuna.load_study("example", "mysql://root@localhost/example", TPESampler())
+optimizer = Optimizer(benchmark, base_config, hparams, study)
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
-
-It is recommended to use other databases like mysql instead of sqlite in distributed optimization.
-More on this [here](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py).
 
 ## Build pipelines
 
@@ -174,30 +192,27 @@ Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `bloc
 Obtain overlap-aware speaker embeddings from a microphone stream:
 
 ```python
-import rx
 import rx.operators as ops
 import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
 from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 from diart.models import SegmentationModel, EmbeddingModel
 
-# Initialize independent modules
-seg_model = SegmentationModel.from_pyannote("pyannote/segmentation")
-segmentation = SpeakerSegmentation(seg_model)
-emb_model = EmbeddingModel.from_pyannote("pyannote/embedding")
-embedding = OverlapAwareSpeakerEmbedding(emb_model)
-mic = MicrophoneAudioSource(seg_model.get_sample_rate())
+segmentation = SpeakerSegmentation(
+    SegmentationModel.from_pyannote("pyannote/segmentation")
+)
+embedding = OverlapAwareSpeakerEmbedding(
+    EmbeddingModel.from_pyannote("pyannote/embedding")
+)
+sample_rate = segmentation.model.get_sample_rate()
+mic = MicrophoneAudioSource(sample_rate)
 
-# Reformat microphone stream. Defaults to 5s duration and 500ms shift
-regular_stream = mic.stream.pipe(dops.regularize_audio_stream(seg_model.get_sample_rate()))
-# Branch the microphone stream to calculate segmentation
-segmentation_stream = regular_stream.pipe(ops.map(segmentation))
-# Join audio and segmentation stream to calculate speaker embeddings
-embedding_stream = rx.zip(
-    regular_stream, segmentation_stream
-).pipe(ops.starmap(embedding))
-
-embedding_stream.subscribe(on_next=lambda emb: print(emb.shape))
+stream = mic.stream.pipe(
+    # Reformat stream to 5s duration and 500ms shift
+    dops.regularize_audio_stream(sample_rate),
+    ops.map(lambda wav: (wav, segmentation(wav))),
+    ops.starmap(embedding)
+).subscribe(on_next=lambda emb: print(emb.shape))
 
 mic.read()
 ```
@@ -276,7 +291,7 @@ config = PipelineConfig(
 pipeline = OnlineSpeakerDiarization(config)
 benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir")
 
-benchmark(pipeline, batch_size=32)
+benchmark(pipeline)
 ```
 
 This runs a faster inference by pre-calculating model outputs in batches.
