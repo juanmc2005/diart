@@ -88,16 +88,16 @@ pip install diart
 A recorded conversation:
 
 ```shell
-python -m diart.stream /path/to/audio.wav
+diart.stream /path/to/audio.wav
 ```
 
 A live conversation:
 
 ```shell
-python -m diart.stream microphone
+diart.stream microphone
 ```
 
-See `python -m diart.stream -h` for more options.
+See `diart.stream -h` for more options.
 
 ### From python
 
@@ -124,10 +124,10 @@ Diart implements a hyper-parameter optimizer based on [optuna](https://optuna.re
 ### From the command line
 
 ```shell
-python -m diart.tune /wav/dir --reference /rttm/dir --output /out/dir
+diart.tune /wav/dir --reference /rttm/dir --output /out/dir
 ```
 
-See `python -m diart.tune -h` for more options.
+See `diart.tune -h` for more options.
 
 ### From python
 
@@ -163,7 +163,7 @@ optuna create-study --study-name "example" --storage "mysql://root@localhost/exa
 Then you can run multiple identical optimizers pointing to the database:
 
 ```shell
-python -m diart.tune /wav/dir --reference /rttm/dir --output /out/dir --storage mysql://root@localhost/example
+diart.tune /wav/dir --reference /rttm/dir --output /out/dir --storage mysql://root@localhost/example
 ```
 
 If you are using the python API, make sure that worker directories are different to avoid concurrency issues:
@@ -267,7 +267,7 @@ To obtain the best results, make sure to use the following hyper-parameters:
 `diart.benchmark` and `diart.inference.Benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
 
 ```shell
-python -m diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --output /out/dir
+diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --output /out/dir
 ```
 
 or using the inference API:
@@ -290,7 +290,7 @@ benchmark(pipeline)
 ```
 
 This runs a faster inference by pre-calculating model outputs in batches.
-See `python -m diart.benchmark -h` for more options.
+See `diart.benchmark -h` for more options.
 
 For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
