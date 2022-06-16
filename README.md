@@ -196,14 +196,9 @@ import rx.operators as ops
 import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
 from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
-from diart.models import SegmentationModel, EmbeddingModel
 
-segmentation = SpeakerSegmentation(
-    SegmentationModel.from_pyannote("pyannote/segmentation")
-)
-embedding = OverlapAwareSpeakerEmbedding(
-    EmbeddingModel.from_pyannote("pyannote/embedding")
-)
+segmentation = SpeakerSegmentation.from_pyannote("pyannote/segmentation")
+embedding = OverlapAwareSpeakerEmbedding.from_pyannote("pyannote/embedding")
 sample_rate = segmentation.model.get_sample_rate()
 mic = MicrophoneAudioSource(sample_rate)
 

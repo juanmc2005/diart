@@ -18,6 +18,10 @@ class SpeakerEmbedding:
         self.waveform_formatter = TemporalFeatureFormatter()
         self.weights_formatter = TemporalFeatureFormatter()
 
+    @staticmethod
+    def from_pyannote(model, device: Optional[torch.device] = None) -> 'SpeakerEmbedding':
+        return SpeakerEmbedding(EmbeddingModel.from_pyannote(model), device)
+
     def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None) -> torch.Tensor:
         """
         Calculate speaker embeddings of input audio.
@@ -133,6 +137,17 @@ class OverlapAwareSpeakerEmbedding:
         self.embedding = SpeakerEmbedding(model, device)
         self.osp = OverlappedSpeechPenalty(gamma, beta)
         self.normalize = EmbeddingNormalization(norm)
+
+    @staticmethod
+    def from_pyannote(
+        model,
+        gamma: float = 3,
+        beta: float = 10,
+        norm: Union[float, torch.Tensor] = 1,
+        device: Optional[torch.device] = None,
+    ):
+        model = EmbeddingModel.from_pyannote(model)
+        return OverlapAwareSpeakerEmbedding(model, gamma, beta, norm, device)
 
     def __call__(self, waveform: TemporalFeatures, segmentation: TemporalFeatures) -> torch.Tensor:
         return self.normalize(self.embedding(waveform, self.osp(segmentation)))
