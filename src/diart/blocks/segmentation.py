@@ -17,6 +17,10 @@ class SpeakerSegmentation:
         self.model.to(self.device)
         self.formatter = TemporalFeatureFormatter()
 
+    @staticmethod
+    def from_pyannote(model, device: Optional[torch.device] = None) -> 'SpeakerSegmentation':
+        return SpeakerSegmentation(SegmentationModel.from_pyannote(model), device)
+
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         """
         Calculate the speaker segmentation of input audio.
