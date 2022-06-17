@@ -140,7 +140,7 @@ class SpeakerMapBuilder:
 
 class SpeakerMap:
     def __init__(self, mapping_matrix: np.ndarray, objective: MappingMatrixObjective):
-        self.mapping_matrix = mapping_matrix
+        self.mapping_matrix = np.nan_to_num(mapping_matrix, nan=objective.invalid_value)
         self.objective = objective
         self.num_source_speakers = self.mapping_matrix.shape[0]
         self.num_target_speakers = self.mapping_matrix.shape[1]
