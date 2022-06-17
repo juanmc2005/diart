@@ -4,10 +4,17 @@ import torch
 import torch.nn as nn
 
 try:
-    import pyannote.audio.pipelines.utils as pyannote
+    from pyannote.audio.pipelines.utils import get_model
+    from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
+
+try:
+    import speechbrain as sb
+    _has_speechbrain = True
+except ImportError:
+    _has_speechbrain = False
 
 
 class SegmentationModel(nn.Module):
@@ -33,7 +40,7 @@ class SegmentationModel(nn.Module):
         class PyannoteSegmentationModel(SegmentationModel):
             def __init__(self, pyannote_model):
                 super().__init__()
-                self.model = pyannote.get_model(pyannote_model)
+                self.model = get_model(pyannote_model)
 
             def get_sample_rate(self) -> int:
                 return self.model.audio.sample_rate
@@ -90,7 +97,7 @@ class EmbeddingModel(nn.Module):
         class PyannoteEmbeddingModel(EmbeddingModel):
             def __init__(self, pyannote_model):
                 super().__init__()
-                self.model = pyannote.get_model(pyannote_model)
+                self.model = get_model(pyannote_model)
 
             def __call__(
                 self,
@@ -120,3 +127,22 @@ class EmbeddingModel(nn.Module):
         speaker_embeddings: torch.Tensor, shape (batch, speakers, embedding_dim)
         """
         raise NotImplementedError
+
+
+class SpeechBrainEmbeddingModel(EmbeddingModel):
+    def __init__(self):
+        super().__init__()
+        assert _has_pyannote, "No pyannote.audio installation found"
+        assert _has_speechbrain, "No speechbrain installation found"
+        self.model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb")
+
+    def to(self, *args, **kwargs):
+        super().to(*args, **kwargs)
+        self.model.classifier_.to(*args, **kwargs)
+
+    def __call__(
+        self,
+        waveform: torch.Tensor,
+        weights: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return torch.from_numpy(self.model(waveform, weights))
