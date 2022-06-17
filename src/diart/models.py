@@ -134,17 +134,19 @@ class SpeechBrainEmbeddingModel(EmbeddingModel):
         super().__init__()
         assert _has_pyannote, "No pyannote.audio installation found"
         assert _has_speechbrain, "No speechbrain installation found"
-        self.model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb")
+        self.model: Optional[PretrainedSpeakerEmbedding] = None
+        self.device = None
 
-    def to(self, *args, **kwargs):
-        super().to(*args, **kwargs)
-        self.model.classifier_.to(*args, **kwargs)
+    def to(self, device):
+        self.device = device
 
     def __call__(
         self,
         waveform: torch.Tensor,
         weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        if self.model is None:
+            self.model = PretrainedSpeakerEmbedding("speechbrain/spkrec-ecapa-voxceleb", self.device)
         if weights is not None:
             # Min-max normalization of weights
             min_weights = torch.min(weights, dim=-1, keepdim=True)[0]
