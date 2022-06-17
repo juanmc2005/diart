@@ -145,4 +145,10 @@ class SpeechBrainEmbeddingModel(EmbeddingModel):
         waveform: torch.Tensor,
         weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        if weights is not None:
+            # Min-max normalization of weights
+            min_weights = torch.min(weights, dim=-1, keepdim=True)[0]
+            max_weights = torch.max(weights, dim=-1, keepdim=True)[0]
+            diff = max_weights - min_weights
+            weights = weights - min_weights / diff
         return torch.from_numpy(self.model(waveform, weights))
