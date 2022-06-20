@@ -297,7 +297,7 @@ class OnlineSpeakerClustering:
     metric: str. Defaults to "cosine".
         The distance metric to use.
     max_speakers: int
-        Optional Maximum number of global speakers to track through a conversation. 
+        Maximum number of global speakers to track through a conversation. Defaults to 20.
     """
     def __init__(
         self,
