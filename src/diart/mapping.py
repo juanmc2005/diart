@@ -22,6 +22,23 @@ class MappingMatrixObjective:
     def hard_speaker_map(
         self, num_src: int, num_tgt: int, assignments: Iterable[Tuple[int, int]]
     ) -> SpeakerMap:
+        """Create a hard map object where the highest cost is put
+        everywhere except on hard assignments from ``assignments``.
+
+        Parameters
+        ----------
+        num_src: int
+            Number of source speakers
+        num_tgt: int
+            Number of target speakers
+        assignments: Iterable[Tuple[int, int]]
+            An iterable of tuples with two elements having the first element as the source speaker
+            and the second element as the target speaker
+
+        Returns
+        -------
+            SpeakerMap
+        """
         mapping_matrix = self.invalid_tensor(shape=(num_src, num_tgt))
         for src, tgt in assignments:
             mapping_matrix[src, tgt] = self.best_possible_value
@@ -82,6 +99,23 @@ class SpeakerMapBuilder:
     def hard_map(
         shape: Tuple[int, int], assignments: Iterable[Tuple[int, int]], maximize: bool
     ) -> SpeakerMap:
+        """Create a ``SpeakerMap`` object based on the given assignments. This is a "hard" map, meaning that the
+        highest cost is put everywhere except on hard assignments from ``assignments``.
+
+        Parameters
+        ----------
+        shape: Tuple[int, int])
+            Shape of the mapping matrix
+        assignments: Iterable[Tuple[int, int]]
+            An iterable of tuples with two elements having the first element as the source speaker
+            and the second element as the target speaker
+        maximize: bool
+            whether to use scores where higher is better (true) or where lower is better (false)
+
+        Returns
+        -------
+        SpeakerMap
+        """
         num_src, num_tgt = shape
         objective = MaximizationObjective if maximize else MinimizationObjective
         return objective().hard_speaker_map(num_src, num_tgt, assignments)

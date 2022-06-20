@@ -8,6 +8,25 @@ from ..mapping import SpeakerMap, SpeakerMapBuilder
 
 
 class OnlineSpeakerClustering:
+    """Implements constrained incremental online clustering of speakers and manages cluster centers.
+
+    Parameters
+    ----------
+    tau_active:float
+        Threshold for detecting active speakers. This threshold is applied on the maximum value of per-speaker output
+        activation of the local segmentation model.
+    rho_update: float
+        Threshold for considering the extracted embedding when updating the centroid of the local speaker.
+        The centroid to which a local speaker is mapped is only updated if the ratio of speech/chunk duration
+        of a given local speaker is greater than this threshold.
+    delta_new: float
+        Threshold on the distance between a speaker embedding and a centroid. If the distance between a local speaker and all
+        centroids is larger than delta_new, then a new centroid is created for the current speaker.
+    metric: str. Defaults to "cosine".
+        The distance metric to use.
+    max_speakers: int
+        Maximum number of global speakers to track through a conversation. Defaults to 20.
+    """
     def __init__(
         self,
         tau_active: float,
@@ -51,17 +70,46 @@ class OnlineSpeakerClustering:
                 return center
 
     def init_centers(self, dimension: int):
+        """Initializes the speaker centroid matrix
+
+        Parameters
+        ----------
+        dimension: int
+            Dimension of embeddings used for representing a speaker.
+        """
         self.centers = np.zeros((self.max_speakers, dimension))
         self.active_centers = set()
         self.blocked_centers = set()
 
     def update(self, assignments: Iterable[Tuple[int, int]], embeddings: np.ndarray):
+        """Updates the speaker centroids given a list of assignments and local speaker embeddings
+
+        Parameters
+        ----------
+        assignments: Iterable[Tuple[int, int]])
+            An iterable of tuples with two elements having the first element as the source speaker
+            and the second element as the target speaker.
+        embeddings: np.ndarray, shape (local_speakers, embedding_dim)
+            Matrix containing embeddings for all local speakers.
+        """
         if self.centers is not None:
             for l_spk, g_spk in assignments:
                 assert g_spk in self.active_centers, "Cannot update unknown centers"
                 self.centers[g_spk] += embeddings[l_spk]
 
     def add_center(self, embedding: np.ndarray) -> int:
+        """Add a new speaker centroid initialized to a given embedding
+
+        Parameters
+        ----------
+        embedding: np.ndarray
+            Embedding vector of some local speaker
+
+        Returns
+        -------
+            center_index: int
+                Index of the created center
+        """
         center = self.get_next_center_position()
         self.centers[center] = embedding
         self.active_centers.add(center)
@@ -72,6 +120,20 @@ class OnlineSpeakerClustering:
         segmentation: SlidingWindowFeature,
         embeddings: torch.Tensor
     ) -> SpeakerMap:
+        """Identify the centroids to which the input speaker embeddings belong.
+
+        Parameters
+        ----------
+        segmentation: np.ndarray, shape (frames, local_speakers)
+            Matrix of segmentation outputs
+        embeddings: np.ndarray, shape (local_speakers, embedding_dim)
+            Matrix of embeddings
+
+        Returns
+        -------
+            speaker_map: SpeakerMap
+                A mapping from local speakers to global speakers.
+        """
         embeddings = embeddings.detach().cpu().numpy()
         active_speakers = np.where(np.max(segmentation.data, axis=0) >= self.tau_active)[0]
         long_speakers = np.where(np.mean(segmentation.data, axis=0) >= self.rho_update)[0]

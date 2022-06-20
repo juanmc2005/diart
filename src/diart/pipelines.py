@@ -81,8 +81,7 @@ class PipelineConfig:
         )
 
     def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
-        """
-        Return the end time of the last chunk for a given conversation duration.
+        """Return the end time of the last chunk for a given conversation duration.
 
         Parameters
         ----------
