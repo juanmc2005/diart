@@ -401,7 +401,8 @@ class OnlineSpeakerClustering:
         embeddings: np.ndarray, shape (local_speakers, embedding_dim)
             Matrix of embeddings 
 
-        Returns:
+        Returns
+        -------
             SpeakerMap: a mapping from local speakers to global speakers.
         """
         embeddings = embeddings.detach().cpu().numpy()
