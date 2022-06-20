@@ -1,19 +1,22 @@
-from typing import Optional
+from argparse import Namespace
+from typing import Optional, List
 
 import rx
 import rx.operators as ops
-from pyannote.audio.pipelines.utils import PipelineModel
+import torch
 
-from . import functional as fn
+from . import blocks
+from . import models as m
 from . import operators as dops
 from . import sources as src
+from . import utils
 
 
-class OnlineSpeakerDiarization:
+class PipelineConfig:
     def __init__(
         self,
-        segmentation: PipelineModel = "pyannote/segmentation",
-        embedding: PipelineModel = "pyannote/embedding",
+        segmentation: Optional[m.SegmentationModel] = None,
+        embedding: Optional[m.EmbeddingModel] = None,
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[float] = None,
@@ -23,17 +26,32 @@ class OnlineSpeakerDiarization:
         gamma: float = 3,
         beta: float = 10,
         max_speakers: int = 20,
+        device: Optional[torch.device] = None,
     ):
-        self.segmentation = fn.FrameWiseModel(segmentation)
+        # Default segmentation model is pyannote/segmentation
+        self.segmentation = segmentation
+        if self.segmentation is None:
+            self.segmentation = m.SegmentationModel.from_pyannote("pyannote/segmentation")
+
+        # Default duration is the one given by the segmentation model
         self.duration = duration
         if self.duration is None:
-            self.duration = self.segmentation.model.specifications.duration
-        self.embedding = fn.ChunkWiseModel(embedding)
+            self.duration = self.segmentation.get_duration()
+
+        # Expected sample rate is given by the segmentation model
+        self.sample_rate = self.segmentation.get_sample_rate()
+
+        # Default embedding model is pyannote/embedding
+        self.embedding = embedding
+        if self.embedding is None:
+            self.embedding = m.EmbeddingModel.from_pyannote("pyannote/embedding")
+
+        # Latency defaults to the step duration
         self.step = step
         self.latency = latency
         if self.latency is None:
             self.latency = self.step
-        assert self.step <= self.latency <= self.duration, "Invalid latency requested"
+
         self.tau_active = tau_active
         self.rho_update = rho_update
         self.delta_new = delta_new
@@ -41,62 +59,108 @@ class OnlineSpeakerDiarization:
         self.beta = beta
         self.max_speakers = max_speakers
 
-    @property
-    def sample_rate(self) -> int:
-        return self.segmentation.model.audio.sample_rate
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def get_end_time(self, source: src.AudioSource) -> Optional[float]:
-        if source.duration is not None:
-            return source.duration - source.duration % self.step
-        return None
+    @staticmethod
+    def from_namespace(args: Namespace) -> 'PipelineConfig':
+        return PipelineConfig(
+            segmentation=getattr(args, "segmentation", None),
+            embedding=getattr(args, "embedding", None),
+            duration=getattr(args, "duration", None),
+            step=args.step,
+            latency=args.latency,
+            tau_active=args.tau,
+            rho_update=args.rho,
+            delta_new=args.delta,
+            gamma=args.gamma,
+            beta=args.beta,
+            max_speakers=args.max_speakers,
+            device=torch.device("cpu") if args.cpu else None,
+        )
 
-    def from_source(self, source: src.AudioSource, output_waveform: bool = True) -> rx.Observable:
-        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.sample_rate}"
-        assert source.sample_rate == self.sample_rate, msg
-        # Regularize the stream to a specific chunk duration and step
-        regular_stream = source.stream
-        if not source.is_regular:
-            regular_stream = source.stream.pipe(
-                dops.regularize_stream(self.duration, self.step, source.sample_rate)
-            )
-        # Branch the stream to calculate chunk segmentation
-        segmentation_stream = regular_stream.pipe(
-            ops.map(self.segmentation)
+    def last_chunk_end_time(self, conv_duration: float) -> Optional[float]:
+        """Return the end time of the last chunk for a given conversation duration.
+
+        Parameters
+        ----------
+        conv_duration: float
+            Duration of a conversation in seconds.
+        """
+        return conv_duration - conv_duration % self.step
+
+
+class OnlineSpeakerTracking:
+    def __init__(self, config: PipelineConfig):
+        self.config = config
+
+    def get_end_time(self, duration: Optional[float]) -> Optional[float]:
+        return None if duration is None else self.config.last_chunk_end_time(duration)
+
+    def get_operators(self, source: src.AudioSource) -> List[dops.Operator]:
+        clustering = blocks.OnlineSpeakerClustering(
+            self.config.tau_active,
+            self.config.rho_update,
+            self.config.delta_new,
+            "cosine",
+            self.config.max_speakers,
         )
-        # Join audio and segmentation stream to calculate speaker embeddings
-        osp = fn.OverlappedSpeechPenalty(gamma=self.gamma, beta=self.beta)
-        embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
-            ops.starmap(lambda wave, seg: (wave, osp(seg))),
-            ops.starmap(self.embedding),
-            ops.map(fn.EmbeddingNormalization(norm=1))
+        end_time = self.get_end_time(source.duration)
+        pred_aggregation = blocks.DelayedAggregation(
+            self.config.step, self.config.latency, strategy="hamming", stream_end=end_time
         )
-        # Join segmentation and embedding streams to update a background clustering model
-        #  while regulating latency and binarizing the output
-        clustering = fn.OnlineSpeakerClustering(
-            self.tau_active, self.rho_update, self.delta_new, "cosine", self.max_speakers
+        audio_aggregation = blocks.DelayedAggregation(
+            self.config.step, self.config.latency, strategy="first", stream_end=end_time
         )
-        end_time = self.get_end_time(source)
-        aggregation = fn.DelayedAggregation(
-            self.step, self.latency, strategy="hamming", stream_end=end_time
-        )
-        pipeline = rx.zip(segmentation_stream, embedding_stream).pipe(
-            ops.starmap(clustering),
+        binarize = blocks.Binarize(source.uri, self.config.tau_active)
+        return [
+            # Identify global speakers with online clustering
+            ops.starmap(lambda wav, seg, emb: (wav, clustering(seg, emb))),
             # Buffer 'num_overlapping' sliding chunks with a step of 1 chunk
-            dops.buffer_slide(aggregation.num_overlapping_windows),
+            dops.buffer_slide(pred_aggregation.num_overlapping_windows),
             # Aggregate overlapping output windows
-            ops.map(aggregation),
+            ops.map(utils.unzip),
+            ops.starmap(lambda wav_buffer, pred_buffer: (
+                audio_aggregation(wav_buffer), pred_aggregation(pred_buffer)
+            )),
             # Binarize output
-            ops.map(fn.Binarize(source.uri, self.tau_active)),
+            ops.starmap(lambda wav, pred: (binarize(pred), wav)),
+        ]
+
+
+class OnlineSpeakerDiarization:
+    def __init__(self, config: PipelineConfig, profile: bool = False):
+        self.config = config
+        self.profile = profile
+        self.segmentation = blocks.SpeakerSegmentation(config.segmentation, config.device)
+        self.embedding = blocks.OverlapAwareSpeakerEmbedding(
+            config.embedding, config.gamma, config.beta, norm=1, device=config.device
         )
-        # Add corresponding waveform to the output
-        if output_waveform:
-            window_selector = fn.DelayedAggregation(
-                self.step, self.latency, strategy="first", stream_end=end_time
-            )
-            waveform_stream = regular_stream.pipe(
-                dops.buffer_slide(window_selector.num_overlapping_windows),
-                ops.map(window_selector),
-            )
-            return rx.zip(pipeline, waveform_stream)
-        # No waveform needed, add None for consistency
-        return pipeline.pipe(ops.map(lambda ann: (ann, None)))
+        self.speaker_tracking = OnlineSpeakerTracking(config)
+        msg = f"Latency should be in the range [{config.step}, {config.duration}]"
+        assert config.step <= config.latency <= config.duration, msg
+
+    def from_audio_source(self, source: src.AudioSource) -> rx.Observable:
+        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
+        assert source.sample_rate == self.config.sample_rate, msg
+        operators = []
+        # Regularize the stream to a specific chunk duration and step
+        if not source.is_regular:
+            operators.append(dops.regularize_audio_stream(
+                self.config.duration, self.config.step, source.sample_rate
+            ))
+        operators += [
+            # Extract segmentation and keep audio
+            ops.map(lambda wav: (wav, self.segmentation(wav))),
+            # Extract embeddings and keep segmentation
+            ops.starmap(lambda wav, seg: (wav, seg, self.embedding(wav, seg))),
+        ]
+        # Add speaker tracking
+        operators += self.speaker_tracking.get_operators(source)
+        if self.profile:
+            return dops.profile(source.stream, operators)
+        return source.stream.pipe(*operators)
+
+    def from_feature_source(self, source: src.AudioSource) -> rx.Observable:
+        return source.stream.pipe(*self.speaker_tracking.get_operators(source))

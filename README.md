@@ -5,72 +5,117 @@
 </p>
 
 <p align="center">
-<img alt="PyPI" src="https://img.shields.io/pypi/v/diart?color=g">
-<img alt="GitHub top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
-<img alt="GitHub code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
-<img alt="GitHub" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="PyPI Version" src="https://img.shields.io/pypi/v/diart?color=g">
+<img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/diart?period=total&units=international_system&left_color=grey&right_color=brightgreen&left_text=downloads">
+<img alt="Top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="Code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
 </p>
 
 <br/>
 
 <p align="center">
-<img width="48%" src="/snippet.png" title="Code snippet" />
-<img width="51%" src="/visualization.gif" title="Real-time diarization example" />
+<img width="100%" src="/demo.gif" title="Real-time diarization example" />
 </p>
 
-## Demo
+## Install
 
-You can visualize the real-time speaker diarization of an audio stream with the built-in demo script.
-
-### Stream a recorded conversation
+1) Create environment:
 
 ```shell
-python -m diart.demo /path/to/audio.wav
+conda create -n diart python=3.8
+conda activate diart
 ```
 
-### Stream from your microphone
+2) Install `PortAudio` and `soundfile`:
 
 ```shell
-python -m diart.demo microphone
+conda install portaudio
+conda install pysoundfile -c conda-forge
 ```
 
-See `python -m diart.demo -h` for more information.
+3) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
+
+4) Install pyannote.audio 2.0 (currently in development)
+
+```shell
+pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
+```
+
+**Note:** starting from version 0.4, installing pyannote.audio is mandatory to run the default system or to use pyannote-based models. In any other case, this step can be ignored.
+
+5) Install diart:
+```shell
+pip install diart
+```
+
+## Stream your own audio
+
+### A recorded conversation
+
+```shell
+python -m diart.stream /path/to/audio.wav
+```
+
+### From your microphone
+
+```shell
+python -m diart.stream microphone
+```
+
+See `python -m diart.stream -h` for more options.
+
+## Inference API
+
+Run a customized real-time speaker diarization pipeline over an audio stream with `diart.inference.RealTimeInference`:
+
+```python
+from diart.sources import MicrophoneAudioSource
+from diart.inference import RealTimeInference
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+
+config = PipelineConfig()  # Default parameters
+pipeline = OnlineSpeakerDiarization(config)
+audio_source = MicrophoneAudioSource(config.sample_rate)
+inference = RealTimeInference("/output/path", do_plot=True)
+
+inference(pipeline, audio_source)
+```
+
+For faster inference and evaluation on a dataset we recommend to use `Benchmark` (see our notes on [reproducibility](#reproducibility))
 
 ## Build your own pipeline
 
-Diart provides building blocks that can be combined to do speaker diarization on an audio stream.
-The streaming implementation is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `functional` module is completely independent.
+Diart also provides building blocks that can be combined to create your own pipeline.
+Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
 
 ### Example
 
-Obtain overlap-aware speaker embeddings from a microphone stream
+Obtain overlap-aware speaker embeddings from a microphone stream:
 
 ```python
 import rx
 import rx.operators as ops
-import diart.operators as myops
+import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
-import diart.functional as fn
-
-sample_rate = 16000
-mic = MicrophoneAudioSource(sample_rate)
+from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
+from diart.models import SegmentationModel, EmbeddingModel
 
 # Initialize independent modules
-segmentation = fn.FrameWiseModel("pyannote/segmentation")
-embedding = fn.ChunkWiseModel("pyannote/embedding")
-osp = fn.OverlappedSpeechPenalty(gamma=3, beta=10)
-normalization = fn.EmbeddingNormalization(norm=1)
+seg_model = SegmentationModel.from_pyannote("pyannote/segmentation")
+segmentation = SpeakerSegmentation(seg_model)
+emb_model = EmbeddingModel.from_pyannote("pyannote/embedding")
+embedding = OverlapAwareSpeakerEmbedding(emb_model)
+mic = MicrophoneAudioSource(seg_model.get_sample_rate())
 
 # Reformat microphone stream. Defaults to 5s duration and 500ms shift
-regular_stream = mic.stream.pipe(myops.regularize_stream(sample_rate))
+regular_stream = mic.stream.pipe(dops.regularize_audio_stream(seg_model.get_sample_rate()))
 # Branch the microphone stream to calculate segmentation
 segmentation_stream = regular_stream.pipe(ops.map(segmentation))
 # Join audio and segmentation stream to calculate speaker embeddings
-embedding_stream = rx.zip(regular_stream, segmentation_stream).pipe(
-    ops.starmap(lambda wave, seg: (wave, osp(seg))),
-    ops.starmap(embedding),
-    ops.map(normalization)
-)
+embedding_stream = rx.zip(
+    regular_stream, segmentation_stream
+).pipe(ops.starmap(embedding))
 
 embedding_stream.subscribe(on_next=lambda emb: print(emb.shape))
 
@@ -84,27 +129,6 @@ torch.Size([4, 512])
 torch.Size([4, 512])
 torch.Size([4, 512])
 ...
-```
-
-## Install
-
-1) Create environment:
-
-```shell
-conda create -n diarization python==3.8
-conda activate diarization
-```
-
-2) Install the latest PyTorch version following the [official instructions](https://pytorch.org/get-started/locally/#start-locally)
-
-3) Install pyannote.audio 2.0 (currently in development)
-```shell
-pip install git+https://github.com/pyannote/pyannote-audio.git@develop#egg=pyannote-audio
-```
-
-4) Install diart:
-```shell
-pip install diart
 ```
 
 ## Powered by research
@@ -123,45 +147,62 @@ Diart is the official implementation of the paper *[Overlap-aware low-latency on
 If you found diart useful, please make sure to cite our paper:
 
 ```bibtex
-Awaiting paper publication (ASRU 2021).
+@inproceedings{diart,  
+  author={Coria, Juan M. and Bredin, Hervé and Ghannay, Sahar and Rosset, Sophie},  
+  booktitle={2021 IEEE Automatic Speech Recognition and Understanding Workshop (ASRU)},   
+  title={Overlap-Aware Low-Latency Online Speaker Diarization Based on End-to-End Local Segmentation}, 
+  year={2021},
+  pages={1139-1146},
+  doi={10.1109/ASRU51503.2021.9688044},
+}
 ```
 
 ##  Reproducibility
 
 ![Results table](/table1.png)
 
-To reproduce the results of the paper, use the following hyper-parameters:
+Diart aims to be lightweight and capable of real-time streaming in practical scenarios.
+Its performance is very close to what is reported in the paper (and sometimes even a bit better).
 
-Dataset     | latency | tau    | rho    | delta 
-------------|---------|--------|--------|------
-DIHARD III  | any     | 0.555  | 0.422  | 1.517  
-AMI         | any     | 0.507  | 0.006  | 1.057  
-VoxConverse | any     | 0.576  | 0.915  | 0.648  
-DIHARD II   | 1s      | 0.619  | 0.326  | 0.997  
-DIHARD II   | 5s      | 0.555  | 0.422  | 1.517
+To obtain the best results, make sure to use the following hyper-parameters:
 
-For instance, for a DIHARD III configuration:
+| Dataset     | latency | tau    | rho    | delta |
+|-------------|---------|--------|--------|-------|
+| DIHARD III  | any     | 0.555  | 0.422  | 1.517 |
+| AMI         | any     | 0.507  | 0.006  | 1.057 |
+| VoxConverse | any     | 0.576  | 0.915  | 0.648 |
+| DIHARD II   | 1s      | 0.619  | 0.326  | 0.997 |
+| DIHARD II   | 5s      | 0.555  | 0.422  | 1.517 |
+
+`diart.benchmark` and `diart.inference.Benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
 
 ```shell
-python -m diart.demo /path/to/file.wav --tau=0.555 --rho=0.422 --delta=1.517 --output /output/dir
+python -m diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --output /out/dir
 ```
 
-And then to obtain the diarization error rate:
+or using the inference API:
 
 ```python
-from pyannote.metrics.diarization import DiarizationErrorRate
-from pyannote.database.util import load_rttm
+from diart.inference import Benchmark
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
-metric = DiarizationErrorRate()
-hypothesis = load_rttm("/output/dir/output.rttm")
-hypothesis = list(hypothesis.values())[0]  # Extract hypothesis from dictionary
-reference = load_rttm("/path/to/reference.rttm")
-reference = list(reference.values())[0]  # Extract reference from dictionary
+config = PipelineConfig(
+    step=0.5,
+    latency=0.5,
+    tau_active=0.555,
+    rho_update=0.422,
+    delta_new=1.517
+)
+pipeline = OnlineSpeakerDiarization(config)
+benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir")
 
-der = metric(reference, hypothesis)
+benchmark(pipeline, batch_size=32)
 ```
 
-For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) in RTTM format for every entry of Table 1 and Figure 5 in the paper. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
+This runs a faster inference by pre-calculating model outputs in batches.
+See `python -m diart.benchmark -h` for more options.
+
+For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
 ![Figure 5](/figure5.png)
 

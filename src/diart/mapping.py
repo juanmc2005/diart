@@ -4,7 +4,7 @@ from typing import Callable, Iterable, List, Optional, Text, Tuple, Union
 
 import numpy as np
 from pyannote.core.utils.distance import cdist
-from scipy.optimize import linear_sum_assignment
+from scipy.optimize import linear_sum_assignment as lsap
 
 
 class MappingMatrixObjective:
@@ -12,7 +12,7 @@ class MappingMatrixObjective:
         return np.ones(shape) * self.invalid_value
 
     def optimal_assignments(self, matrix: np.ndarray) -> List[int]:
-        return list(linear_sum_assignment(matrix, self.maximize)[1])
+        return list(lsap(matrix, self.maximize)[1])
 
     def mapped_indices(self, matrix: np.ndarray, axis: int) -> List[int]:
         # Entries full of invalid_value are not mapped
@@ -22,7 +22,8 @@ class MappingMatrixObjective:
     def hard_speaker_map(
         self, num_src: int, num_tgt: int, assignments: Iterable[Tuple[int, int]]
     ) -> SpeakerMap:
-        """Create a hard map object where the highest cost is put everywhere except on hard assignments from ``assignments``.
+        """Create a hard map object where the highest cost is put
+        everywhere except on hard assignments from ``assignments``.
 
         Parameters
         ----------
@@ -99,7 +100,7 @@ class SpeakerMapBuilder:
         shape: Tuple[int, int], assignments: Iterable[Tuple[int, int]], maximize: bool
     ) -> SpeakerMap:
         """Create a ``SpeakerMap`` object based on the given assignments. This is a "hard" map, meaning that the
-           highest cost is put everywhere except on hard assignments from ``assignments``.
+        highest cost is put everywhere except on hard assignments from ``assignments``.
 
         Parameters
         ----------
@@ -169,26 +170,6 @@ class SpeakerMapBuilder:
         # We want to minimize the distance to calculate optimal speaker alignments
         dist_matrix = cdist(embeddings1, embeddings2, metric=metric)
         return SpeakerMap(dist_matrix, MinimizationObjective())
-
-    @staticmethod
-    def clf_output(predictions: np.ndarray, pad_to: Optional[int] = None) -> SpeakerMap:
-        """
-        Parameters
-        ----------
-        predictions : np.ndarray, (num_local_speakers, num_global_speakers)
-            Probability outputs of a speaker embedding classifier
-        pad_to : int, optional
-            Pad num_global_speakers to this value.
-            Useful to deal with unknown speakers that may appear in the future.
-            Defaults to no padding
-        """
-        num_locals, num_globals = predictions.shape
-        objective = MaximizationObjective(max_value=1)
-        if pad_to is not None and num_globals < pad_to:
-            padding = np.ones((num_locals, pad_to - num_globals))
-            padding = objective.invalid_value * padding
-            predictions = np.concatenate([predictions, padding], axis=1)
-        return SpeakerMap(predictions, objective)
 
 
 class SpeakerMap:

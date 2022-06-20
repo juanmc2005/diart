@@ -1,11 +1,13 @@
+import time
 from dataclasses import dataclass
-from typing import Callable, Optional, List, Any, Tuple
+from typing import Callable, Optional, List, Any, Tuple, Text
 
 import numpy as np
 import rx
 from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature, Segment
 from rx import operators as ops
 from rx.core import Observable
+from tqdm import tqdm
 
 Operator = Callable[[Observable], Observable]
 
@@ -35,7 +37,7 @@ class AudioBufferState:
         return call_fn
 
 
-def regularize_stream(
+def regularize_audio_stream(
     duration: float = 5,
     step: float = 0.5,
     sample_rate: int = 16000
@@ -268,7 +270,10 @@ def buffer_output(
             else:
                 # The buffer is full, shift values to the left and copy into last buffer chunk
                 waveform = np.roll(state.waveform.data, -num_step_samples, axis=0)
-                waveform[-num_step_samples:] = value.waveform.data
+                # If running on a file, the online prediction may be shorter depending on the latency
+                # The remaining audio at the end is appended, so value.waveform may be longer than num_step_samples
+                # In that case, we simply ignore the appended samples.
+                waveform[-num_step_samples:] = value.waveform.data[:num_step_samples]
 
             # Wrap waveform in a sliding window feature to include timestamps
             window = SlidingWindow(start=start_time, duration=resolution, step=resolution)
@@ -279,4 +284,54 @@ def buffer_output(
     return rx.pipe(
         ops.scan(accumulate, OutputAccumulationState.initial()),
         ops.map(OutputAccumulationState.to_tuple),
+    )
+
+
+def progress(
+    desc: Optional[Text] = None,
+    total: Optional[int] = None,
+    unit: Text = "it",
+    leave: bool = True
+) -> Operator:
+    pbar = tqdm(desc=desc, total=total, unit=unit, leave=leave)
+    return rx.pipe(
+        ops.do_action(
+            on_next=lambda _: pbar.update(),
+            on_error=lambda _: pbar.close(),
+            on_completed=lambda: pbar.close(),
+        )
+    )
+
+
+class _Chronometer:
+    def __init__(self):
+        self.current_start_time = None
+        self.history = []
+
+    def start(self):
+        self.current_start_time = time.monotonic()
+
+    def stop(self):
+        end_time = time.monotonic() - self.current_start_time
+        self.current_start_time = None
+        self.history.append(end_time)
+
+    def report(self):
+        print(
+            f"Stream took {np.mean(self.history).item():.3f} "
+            f"(+/-{np.std(self.history).item():.3f}) seconds/chunk "
+            f"-- based on {len(self.history)} chunks"
+        )
+
+
+def profile(observable: rx.Observable, operations: List[Operator]) -> rx.Observable:
+    chronometer = _Chronometer()
+    return observable.pipe(
+        ops.do_action(lambda _: chronometer.start()),
+        *operations,
+        ops.do_action(
+            on_next=lambda _: chronometer.stop(),
+            on_error=lambda _: chronometer.report(),
+            on_completed=chronometer.report,
+        )
     )
