@@ -361,7 +361,7 @@ class OnlineSpeakerClustering:
         assignments: Iterable[Tuple[int, int]])
             An iterable of tuples with two elements having the first element as the source speaker
             and the second element as the target speaker.
-        embeddings: np.ndarray of shape (n_local_speakers, dim_embedding)
+        embeddings: np.ndarray, shape (local_speakers, embedding_dim)
             Matrix containing embeddings for all local speakers.
         """
         if self.centers is not None:
