@@ -104,7 +104,7 @@ class SpeakerMapBuilder:
         Parameters
         ----------
         shape: Tuple[int, int])
-            shape of the mapping matrix
+            Shape of the mapping matrix
         assignments: Iterable[Tuple[int, int]]
             An iterable of tuples with two elements having the first element as the source speaker
             and the second element as the target speaker
