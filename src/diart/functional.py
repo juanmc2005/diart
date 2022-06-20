@@ -296,7 +296,7 @@ class OnlineSpeakerClustering:
         centroids is larger than delta_new, then a new centroid is created for the current speaker.
     metric: str. Defaults to "cosine".
         The distance metric to use.
-    max_speakers: int. Defaults to 20.
+    max_speakers: int
         Optional Maximum number of global speakers to track through a conversation. 
     """
     def __init__(
