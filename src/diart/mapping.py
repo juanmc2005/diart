@@ -22,7 +22,7 @@ class MappingMatrixObjective:
     def hard_speaker_map(
         self, num_src: int, num_tgt: int, assignments: Iterable[Tuple[int, int]]
     ) -> SpeakerMap:
-        """Returns a hard map object where the highest cost is put everywhere except on hard assignments from assignments
+        """Create a hard map object where the highest cost is put everywhere except on hard assignments from ``assignments``.
 
         Parameters
         ----------
