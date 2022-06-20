@@ -99,7 +99,7 @@ class SpeakerMapBuilder:
         shape: Tuple[int, int], assignments: Iterable[Tuple[int, int]], maximize: bool
     ) -> SpeakerMap:
         """Create a ``SpeakerMap`` object based on the given assignments. This is a "hard" map, meaning that the
-           highest cost is put everywhere except on hard assignments from assignments.
+           highest cost is put everywhere except on hard assignments from ``assignments``.
 
         Parameters
         ----------
