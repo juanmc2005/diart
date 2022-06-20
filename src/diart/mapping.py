@@ -111,7 +111,9 @@ class SpeakerMapBuilder:
         maximize: bool
             whether to use scores where higher is better (true) or where lower is better (false)
 
-        Returns: a SpeakerMap
+        Returns
+        -------
+        SpeakerMap
         """
         num_src, num_tgt = shape
         objective = MaximizationObjective if maximize else MinimizationObjective
