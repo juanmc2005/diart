@@ -280,7 +280,7 @@ class DelayedAggregation:
 
 
 class OnlineSpeakerClustering:
-    """Makes an object for handling constrained incremental online clustering of speakers and maintaining cluster centers.
+    """Implements constrained incremental online clustering of speakers and manages cluster centers.
 
     Parameters
     ----------
