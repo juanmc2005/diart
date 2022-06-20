@@ -379,7 +379,8 @@ class OnlineSpeakerClustering:
 
         Returns
         -------
-            int: index of the created center
+            center_index: int
+                Index of the created center
         """
         center = self.get_next_center_position()
         self.centers[center] = embedding
