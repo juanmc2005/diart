@@ -403,7 +403,8 @@ class OnlineSpeakerClustering:
 
         Returns
         -------
-            SpeakerMap: a mapping from local speakers to global speakers.
+            speaker_map: SpeakerMap
+                A mapping from local speakers to global speakers.
         """
         embeddings = embeddings.detach().cpu().numpy()
         active_speakers = np.where(np.max(segmentation.data, axis=0) >= self.tau_active)[0]
