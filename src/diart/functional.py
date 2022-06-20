@@ -377,7 +377,8 @@ class OnlineSpeakerClustering:
         embedding: np.ndarray
             Embedding vector of some local speaker
 
-        Returns:
+        Returns
+        -------
             int: index of the created center
         """
         center = self.get_next_center_position()
