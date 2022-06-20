@@ -34,7 +34,8 @@ class MappingMatrixObjective:
             An iterable of tuples with two elements having the first element as the source speaker
             and the second element as the target speaker
 
-        Returns:
+        Returns
+        -------
             SpeakerMap
         """
         mapping_matrix = self.invalid_tensor(shape=(num_src, num_tgt))
