@@ -396,7 +396,7 @@ class OnlineSpeakerClustering:
 
         Parameters
         ----------
-        segmentation: np.ndarray of shape (n_frames, n_local_speakers)
+        segmentation: np.ndarray, shape (frames, local_speakers)
             Matrix of segmentation outputs 
         embeddings: np.ndarray of shape (n_local_speakers, dim_embedding)
             Matrix of embeddings 
