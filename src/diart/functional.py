@@ -289,7 +289,7 @@ class OnlineSpeakerClustering:
         activation of the local segmentation model.
     rho_update: float
         Threshold for considering the extracted embedding when updating the centroid of the local speaker.
-        The centroid to which a local speaker is mapped is only updated if the ratio of speech/chunk duration of
+        The centroid to which a local speaker is mapped is only updated if the ratio of speech/chunk duration
         of a given local speaker is greater than this threshold.
     delta_new: float
         Threshold on the distance between a speaker embedding and a centroid. If the distance between a local speaker and all
