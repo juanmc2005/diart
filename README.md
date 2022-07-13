@@ -33,7 +33,7 @@
     <a href="#build-pipelines">
       Build pipelines
     </a>
-    <span> | </span>
+    <br/>
     <a href="#powered-by-research">
       Research
     </a>
