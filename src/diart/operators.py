@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Callable, Optional, List, Any, Tuple, Text
 
@@ -36,7 +37,7 @@ class AudioBufferState:
         return call_fn
 
 
-def regularize_stream(
+def regularize_audio_stream(
     duration: float = 5,
     step: float = 0.5,
     sample_rate: int = 16000
@@ -298,5 +299,39 @@ def progress(
             on_next=lambda _: pbar.update(),
             on_error=lambda _: pbar.close(),
             on_completed=lambda: pbar.close(),
+        )
+    )
+
+
+class _Chronometer:
+    def __init__(self):
+        self.current_start_time = None
+        self.history = []
+
+    def start(self):
+        self.current_start_time = time.monotonic()
+
+    def stop(self):
+        end_time = time.monotonic() - self.current_start_time
+        self.current_start_time = None
+        self.history.append(end_time)
+
+    def report(self):
+        print(
+            f"Stream took {np.mean(self.history).item():.3f} "
+            f"(+/-{np.std(self.history).item():.3f}) seconds/chunk "
+            f"-- based on {len(self.history)} chunks"
+        )
+
+
+def profile(observable: rx.Observable, operations: List[Operator]) -> rx.Observable:
+    chronometer = _Chronometer()
+    return observable.pipe(
+        ops.do_action(lambda _: chronometer.start()),
+        *operations,
+        ops.do_action(
+            on_next=lambda _: chronometer.stop(),
+            on_error=lambda _: chronometer.report(),
+            on_completed=chronometer.report,
         )
     )

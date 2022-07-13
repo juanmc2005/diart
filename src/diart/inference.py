@@ -48,7 +48,7 @@ class RealTimeInference:
         """
         rttm_path = self.output_path / f"{source.uri}.rttm"
         rttm_writer = RTTMWriter(path=rttm_path)
-        observable = pipeline.from_source(source).pipe(
+        observable = pipeline.from_audio_source(source).pipe(
             dops.progress(f"Streaming {source.uri}", total=source.length, leave=True)
         )
         if not self.do_plot:
@@ -59,12 +59,12 @@ class RealTimeInference:
             observable.pipe(
                 ops.do(rttm_writer),
                 dops.buffer_output(
-                    duration=pipeline.duration,
+                    duration=pipeline.config.duration,
                     step=pipeline.config.step,
                     latency=pipeline.config.latency,
-                    sample_rate=pipeline.sample_rate
+                    sample_rate=pipeline.config.sample_rate
                 ),
-            ).subscribe(RealTimePlot(pipeline.duration, pipeline.config.latency))
+            ).subscribe(RealTimePlot(pipeline.config.duration, pipeline.config.latency))
         # Stream audio through the pipeline
         source.read()
 
@@ -92,6 +92,9 @@ class Benchmark:
         speech_path: Union[Text, Path],
         reference_path: Optional[Union[Text, Path]] = None,
         output_path: Optional[Union[Text, Path]] = None,
+        show_progress: bool = True,
+        show_report: bool = True,
+        batch_size: int = 32,
     ):
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
@@ -107,7 +110,11 @@ class Benchmark:
             self.output_path = Path(output_path).expanduser()
             self.output_path.mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, pipeline: OnlineSpeakerDiarization, batch_size: int = 32) -> Optional[pd.DataFrame]:
+        self.show_progress = show_progress
+        self.show_report = show_report
+        self.batch_size = batch_size
+
+    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Optional[pd.DataFrame]:
         """
         Run a given pipeline on a set of audio files using
         pre-calculated segmentation and embeddings in batches.
@@ -116,8 +123,6 @@ class Benchmark:
         ----------
         pipeline: OnlineSpeakerDiarization
             Configured speaker diarization pipeline.
-        batch_size: int
-            Batch size. Defaults to 32.
 
         Returns
         -------
@@ -125,42 +130,49 @@ class Benchmark:
             DataFrame with detailed performance on each file, as well as average performance.
             None if the reference is not provided.
         """
-        chunk_loader = src.ChunkLoader(pipeline.sample_rate, pipeline.duration, pipeline.config.step)
+        loader = src.AudioLoader(pipeline.config.sample_rate, mono=True)
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         for i, filepath in enumerate(audio_file_paths):
-            num_chunks = chunk_loader.num_chunks(filepath)
-
-            # Stream fully online if batch size is 1 or lower
-            source = None
-            if batch_size < 2:
-                source = src.FileAudioSource(
-                    filepath,
-                    filepath.stem,
-                    src.RegularAudioFileReader(pipeline.sample_rate, pipeline.duration, pipeline.config.step),
-                    # Benchmark the processing time of a single chunk
-                    profile=True,
-                )
-                observable = pipeline.from_source(source, output_waveform=False)
-            else:
-                observable = pipeline.from_file(
-                    filepath,
-                    batch_size=batch_size,
-                    desc=f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})",
-                )
-
-            observable.pipe(
-                dops.progress(
-                    desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
-                    total=num_chunks,
-                    leave=source is None
-                )
-            ).subscribe(
-                RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm")
+            num_chunks = loader.get_num_sliding_chunks(
+                filepath, pipeline.config.duration, pipeline.config.step
             )
 
-            if source is not None:
-                source.read()
+            # Stream fully online if batch size is 1 or lower
+            if self.batch_size < 2:
+                source = src.FileAudioSource(
+                    filepath,
+                    pipeline.config.sample_rate,
+                    pipeline.config.duration,
+                    pipeline.config.step,
+                )
+                observable = pipeline.from_audio_source(source)
+            else:
+                msg = f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})"
+                source = src.PrecalculatedFeaturesAudioSource(
+                    filepath,
+                    pipeline.config.sample_rate,
+                    pipeline.segmentation,
+                    pipeline.embedding,
+                    pipeline.config.duration,
+                    pipeline.config.step,
+                    self.batch_size,
+                    progress_msg=msg if self.show_progress else None,
+                )
+                observable = pipeline.from_feature_source(source)
+
+            if self.show_progress:
+                observable = observable.pipe(
+                    dops.progress(
+                        desc=f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+                        total=num_chunks,
+                        leave=False,
+                    )
+                )
+
+            observable.subscribe(RTTMWriter(path=self.output_path / f"{filepath.stem}.rttm"))
+
+            source.read()
 
         # Run evaluation
         if self.reference_path is not None:
@@ -170,4 +182,4 @@ class Benchmark:
                 hyp = load_rttm(self.output_path / ref_path.name).popitem()[1]
                 metric(ref, hyp)
 
-            return metric.report(display=True)
+            return metric.report(display=self.show_report)

@@ -1,7 +1,11 @@
-from typing import Optional
+from typing import Optional, List, Tuple
 
 import matplotlib.pyplot as plt
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
+
+
+def unzip(zipped: List[Tuple]) -> Tuple:
+    return tuple(zip(*zipped))
 
 
 def visualize_feature(duration: Optional[float] = None):

@@ -4,7 +4,7 @@ from typing import Callable, Iterable, List, Optional, Text, Tuple, Union
 
 import numpy as np
 from pyannote.core.utils.distance import cdist
-from scipy.optimize import linear_sum_assignment
+from scipy.optimize import linear_sum_assignment as lsap
 
 
 class MappingMatrixObjective:
@@ -12,7 +12,7 @@ class MappingMatrixObjective:
         return np.ones(shape) * self.invalid_value
 
     def optimal_assignments(self, matrix: np.ndarray) -> List[int]:
-        return list(linear_sum_assignment(matrix, self.maximize)[1])
+        return list(lsap(matrix, self.maximize)[1])
 
     def mapped_indices(self, matrix: np.ndarray, axis: int) -> List[int]:
         # Entries full of invalid_value are not mapped
@@ -22,6 +22,23 @@ class MappingMatrixObjective:
     def hard_speaker_map(
         self, num_src: int, num_tgt: int, assignments: Iterable[Tuple[int, int]]
     ) -> SpeakerMap:
+        """Create a hard map object where the highest cost is put
+        everywhere except on hard assignments from ``assignments``.
+
+        Parameters
+        ----------
+        num_src: int
+            Number of source speakers
+        num_tgt: int
+            Number of target speakers
+        assignments: Iterable[Tuple[int, int]]
+            An iterable of tuples with two elements having the first element as the source speaker
+            and the second element as the target speaker
+
+        Returns
+        -------
+            SpeakerMap
+        """
         mapping_matrix = self.invalid_tensor(shape=(num_src, num_tgt))
         for src, tgt in assignments:
             mapping_matrix[src, tgt] = self.best_possible_value
@@ -82,6 +99,23 @@ class SpeakerMapBuilder:
     def hard_map(
         shape: Tuple[int, int], assignments: Iterable[Tuple[int, int]], maximize: bool
     ) -> SpeakerMap:
+        """Create a ``SpeakerMap`` object based on the given assignments. This is a "hard" map, meaning that the
+        highest cost is put everywhere except on hard assignments from ``assignments``.
+
+        Parameters
+        ----------
+        shape: Tuple[int, int])
+            Shape of the mapping matrix
+        assignments: Iterable[Tuple[int, int]]
+            An iterable of tuples with two elements having the first element as the source speaker
+            and the second element as the target speaker
+        maximize: bool
+            whether to use scores where higher is better (true) or where lower is better (false)
+
+        Returns
+        -------
+        SpeakerMap
+        """
         num_src, num_tgt = shape
         objective = MaximizationObjective if maximize else MinimizationObjective
         return objective().hard_speaker_map(num_src, num_tgt, assignments)
@@ -136,26 +170,6 @@ class SpeakerMapBuilder:
         # We want to minimize the distance to calculate optimal speaker alignments
         dist_matrix = cdist(embeddings1, embeddings2, metric=metric)
         return SpeakerMap(dist_matrix, MinimizationObjective())
-
-    @staticmethod
-    def clf_output(predictions: np.ndarray, pad_to: Optional[int] = None) -> SpeakerMap:
-        """
-        Parameters
-        ----------
-        predictions : np.ndarray, (num_local_speakers, num_global_speakers)
-            Probability outputs of a speaker embedding classifier
-        pad_to : int, optional
-            Pad num_global_speakers to this value.
-            Useful to deal with unknown speakers that may appear in the future.
-            Defaults to no padding
-        """
-        num_locals, num_globals = predictions.shape
-        objective = MaximizationObjective(max_value=1)
-        if pad_to is not None and num_globals < pad_to:
-            padding = np.ones((num_locals, pad_to - num_globals))
-            padding = objective.invalid_value * padding
-            predictions = np.concatenate([predictions, padding], axis=1)
-        return SpeakerMap(predictions, objective)
 
 
 class SpeakerMap:

@@ -6,5 +6,6 @@ DELTA = "Embedding-to-centroid distance threshold to flag a speaker as known or 
 GAMMA = "Parameter gamma for overlapped speech penalty"
 BETA = "Parameter beta for overlapped speech penalty"
 MAX_SPEAKERS = "Maximum number of speakers"
-GPU = "Run on GPU"
+CPU = "Force models to run on CPU"
+BATCH_SIZE = "For segmentation and embedding pre-calculation. If BATCH_SIZE < 2, run fully online and estimate real-time latency"
 OUTPUT = "Directory to store the system's output in RTTM format"
