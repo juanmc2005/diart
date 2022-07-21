@@ -121,6 +121,8 @@ inference(pipeline, audio_source)
 
 For faster inference and evaluation on a dataset we recommend to use `Benchmark` instead (see our notes on [reproducibility](#reproducibility)).
 
+[Colab example notebook](https://colab.research.google.com/drive/1Bp4_v5SNU1anDDEDkvA1FLnqGIfxM7ov?usp=sharing)
+
 ## Add your model
 
 Third-party segmentation and embedding models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel`:
