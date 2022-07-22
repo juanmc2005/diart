@@ -170,6 +170,7 @@ See `diart.tune -h` for more options.
 from diart.optim import Optimizer, TauActive, RhoUpdate, DeltaNew
 from diart.pipelines import PipelineConfig
 from diart.inference import Benchmark
+from pathlib import Path
 
 # Benchmark runs and evaluates the pipeline on a dataset
 benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir/tmp", show_report=False)
@@ -177,8 +178,10 @@ benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir/tmp", show_report=False
 base_config = PipelineConfig()
 # Hyper-parameters to optimize
 hparams = [TauActive, RhoUpdate, DeltaNew]
+# Convert '/out/dir' from str to Path
+out_dir = Path("/out/dir")
 # Optimizer implements the optimization loop
-optimizer = Optimizer(benchmark, base_config, hparams, "/out/dir")
+optimizer = Optimizer(benchmark, base_config, hparams, out_dir)
 # Run optimization
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
