@@ -51,6 +51,7 @@ class Optimizer:
         if isinstance(study_or_path, Study):
             self.study = study_or_path
         elif isinstance(study_or_path, str) or isinstance(study_or_path, Path):
+            study_or_path = Path(study_or_path)
             self.study = create_study(
                 storage="sqlite:///" + str(study_or_path / f"{study_or_path.stem}.db"),
                 sampler=TPESampler(),
