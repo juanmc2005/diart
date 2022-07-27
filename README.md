@@ -34,6 +34,10 @@
       Build pipelines
     </a>
     <br/>
+    <a href="#websockets">
+      WebSockets
+    </a>
+    <span> | </span>
     <a href="#powered-by-research">
       Research
     </a>
@@ -254,6 +258,31 @@ torch.Size([4, 512])
 torch.Size([4, 512])
 torch.Size([4, 512])
 ...
+```
+
+## WebSockets
+
+Diart is also compatible with the WebSocket protocol so you can serve your pipeline on the web.
+
+In the following example we build a minimal server so a client can send audio to the remote pipeline and then receive a prediction in RTTM format:
+
+```python
+import rx.operators as ops
+import diart.operators as dops
+from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+from diart.sources import WebSocketAudioSource
+
+config = PipelineConfig()
+source = WebSocketAudioSource(config.sample_rate, "localhost", 7007)
+pipeline = OnlineSpeakerDiarization(config)
+
+pipeline.from_audio_source(source).pipe(
+    dops.progress(f"Streaming from {source.uri}", unit="chunk"),
+    ops.starmap(lambda ann, _: ann.to_rttm()),
+    ops.filter(lambda rttm: bool(rttm)),  # Ignore non-speech
+).subscribe(source.send)
+
+source.read()
 ```
 
 ## Powered by research
