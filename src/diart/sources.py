@@ -241,7 +241,7 @@ class WebSocketAudioSource(AudioSource):
     """
     def __init__(self, sample_rate: int, host: Text = None, port: int = 7007):
         name = host if host is not None and host else "localhost"
-        uri = f"ws://{name}:{port}"
+        uri = f"{name}:{port}"
         super().__init__(uri, sample_rate)
         self.host = host
         self.port = port
