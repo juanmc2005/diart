@@ -76,7 +76,7 @@ conda install pysoundfile -c conda-forge
 
 3) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
 
-4) Install pyannote.audio 2.0
+4) Install pyannote.audio
 
 ```shell
 pip install pyannote.audio
