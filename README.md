@@ -79,7 +79,7 @@ conda install pysoundfile -c conda-forge
 4) Install pyannote.audio
 
 ```shell
-pip install pyannote.audio
+pip install pyannote.audio==2.0.1
 ```
 
 **Note:** starting from version 0.4, installing pyannote.audio is mandatory to run the default system or to use pyannote-based models. In any other case, this step can be ignored.
