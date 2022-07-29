@@ -22,8 +22,8 @@
       Stream audio
     </a>
     <span> | </span>
-    <a href="#add-your-model">
-      Add your model
+    <a href="#custom-models">
+      Custom models
     </a>
     <span> | </span>
     <a href="#tune-hyper-parameters">
@@ -109,25 +109,28 @@ See `diart.stream -h` for more options.
 
 ### From python
 
-Run a real-time speaker diarization pipeline over an audio stream with `RealTimeInference`:
+Use `RealTimeInference` to easily run a pipeline on an audio source and write the results to disk:
 
 ```python
 from diart.sources import MicrophoneAudioSource
 from diart.inference import RealTimeInference
-from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+from diart.pipelines import OnlineSpeakerDiarization
+from diart.sinks import RTTMWriter
 
-config = PipelineConfig()  # Default parameters
-pipeline = OnlineSpeakerDiarization(config)
-audio_source = MicrophoneAudioSource(config.sample_rate)
-inference = RealTimeInference("/output/path", do_plot=True)
-inference(pipeline, audio_source)
+pipeline = OnlineSpeakerDiarization()
+mic = MicrophoneAudioSource(pipeline.config.sample_rate)
+inference = RealTimeInference(pipeline, mic, do_plot=True)
+# Optionally stream predictions to an RTTM file
+inference.attach_observers(RTTMWriter("/output/file.rttm"))
+
+inference()
 ```
 
-For faster inference and evaluation on a dataset we recommend to use `Benchmark` instead (see our notes on [reproducibility](#reproducibility)).
+For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#reproducibility)).
 
-## Add your model
+## Custom models
 
-Third-party segmentation and embedding models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel`:
+Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel`:
 
 ```python
 import torch
@@ -152,8 +155,9 @@ class MyEmbeddingModel(EmbeddingModel):
 config = PipelineConfig(embedding=MyEmbeddingModel())
 pipeline = OnlineSpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
-inference = RealTimeInference("/out/dir")
-inference(pipeline, mic)
+inference = RealTimeInference(pipeline, mic)
+
+inference()
 ```
 
 ## Tune hyper-parameters
@@ -172,22 +176,19 @@ See `diart.tune -h` for more options.
 
 ```python
 from diart.optim import Optimizer, TauActive, RhoUpdate, DeltaNew
-from diart.pipelines import PipelineConfig
 from diart.inference import Benchmark
 
 # Benchmark runs and evaluates the pipeline on a dataset
-benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir/tmp", show_report=False)
-# Base configuration for the pipeline we're going to tune
-base_config = PipelineConfig()
+benchmark = Benchmark("/wav/dir", "/rttm/dir", show_report=False)
 # Hyper-parameters to optimize
 hparams = [TauActive, RhoUpdate, DeltaNew]
 # Optimizer implements the optimization loop
-optimizer = Optimizer(benchmark, base_config, hparams, "/out/dir")
-# Run optimization
+optimizer = Optimizer(benchmark, hparams, "/out/dir")
+
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
-This will use `/out/dir/tmp` as a working directory and write results to an sqlite database in `/out/dir`.
+This will write results to an sqlite database in `/out/dir`.
 
 ### Distributed optimization
 
@@ -199,13 +200,13 @@ mysql -u root -e "CREATE DATABASE IF NOT EXISTS example"
 optuna create-study --study-name "example" --storage "mysql://root@localhost/example"
 ```
 
-Then you can run multiple identical optimizers pointing to the database:
+Then you can run multiple identical optimizers pointing to this database:
 
 ```shell
 diart.tune /wav/dir --reference /rttm/dir --output /out/dir --storage mysql://root@localhost/example
 ```
 
-If you are using the python API, make sure that worker directories are different to avoid concurrency issues:
+or in python:
 
 ```python
 from diart.optim import Optimizer
@@ -213,11 +214,11 @@ from diart.inference import Benchmark
 from optuna.samplers import TPESampler
 import optuna
 
-ID = 0  # Worker identifier
-base_config, hparams = ...
-benchmark = Benchmark("/wav/dir", "/rttm/dir", f"/out/dir/worker-{ID}", show_report=False)
+hparams = ...
+benchmark = Benchmark("/wav/dir", "/rttm/dir", show_report=False)
 study = optuna.load_study("example", "mysql://root@localhost/example", TPESampler())
-optimizer = Optimizer(benchmark, base_config, hparams, study)
+optimizer = Optimizer(benchmark, hparams, study)
+
 optimizer.optimize(num_iter=100, show_progress=True)
 ```
 
@@ -262,27 +263,21 @@ torch.Size([4, 512])
 
 ## WebSockets
 
-Diart is also compatible with the WebSocket protocol so you can serve your pipeline on the web.
+Diart is also compatible with the WebSocket protocol to serve your pipeline on the web.
 
-In the following example we build a minimal server so a client can send audio to the remote pipeline and then receive a prediction in RTTM format:
+In the following example we build a minimal server for a client to send audio and receive a prediction in RTTM format:
 
 ```python
-import rx.operators as ops
-import diart.operators as dops
-from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+from diart.pipelines import OnlineSpeakerDiarization
 from diart.sources import WebSocketAudioSource
+from diart.inference import RealTimeInference
 
-config = PipelineConfig()
-source = WebSocketAudioSource(config.sample_rate, "localhost", 7007)
-pipeline = OnlineSpeakerDiarization(config)
+pipeline = OnlineSpeakerDiarization()
+source = WebSocketAudioSource(pipeline.config.sample_rate, "localhost", 7007)
+inference = RealTimeInference(pipeline, source, do_plot=True)
+inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
 
-pipeline.from_audio_source(source).pipe(
-    dops.progress(f"Streaming from {source.uri}", unit="chunk"),
-    ops.starmap(lambda ann, _: ann.to_rttm()),
-    ops.filter(lambda rttm: bool(rttm)),  # Ignore non-speech
-).subscribe(source.send)
-
-source.read()
+inference()
 ```
 
 ## Powered by research
@@ -331,7 +326,7 @@ To obtain the best results, make sure to use the following hyper-parameters:
 `diart.benchmark` and `diart.inference.Benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
 
 ```shell
-diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --output /out/dir
+diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517
 ```
 
 or using the inference API:
@@ -348,8 +343,7 @@ config = PipelineConfig(
     delta_new=1.517
 )
 pipeline = OnlineSpeakerDiarization(config)
-benchmark = Benchmark("/wav/dir", "/rttm/dir", "/out/dir")
-
+benchmark = Benchmark("/wav/dir", "/rttm/dir")
 benchmark(pipeline)
 ```
 

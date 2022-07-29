@@ -1,6 +1,5 @@
 import argparse
 from pathlib import Path
-from uuid import uuid4
 
 import optuna
 import torch
@@ -39,18 +38,13 @@ def run():
     args.output.mkdir(parents=True, exist_ok=True)
     args.device = torch.device("cpu") if args.cpu else None
 
-    # Assign unique worker ID
-    idx = uuid4()
-
     # Create benchmark object to run the pipeline on a set of files
-    work_path = args.output / f"worker-{idx}"
     benchmark = Benchmark(
         args.root,
         args.reference,
-        work_path,
         show_progress=True,
         show_report=False,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
     )
 
     # Create the base configuration for each trial
@@ -66,11 +60,8 @@ def run():
         study_or_path = optuna.load_study(db_name, args.storage, TPESampler())
 
     # Run optimization
-    optimizer = Optimizer(benchmark, base_config, hparams, study_or_path)
+    optimizer = Optimizer(benchmark, hparams, study_or_path, base_config)
     optimizer.optimize(num_iter=args.num_iter, show_progress=True)
-
-    # Clean temporary directory
-    work_path.rmdir()
 
 
 if __name__ == "__main__":

@@ -39,12 +39,12 @@ class Optimizer:
     def __init__(
         self,
         benchmark: Benchmark,
-        base_config: PipelineConfig,
         hparams: Iterable[HyperParameter],
         study_or_path: Union[FilePath, Study],
+        base_config: Optional[PipelineConfig] = None,
     ):
         self.benchmark = benchmark
-        self.base_config = base_config
+        self.base_config = PipelineConfig() if base_config is None else base_config
         self.hparams = hparams
         self._progress: Optional[tqdm] = None
 
@@ -98,11 +98,6 @@ class Optimizer:
 
         # Run pipeline over the dataset
         report = self.benchmark(pipeline)
-
-        # Clean RTTM files
-        for tmp_file in self.benchmark.output_path.iterdir():
-            if tmp_file.name.endswith(".rttm"):
-                tmp_file.unlink()
 
         # Extract DER from report
         return report.loc["TOTAL", "diarization error rate"]["%"]

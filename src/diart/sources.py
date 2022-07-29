@@ -292,4 +292,5 @@ class WebSocketAudioSource(AudioSource):
 
         # TODO support broadcasting to many clients
         # Schedule a coroutine to send back the message
-        asyncio.run_coroutine_threadsafe(self._async_send(message), loop=loop)
+        if message:
+            asyncio.run_coroutine_threadsafe(self._async_send(message), loop=loop)
