@@ -120,9 +120,7 @@ from diart.sinks import RTTMWriter
 pipeline = OnlineSpeakerDiarization()
 mic = MicrophoneAudioSource(pipeline.config.sample_rate)
 inference = RealTimeInference(pipeline, mic, do_plot=True)
-# Optionally stream predictions to an RTTM file
 inference.attach_observers(RTTMWriter("/output/file.rttm"))
-
 inference()
 ```
 
@@ -156,7 +154,6 @@ config = PipelineConfig(embedding=MyEmbeddingModel())
 pipeline = OnlineSpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
 inference = RealTimeInference(pipeline, mic)
-
 inference()
 ```
 
@@ -167,7 +164,7 @@ Diart implements a hyper-parameter optimizer based on [optuna](https://optuna.re
 ### From the command line
 
 ```shell
-diart.tune /wav/dir --reference /rttm/dir --output /out/dir
+diart.tune /wav/dir --reference /rttm/dir --output /output/dir
 ```
 
 See `diart.tune -h` for more options.
@@ -175,20 +172,13 @@ See `diart.tune -h` for more options.
 ### From python
 
 ```python
-from diart.optim import Optimizer, TauActive, RhoUpdate, DeltaNew
-from diart.inference import Benchmark
+from diart.optim import Optimizer
 
-# Benchmark runs and evaluates the pipeline on a dataset
-benchmark = Benchmark("/wav/dir", "/rttm/dir", show_report=False)
-# Hyper-parameters to optimize
-hparams = [TauActive, RhoUpdate, DeltaNew]
-# Optimizer implements the optimization loop
-optimizer = Optimizer(benchmark, hparams, "/out/dir")
-
-optimizer.optimize(num_iter=100, show_progress=True)
+optimizer = Optimizer("/wav/dir", "/rttm/dir", "/output/dir")
+optimizer(num_iter=100)
 ```
 
-This will write results to an sqlite database in `/out/dir`.
+This will write results to an sqlite database in `/output/dir`.
 
 ### Distributed optimization
 
@@ -200,26 +190,23 @@ mysql -u root -e "CREATE DATABASE IF NOT EXISTS example"
 optuna create-study --study-name "example" --storage "mysql://root@localhost/example"
 ```
 
-Then you can run multiple identical optimizers pointing to this database:
+You can now run multiple identical optimizers pointing to this database:
 
 ```shell
-diart.tune /wav/dir --reference /rttm/dir --output /out/dir --storage mysql://root@localhost/example
+diart.tune /wav/dir --reference /rttm/dir --storage mysql://root@localhost/example
 ```
 
 or in python:
 
 ```python
 from diart.optim import Optimizer
-from diart.inference import Benchmark
 from optuna.samplers import TPESampler
 import optuna
 
-hparams = ...
-benchmark = Benchmark("/wav/dir", "/rttm/dir", show_report=False)
-study = optuna.load_study("example", "mysql://root@localhost/example", TPESampler())
-optimizer = Optimizer(benchmark, hparams, study)
-
-optimizer.optimize(num_iter=100, show_progress=True)
+db = "mysql://root@localhost/example"
+study = optuna.load_study("example", db, TPESampler())
+optimizer = Optimizer("/wav/dir", "/rttm/dir", study)
+optimizer(num_iter=100)
 ```
 
 ## Build pipelines
@@ -276,7 +263,6 @@ pipeline = OnlineSpeakerDiarization()
 source = WebSocketAudioSource(pipeline.config.sample_rate, "localhost", 7007)
 inference = RealTimeInference(pipeline, source, do_plot=True)
 inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
-
 inference()
 ```
 
@@ -323,7 +309,7 @@ To obtain the best results, make sure to use the following hyper-parameters:
 | DIHARD II   | 1s      | 0.619  | 0.326  | 0.997 |
 | DIHARD II   | 5s      | 0.555  | 0.422  | 1.517 |
 
-`diart.benchmark` and `diart.inference.Benchmark` can quickly run and evaluate the pipeline, and even measure its real-time latency. For instance, for a DIHARD III configuration:
+`diart.benchmark` and `diart.inference.Benchmark` can run, evaluate and measure the real-time latency of the pipeline. For instance, for a DIHARD III configuration:
 
 ```shell
 diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517
@@ -347,7 +333,7 @@ benchmark = Benchmark("/wav/dir", "/rttm/dir")
 benchmark(pipeline)
 ```
 
-This runs a faster inference by pre-calculating model outputs in batches.
+This pre-calculates model outputs in batches, so it runs a lot faster.
 See `diart.benchmark -h` for more options.
 
 For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
