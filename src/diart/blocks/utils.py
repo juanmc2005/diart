@@ -2,6 +2,9 @@ from typing import Text
 
 import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature
+import torchaudio.transforms as T
+
+from ..features import TemporalFeatures, TemporalFeatureFormatter
 
 
 class Binarize:
@@ -53,3 +56,14 @@ class Binarize:
                 region = Segment(start_times[spk], timestamps[t + 1].middle)
                 annotation[region, spk] = f"speaker{spk}"
         return annotation
+
+
+class Resample:
+    def __init__(self, sample_rate: int, resample_rate: int):
+        self.resample = T.Resample(sample_rate, resample_rate)
+        self.formatter = TemporalFeatureFormatter()
+
+    def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
+        wav = self.formatter.cast(waveform)  # shape (batch, samples, 1)
+        resampled_wav = self.resample(wav.transpose(-1, -2)).transpose(-1, -2)
+        return self.formatter.restore_type(resampled_wav)

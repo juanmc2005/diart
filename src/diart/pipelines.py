@@ -1,4 +1,6 @@
-from typing import Optional, List, Any
+import logging
+from typing import Optional, List, Any, Union
+from typing_extensions import Literal
 
 import rx
 import rx.operators as ops
@@ -18,7 +20,7 @@ class PipelineConfig:
         embedding: Optional[m.EmbeddingModel] = None,
         duration: Optional[float] = None,
         step: float = 0.5,
-        latency: Optional[float] = None,
+        latency: Optional[Union[float, Literal["max", "min"]]] = None,
         tau_active: float = 0.6,
         rho_update: float = 0.3,
         delta_new: float = 1,
@@ -49,8 +51,10 @@ class PipelineConfig:
         # Latency defaults to the step duration
         self.step = step
         self.latency = latency
-        if self.latency is None:
+        if self.latency is None or self.latency == "min":
             self.latency = self.step
+        elif latency == "max":
+            self.latency = self.duration
 
         self.tau_active = tau_active
         self.rho_update = rho_update
@@ -142,14 +146,19 @@ class OnlineSpeakerDiarization:
         assert config.step <= config.latency <= config.duration, msg
 
     def from_audio_source(self, source: src.AudioSource) -> rx.Observable:
-        msg = f"Audio source has sample rate {source.sample_rate}, expected {self.config.sample_rate}"
-        assert source.sample_rate == self.config.sample_rate, msg
         operators = []
         # Regularize the stream to a specific chunk duration and step
         if not source.is_regular:
             operators.append(dops.regularize_audio_stream(
                 self.config.duration, self.config.step, source.sample_rate
             ))
+        # Dynamic resampling if the audio source isn't compatible
+        if self.config.sample_rate != source.sample_rate:
+            msg = f"Audio source has sample rate {source.sample_rate}, " \
+                  f"but pipeline's is {self.config.sample_rate}. Will resample."
+            logging.warning(msg)
+            resample = blocks.Resample(source.sample_rate, self.config.sample_rate)
+            operators.append(ops.map(resample))
         operators += [
             # Extract segmentation and keep audio
             ops.map(lambda wav: (wav, self.segmentation(wav))),
