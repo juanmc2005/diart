@@ -234,14 +234,15 @@ class WebSocketAudioSource(AudioSource):
     ----------
     sample_rate: int
         Sample rate of the chunks emitted.
-    host: Text
+    host: Text | None
         The host to run the websocket server. Defaults to ``None`` (all interfaces).
     port: int
         The port to run the websocket server. Defaults to 7007.
     """
-    def __init__(self, sample_rate: int, host: Text = None, port: int = 7007):
+    def __init__(self, sample_rate: int, host: Optional[Text] = None, port: int = 7007):
         name = host if host is not None and host else "localhost"
         uri = f"{name}:{port}"
+        # FIXME sample_rate is not being used, this can be confusing and lead to incompatibilities
         super().__init__(uri, sample_rate)
         self.host = host
         self.port = port

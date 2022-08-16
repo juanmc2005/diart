@@ -7,6 +7,7 @@ from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
+from traceback import print_exc
 
 
 class WindowClosedException(Exception):
@@ -33,7 +34,7 @@ class RTTMWriter(Observer):
 
     def on_error(self, error: Exception):
         self.patch()
-        raise error
+        print_exc()
 
     def on_completed(self):
         self.patch()
@@ -58,7 +59,7 @@ class RTTMAccumulator(Observer):
 
     def on_error(self, error: Exception):
         self.patch()
-        raise error
+        print_exc()
 
     def on_completed(self):
         self.patch()
@@ -144,4 +145,4 @@ class RealTimePlot(Observer):
 
     def on_error(self, error: Exception):
         if not isinstance(error, WindowClosedException):
-            raise error
+            print_exc()
