@@ -1,6 +1,7 @@
 from typing import Text
 
 import numpy as np
+import torch
 from pyannote.core import Annotation, Segment, SlidingWindowFeature
 import torchaudio.transforms as T
 
@@ -59,11 +60,68 @@ class Binarize:
 
 
 class Resample:
+    """Dynamically resample audio chunks.
+
+    Parameters
+    ----------
+    sample_rate: int
+        Original sample rate of the input audio
+    resample_rate: int
+        Sample rate of the output
+    """
     def __init__(self, sample_rate: int, resample_rate: int):
         self.resample = T.Resample(sample_rate, resample_rate)
         self.formatter = TemporalFeatureFormatter()
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         wav = self.formatter.cast(waveform)  # shape (batch, samples, 1)
-        resampled_wav = self.resample(wav.transpose(-1, -2)).transpose(-1, -2)
+        with torch.no_grad():
+            resampled_wav = self.resample(wav.transpose(-1, -2)).transpose(-1, -2)
         return self.formatter.restore_type(resampled_wav)
+
+
+class SetVolume:
+    """Change the volume of an audio chunk.
+
+    Notice that the output volume might be different to avoid saturation.
+
+    Parameters
+    ----------
+    volume_in_db: float
+        Target volume in dB. Must be positive.
+    """
+    def __init__(self, volume_in_db: float):
+        msg = "Volume dB must be greater than 0"
+        assert volume_in_db > 0, msg
+        self.target_db = volume_in_db
+        self.formatter = TemporalFeatureFormatter()
+
+    @staticmethod
+    def get_volumes(waveforms: torch.Tensor) -> torch.Tensor:
+        """Compute the volumes of a set of audio chunks.
+
+        Parameters
+        ----------
+        waveforms: torch.Tensor
+            Audio chunks. Shape (batch, samples, channels).
+
+        Returns
+        -------
+        volumes: torch.Tensor
+            Audio chunk volumes per channel. Shape (batch, 1, channels)
+        """
+        return 10 * torch.log10(torch.mean(np.abs(waveforms) ** 2, dim=1, keepdim=True))
+
+    def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
+        wav = self.formatter.cast(waveform)  # shape (batch, samples, channels)
+        with torch.no_grad():
+            # Compute current volume per chunk, shape (batch, 1, channels)
+            current_volumes = self.get_volumes(wav)
+            # Determine gain to reach the target volume
+            gains = 10 ** ((-self.target_db - current_volumes) / 20)
+            # Apply gain
+            wav = gains * wav
+            # If maximum value is greater than one, normalize chunk
+            maximums = torch.clamp(torch.amax(torch.abs(wav), dim=1, keepdim=True), 1)
+            wav = wav / maximums
+        return self.formatter.restore_type(wav)

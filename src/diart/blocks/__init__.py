@@ -13,4 +13,4 @@ from .embedding import (
     OverlapAwareSpeakerEmbedding,
 )
 from .segmentation import SpeakerSegmentation
-from .utils import Binarize, Resample
+from .utils import Binarize, Resample, SetVolume
