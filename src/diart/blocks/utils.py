@@ -88,11 +88,9 @@ class SetVolume:
     Parameters
     ----------
     volume_in_db: float
-        Target volume in dB. Must be positive.
+        Target volume in dB.
     """
     def __init__(self, volume_in_db: float):
-        msg = "Volume dB must be greater than 0"
-        assert volume_in_db > 0, msg
         self.target_db = volume_in_db
         self.formatter = TemporalFeatureFormatter()
 
@@ -110,7 +108,7 @@ class SetVolume:
         volumes: torch.Tensor
             Audio chunk volumes per channel. Shape (batch, 1, channels)
         """
-        return 10 * torch.log10(torch.mean(np.abs(waveforms) ** 2, dim=1, keepdim=True))
+        return 10 * torch.log10(torch.mean(torch.abs(waveforms) ** 2, dim=1, keepdim=True))
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         wav = self.formatter.cast(waveform)  # shape (batch, samples, channels)
@@ -118,7 +116,7 @@ class SetVolume:
             # Compute current volume per chunk, shape (batch, 1, channels)
             current_volumes = self.get_volumes(wav)
             # Determine gain to reach the target volume
-            gains = 10 ** ((-self.target_db - current_volumes) / 20)
+            gains = 10 ** ((self.target_db - current_volumes) / 20)
             # Apply gain
             wav = gains * wav
             # If maximum value is greater than one, normalize chunk
