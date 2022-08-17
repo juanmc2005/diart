@@ -80,7 +80,7 @@ class Resample:
         return self.formatter.restore_type(resampled_wav)
 
 
-class SetVolume:
+class AdjustVolume:
     """Change the volume of an audio chunk.
 
     Notice that the output volume might be different to avoid saturation.
