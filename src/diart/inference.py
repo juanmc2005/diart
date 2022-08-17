@@ -72,7 +72,7 @@ class RealTimeInference:
         if source.uri in annotations:
             return annotations[source.uri]
         else:
-            return Annotation()
+            return Annotation(uri=source.uri)
 
 
 class Benchmark:
