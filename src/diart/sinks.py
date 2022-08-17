@@ -24,9 +24,12 @@ class RTTMWriter(Observer):
 
     def patch_rttm(self):
         """Stitch same-speaker turns that are close to each other"""
-        annotation = list(load_rttm(self.path).values())[0]
-        with open(self.path, 'w') as file:
-            annotation.support(self.patch_collar).write_rttm(file)
+
+        annotations = list(load_rttm(self.path).values())
+        if annotations:
+            annotation = annotations[0]
+            with open(self.path, 'w') as file:
+                annotation.support(self.patch_collar).write_rttm(file)
 
     def on_next(self, value: Tuple[Annotation, SlidingWindowFeature]):
         with open(self.path, 'a') as file:

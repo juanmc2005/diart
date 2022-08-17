@@ -68,7 +68,11 @@ class RealTimeInference:
         # Stream audio through the pipeline
         source.read()
 
-        return load_rttm(rttm_path)[source.uri]
+        annotations = load_rttm(rttm_path)
+        if source.uri in annotations:
+            return annotations[source.uri]
+        else:
+            return Annotation(uri=source.uri)
 
 
 class Benchmark:
