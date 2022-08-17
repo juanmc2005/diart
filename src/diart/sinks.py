@@ -26,7 +26,7 @@ class RTTMWriter(Observer):
         """Stitch same-speaker turns that are close to each other"""
 
         annotations = list(load_rttm(self.path).values())
-        if len(annotations) > 0:
+        if annotations:
             annotation = annotations[0]
             with open(self.path, 'w') as file:
                 annotation.support(self.patch_collar).write_rttm(file)
