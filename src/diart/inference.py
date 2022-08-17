@@ -45,8 +45,7 @@ class RealTimeInference:
         )
 
     def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
-        """
-        Attach hooks to the pipeline.
+        """Attach hooks to the pipeline.
 
         Parameters
         ----------
@@ -56,8 +55,7 @@ class RealTimeInference:
         self.stream = self.stream.pipe(*[ops.do_action(hook) for hook in hooks])
 
     def attach_observers(self, *observers: Observer):
-        """
-        Attach rx observers to the pipeline.
+        """Attach rx observers to the pipeline.
 
         Parameters
         ----------
@@ -67,9 +65,7 @@ class RealTimeInference:
         self.stream = self.stream.pipe(*[ops.do(sink) for sink in observers])
 
     def __call__(self) -> Annotation:
-        """
-        Stream audio chunks from `source` to `pipeline`
-        writing predictions to disk.
+        """Stream audio chunks from `source` to `pipeline`.
 
         Returns
         -------
