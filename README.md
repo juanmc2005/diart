@@ -312,7 +312,7 @@ To obtain the best results, make sure to use the following hyper-parameters:
 `diart.benchmark` and `diart.inference.Benchmark` can run, evaluate and measure the real-time latency of the pipeline. For instance, for a DIHARD III configuration:
 
 ```shell
-diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517
+diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1.517 --segmentation pyannote/segmentation@Interspeech2021
 ```
 
 or using the inference API:
@@ -320,8 +320,11 @@ or using the inference API:
 ```python
 from diart.inference import Benchmark
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+from diart.models import SegmentationModel
 
 config = PipelineConfig(
+    # Set the model used in the paper
+    segmentation=SegmentationModel.from_pyannote("pyannote/segmentation@Interspeech2021"),
     step=0.5,
     latency=0.5,
     tau_active=0.555,
