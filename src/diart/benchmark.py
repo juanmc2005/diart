@@ -4,12 +4,17 @@ import torch
 
 import diart.argdoc as argdoc
 from diart.inference import Benchmark
+from diart.models import SegmentationModel, EmbeddingModel
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=str, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
+    parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
+                        help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
+    parser.add_argument("--embedding", default="pyannote/embedding", type=str,
+                        help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
     parser.add_argument("--reference", type=str,
                         help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
@@ -26,6 +31,8 @@ def run():
     parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to no writing")
     args = parser.parse_args()
     args.device = torch.device("cpu") if args.cpu else None
+    args.segmentation = SegmentationModel.from_pyannote(args.segmentation)
+    args.embedding = EmbeddingModel.from_pyannote(args.embedding)
 
     benchmark = Benchmark(
         args.root,

@@ -6,6 +6,7 @@ import torch
 from optuna.samplers import TPESampler
 
 import diart.argdoc as argdoc
+from diart.models import SegmentationModel, EmbeddingModel
 from diart.optim import Optimizer, HyperParameter
 from diart.pipelines import PipelineConfig
 
@@ -15,6 +16,10 @@ def run():
     parser.add_argument("root", type=str, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
     parser.add_argument("--reference", required=True, type=str,
                         help="Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
+    parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
+                        help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
+    parser.add_argument("--embedding", default="pyannote/embedding", type=str,
+                        help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -34,6 +39,8 @@ def run():
     parser.add_argument("--output", type=str, help="Working directory")
     args = parser.parse_args()
     args.device = torch.device("cpu") if args.cpu else None
+    args.segmentation = SegmentationModel.from_pyannote(args.segmentation)
+    args.embedding = EmbeddingModel.from_pyannote(args.embedding)
 
     # Create the base configuration for each trial
     base_config = PipelineConfig.from_namespace(args)

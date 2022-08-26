@@ -14,6 +14,15 @@ class WindowClosedException(Exception):
     pass
 
 
+def _extract_annotation(value: Union[Tuple, Annotation]) -> Annotation:
+    if isinstance(value, tuple):
+        return value[0]
+    if isinstance(value, Annotation):
+        return value
+    msg = f"Expected tuple or Annotation, but got {type(value)}"
+    raise ValueError(msg)
+
+
 class RTTMWriter(Observer):
     def __init__(self, path: Union[Path, Text], patch_collar: float = 0.05):
         super().__init__()
@@ -29,9 +38,10 @@ class RTTMWriter(Observer):
             with open(self.path, 'w') as file:
                 annotations[0].support(self.patch_collar).write_rttm(file)
 
-    def on_next(self, value: Tuple[Annotation, SlidingWindowFeature]):
+    def on_next(self, value: Union[Tuple, Annotation]):
+        annotation = _extract_annotation(value)
         with open(self.path, 'a') as file:
-            value[0].write_rttm(file)
+            annotation.write_rttm(file)
 
     def on_error(self, error: Exception):
         self.patch()
@@ -51,8 +61,8 @@ class RTTMAccumulator(Observer):
         """Stitch same-speaker turns that are close to each other"""
         self.annotation.support(self.patch_collar)
 
-    def on_next(self, value: Tuple[Annotation, SlidingWindowFeature]):
-        annotation, waveform = value
+    def on_next(self, value: Union[Tuple, Annotation]):
+        annotation = _extract_annotation(value)
         if self.annotation is None:
             self.annotation = annotation
         else:

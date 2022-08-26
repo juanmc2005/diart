@@ -78,9 +78,6 @@ class TemporalFeatureFormatter:
         self.state: Optional[TemporalFeatureFormatterState] = None
 
     def set_state(self, features: TemporalFeatures):
-        if self.state is not None:
-            return
-
         if isinstance(features, SlidingWindowFeature):
             msg = "Features sliding window duration and step must be equal"
             assert features.sliding_window.duration == features.sliding_window.step, msg
