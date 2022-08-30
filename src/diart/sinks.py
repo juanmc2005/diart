@@ -51,22 +51,27 @@ class RTTMWriter(Observer):
         self.patch()
 
 
-class RTTMAccumulator(Observer):
+class DiarizationPredictionAccumulator(Observer):
     def __init__(self, patch_collar: float = 0.05):
         super().__init__()
         self.patch_collar = patch_collar
-        self.annotation = None
+        self._annotation = None
 
     def patch(self):
         """Stitch same-speaker turns that are close to each other"""
-        self.annotation.support(self.patch_collar)
+        self._annotation.support(self.patch_collar)
+
+    def get_prediction(self) -> Annotation:
+        # Patch again in case this is called before on_completed
+        self.patch()
+        return self._annotation
 
     def on_next(self, value: Union[Tuple, Annotation]):
         annotation = _extract_annotation(value)
-        if self.annotation is None:
-            self.annotation = annotation
+        if self._annotation is None:
+            self._annotation = annotation
         else:
-            self.annotation.update(annotation)
+            self._annotation.update(annotation)
 
     def on_error(self, error: Exception):
         self.patch()

@@ -11,7 +11,7 @@ from rx.core import Observer
 import diart.operators as dops
 import diart.sources as src
 from diart.pipelines import OnlineSpeakerDiarization
-from diart.sinks import RTTMAccumulator, RTTMWriter, RealTimePlot
+from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot
 
 
 class RealTimeInference:
@@ -38,7 +38,7 @@ class RealTimeInference:
         self.pipeline = pipeline
         self.source = source
         self.do_plot = do_plot
-        self.accumulator = RTTMAccumulator()
+        self.accumulator = DiarizationPredictionAccumulator()
         self.stream = self.pipeline.from_audio_source(source).pipe(
             dops.progress(f"Streaming {source.uri}", total=source.length, leave=True),
             ops.do(self.accumulator),
@@ -87,7 +87,7 @@ class RealTimeInference:
             )
         observable.subscribe()
         self.source.read()
-        return self.accumulator.annotation
+        return self.accumulator.get_prediction()
 
 
 class Benchmark:
@@ -211,10 +211,10 @@ class Benchmark:
                     ops.do(RTTMWriter(self.output_path / f"{source.uri}.rttm"))
                 )
 
-            accumulator = RTTMAccumulator()
+            accumulator = DiarizationPredictionAccumulator()
             observable.subscribe(accumulator)
             source.read()
-            predictions.append(accumulator.annotation)
+            predictions.append(accumulator.get_prediction())
 
         # Run evaluation
         if self.reference_path is not None:
