@@ -59,7 +59,8 @@ class DiarizationPredictionAccumulator(Observer):
 
     def patch(self):
         """Stitch same-speaker turns that are close to each other"""
-        self._annotation.support(self.patch_collar)
+        if self._annotation is not None:
+            self._annotation = self._annotation.support(self.patch_collar)
 
     def get_prediction(self) -> Annotation:
         # Patch again in case this is called before on_completed
