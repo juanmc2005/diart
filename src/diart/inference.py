@@ -135,6 +135,10 @@ class Benchmark:
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
 
+        # If there's no reference and no output, then benchmark has no output
+        msg = "Benchmark expected reference path, output path or both"
+        assert reference_path is not None or output_path is not None, msg
+
         self.reference_path = reference_path
         if reference_path is not None:
             self.reference_path = Path(self.reference_path).expanduser()
