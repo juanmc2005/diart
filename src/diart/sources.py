@@ -13,6 +13,7 @@ from einops import rearrange
 from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
 from tqdm import tqdm
+from torchaudio.io import StreamReader
 
 from .audio import FilePath, AudioLoader
 from .features import TemporalFeatures
@@ -38,6 +39,8 @@ class AudioSource:
         """Whether the stream is regular. Defaults to False.
         A regular stream always yields the same amount of samples per event.
         """
+        # FIXME this doesn't make much sense, sources should always provide non-overlapping audio chunks of any size
+        #  and they should be adjusted by the pipeline
         return False
 
     @property
@@ -296,3 +299,32 @@ class WebSocketAudioSource(AudioSource):
         # Schedule a coroutine to send back the message
         if message:
             asyncio.run_coroutine_threadsafe(self._async_send(message), loop=loop)
+
+
+class TorchStreamAudioSource(AudioSource):
+    def __init__(
+        self,
+        uri: Text,
+        sample_rate: int,
+        streamer: StreamReader,
+        stream_index: Optional[int] = None,
+    ):
+        super().__init__(uri, sample_rate)
+        self._streamer = streamer
+        self._streamer.add_basic_audio_stream(
+            frames_per_chunk=1024,
+            stream_index=stream_index,
+            format="fltp",
+            sample_rate=self.sample_rate,
+        )
+
+    def read(self):
+        for item in self._streamer.stream():
+            try:
+                # shape (samples, channels) to (1, samples)
+                chunk = np.mean(item[0].numpy(), axis=1, keepdims=True).T
+                self.stream.on_next(chunk)
+            except Exception as e:
+                self.stream.on_error(e)
+                break
+        self.stream.on_completed()
