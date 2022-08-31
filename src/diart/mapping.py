@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, List, Optional, Text, Tuple, Union
+from typing import Callable, Iterable, List, Optional, Text, Tuple, Union, Dict
 
 import numpy as np
 from pyannote.core.utils.distance import cdist
@@ -225,6 +225,12 @@ class SpeakerMap:
         if as_array:
             source, target = np.array(source), np.array(target)
         return source, target
+
+    def to_dict(self, strict: bool = False) -> Dict[int, int]:
+        return {src: tgt for src, tgt in zip(*self.valid_assignments(strict))}
+
+    def to_inverse_dict(self, strict: bool = False) -> Dict[int, int]:
+        return {tgt: src for src, tgt in zip(*self.valid_assignments(strict))}
 
     def is_source_speaker_mapped(self, source_speaker: int) -> bool:
         return source_speaker in self.mapped_source_speakers
