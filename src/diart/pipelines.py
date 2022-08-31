@@ -137,13 +137,13 @@ class OnlineSpeakerDiarization:
     def __init__(self, config: Optional[PipelineConfig] = None, profile: bool = False):
         self.config = PipelineConfig() if config is None else config
         self.profile = profile
-        self.segmentation = blocks.SpeakerSegmentation(config.segmentation, config.device)
+        self.segmentation = blocks.SpeakerSegmentation(self.config.segmentation, self.config.device)
         self.embedding = blocks.OverlapAwareSpeakerEmbedding(
-            config.embedding, config.gamma, config.beta, norm=1, device=config.device
+            self.config.embedding, self.config.gamma, self.config.beta, norm=1, device=self.config.device
         )
-        self.speaker_tracking = OnlineSpeakerTracking(config)
-        msg = f"Latency should be in the range [{config.step}, {config.duration}]"
-        assert config.step <= config.latency <= config.duration, msg
+        self.speaker_tracking = OnlineSpeakerTracking(self.config)
+        msg = f"Latency should be in the range [{self.config.step}, {self.config.duration}]"
+        assert self.config.step <= self.config.latency <= self.config.duration, msg
 
     def from_audio_source(self, source: src.AudioSource) -> rx.Observable:
         operators = []
