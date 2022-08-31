@@ -242,7 +242,8 @@ class WebSocketAudioSource(AudioSource):
     def __init__(self, sample_rate: int, host: Optional[Text] = None, port: int = 7007):
         name = host if host is not None and host else "localhost"
         uri = f"{name}:{port}"
-        # FIXME sample_rate is not being used, this can be confusing and lead to incompatibilities
+        # FIXME sample_rate is not being used, this can be confusing and lead to incompatibilities.
+        #  I would prefer the client to send a JSON with data and sample rate, then resample if needed
         super().__init__(uri, sample_rate)
         self.host = host
         self.port = port

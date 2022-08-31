@@ -250,9 +250,9 @@ torch.Size([4, 512])
 
 ## WebSockets
 
-Diart is also compatible with the WebSocket protocol to serve your pipeline on the web.
+Diart is also compatible with the WebSocket protocol to serve pipelines on the web.
 
-In the following example we build a minimal server for a client to send audio and receive a prediction in RTTM format:
+In the following example we build a minimal server that receives audio chunks and sends back predictions in RTTM format:
 
 ```python
 from diart.pipelines import OnlineSpeakerDiarization
