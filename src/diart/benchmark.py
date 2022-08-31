@@ -4,12 +4,17 @@ import torch
 
 import diart.argdoc as argdoc
 from diart.inference import Benchmark
+from diart.models import SegmentationModel, EmbeddingModel
 from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=str, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
+    parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
+                        help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
+    parser.add_argument("--embedding", default="pyannote/embedding", type=str,
+                        help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
     parser.add_argument("--reference", type=str,
                         help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
@@ -23,9 +28,11 @@ def run():
     parser.add_argument("--batch-size", default=32, type=int, help=f"{argdoc.BATCH_SIZE}. Defaults to 32")
     parser.add_argument("--cpu", dest="cpu", action="store_true",
                         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
-    parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to `root`")
+    parser.add_argument("--output", type=str, help=f"{argdoc.OUTPUT}. Defaults to no writing")
     args = parser.parse_args()
     args.device = torch.device("cpu") if args.cpu else None
+    args.segmentation = SegmentationModel.from_pyannote(args.segmentation)
+    args.embedding = EmbeddingModel.from_pyannote(args.embedding)
 
     benchmark = Benchmark(
         args.root,
@@ -33,7 +40,7 @@ def run():
         args.output,
         show_progress=True,
         show_report=True,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
     )
 
     benchmark(OnlineSpeakerDiarization(PipelineConfig.from_namespace(args), profile=True))

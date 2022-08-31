@@ -1,5 +1,4 @@
 from pathlib import Path
-from traceback import print_exc
 from typing import Union, Text, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -8,43 +7,78 @@ from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
+from traceback import print_exc
 
 
 class WindowClosedException(Exception):
     pass
 
 
+def _extract_annotation(value: Union[Tuple, Annotation]) -> Annotation:
+    if isinstance(value, tuple):
+        return value[0]
+    if isinstance(value, Annotation):
+        return value
+    msg = f"Expected tuple or Annotation, but got {type(value)}"
+    raise ValueError(msg)
+
+
 class RTTMWriter(Observer):
     def __init__(self, path: Union[Path, Text], patch_collar: float = 0.05):
         super().__init__()
         self.patch_collar = patch_collar
-        self.path = Path(path)
+        self.path = Path(path).expanduser()
         if self.path.exists():
             self.path.unlink()
 
-    def patch_rttm(self):
+    def patch(self):
         """Stitch same-speaker turns that are close to each other"""
-
         annotations = list(load_rttm(self.path).values())
         if annotations:
-            annotation = annotations[0]
             with open(self.path, 'w') as file:
-                annotation.support(self.patch_collar).write_rttm(file)
+                annotations[0].support(self.patch_collar).write_rttm(file)
 
-    def on_next(self, value: Tuple[Annotation, SlidingWindowFeature]):
+    def on_next(self, value: Union[Tuple, Annotation]):
+        annotation = _extract_annotation(value)
         with open(self.path, 'a') as file:
-            value[0].write_rttm(file)
+            annotation.write_rttm(file)
 
     def on_error(self, error: Exception):
-        try:
-            self.patch_rttm()
-        except Exception:
-            print("Error while patching RTTM file:")
-            print_exc()
-            exit(1)
+        self.patch()
+        print_exc()
 
     def on_completed(self):
-        self.patch_rttm()
+        self.patch()
+
+
+class DiarizationPredictionAccumulator(Observer):
+    def __init__(self, patch_collar: float = 0.05):
+        super().__init__()
+        self.patch_collar = patch_collar
+        self._annotation = None
+
+    def patch(self):
+        """Stitch same-speaker turns that are close to each other"""
+        self._annotation.support(self.patch_collar)
+
+    def get_prediction(self) -> Annotation:
+        # Patch again in case this is called before on_completed
+        self.patch()
+        return self._annotation
+
+    def on_next(self, value: Union[Tuple, Annotation]):
+        annotation = _extract_annotation(value)
+        if self._annotation is None:
+            self._annotation = annotation
+        else:
+            self._annotation.update(annotation)
+
+    def on_error(self, error: Exception):
+        self.patch()
+        print_exc()
+
+    def on_completed(self):
+        self.patch()
 
 
 class RealTimePlot(Observer):
