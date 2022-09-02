@@ -117,6 +117,6 @@ class EmbeddingModel(nn.Module):
 
         Returns
         -------
-        speaker_embeddings: torch.Tensor, shape (batch, speakers, embedding_dim)
+        speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
         """
         raise NotImplementedError
