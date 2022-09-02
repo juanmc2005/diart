@@ -44,9 +44,7 @@ def run():
     if args.source != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
-        audio_source = src.FileAudioSource(
-            args.source, config.sample_rate, config.duration, config.step
-        )
+        audio_source = src.FileAudioSource(args.source, config.sample_rate)
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
         audio_source = src.MicrophoneAudioSource(config.sample_rate)

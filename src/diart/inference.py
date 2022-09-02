@@ -180,12 +180,7 @@ class Benchmark:
 
             # Stream fully online if batch size is 1 or lower
             if self.batch_size < 2:
-                source = src.FileAudioSource(
-                    filepath,
-                    pipeline.config.sample_rate,
-                    pipeline.config.duration,
-                    pipeline.config.step,
-                )
+                source = src.FileAudioSource(filepath, pipeline.config.sample_rate)
                 observable = pipeline.from_audio_source(source)
             else:
                 msg = f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})"

@@ -146,12 +146,9 @@ class OnlineSpeakerDiarization:
         assert self.config.step <= self.config.latency <= self.config.duration, msg
 
     def from_audio_source(self, source: src.AudioSource) -> rx.Observable:
-        operators = []
-        # Regularize the stream to a specific chunk duration and step
-        if not source.is_regular:
-            operators.append(dops.regularize_audio_stream(
-                self.config.duration, self.config.step, source.sample_rate
-            ))
+        operators = [dops.regularize_audio_stream(
+            self.config.duration, self.config.step, source.sample_rate
+        )]
         # Dynamic resampling if the audio source isn't compatible
         if self.config.sample_rate != source.sample_rate:
             msg = f"Audio source has sample rate {source.sample_rate}, " \
