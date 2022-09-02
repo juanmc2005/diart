@@ -46,7 +46,7 @@ class AudioLoader:
         Parameters
         ----------
         filepath : FilePath
-            Path to an audio file
+            Path to an audio file.
 
         Returns
         -------

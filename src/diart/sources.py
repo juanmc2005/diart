@@ -35,15 +35,6 @@ class AudioSource:
         self.stream = Subject()
 
     @property
-    def is_regular(self) -> bool:
-        """Whether the stream is regular. Defaults to False.
-        A regular stream always yields the same amount of samples per event.
-        """
-        # FIXME this doesn't make much sense, sources should always provide non-overlapping audio chunks of any size
-        #  and they should be adjusted by the pipeline
-        return False
-
-    @property
     def duration(self) -> Optional[float]:
         """The duration of the stream if known. Defaults to None (unknown duration)"""
         return None
@@ -67,30 +58,14 @@ class FileAudioSource(AudioSource):
         Path to the file to stream.
     sample_rate: int
         Sample rate of the chunks emitted.
-    chunk_duration: float
-        Duration of each chunk in seconds. Defaults to 5s.
-    step_duration: float
-        Duration of the step between consecutive chunks in seconds. Defaults to 500ms.
     """
-    def __init__(
-        self,
-        file: FilePath,
-        sample_rate: int,
-        chunk_duration: float = 5,
-        step_duration: float = 0.5,
-    ):
+    def __init__(self, file: FilePath, sample_rate: int):
         super().__init__(Path(file).stem, sample_rate)
-        self.loader = AudioLoader(sample_rate, mono=True)
+        self.loader = AudioLoader(self.sample_rate, mono=True)
         self._duration = self.loader.get_duration(file)
         self.file = file
-        self.chunk_duration = chunk_duration
-        self.step_duration = step_duration
-        self.resolution = 1 / sample_rate
-
-    @property
-    def is_regular(self) -> bool:
-        # An audio file is always a regular source
-        return True
+        self.resolution = 1 / self.sample_rate
+        self.block_size = 1024
 
     @property
     def duration(self) -> Optional[float]:
@@ -99,24 +74,29 @@ class FileAudioSource(AudioSource):
 
     @property
     def length(self) -> Optional[int]:
-        return self.loader.get_num_sliding_chunks(
-            self.file, self.chunk_duration, self.step_duration
-        )
+        total_duration = AudioLoader.get_duration(self.file)
+        total_size = int(np.rint(total_duration * self.sample_rate))
+        return int(np.ceil(total_size / self.block_size))
 
     def read(self):
         """Send each chunk of samples through the stream"""
-        chunks = self.loader.load_sliding_chunks(
-            self.file, self.chunk_duration, self.step_duration
-        )
+        waveform = self.loader.load(self.file)
+        _, num_samples = waveform.shape
+        chunks = rearrange(
+            waveform.unfold(1, self.block_size, self.block_size),
+            "channel chunk sample -> chunk channel sample",
+        ).numpy()
+
+        # Add padded last chunk
+        if num_samples % self.block_size != 0:
+            last_chunk = waveform[:, chunks.shape[0] * self.block_size:].unsqueeze(0).numpy()
+            diff_samples = self.block_size - last_chunk.shape[-1]
+            last_chunk = np.concatenate([last_chunk, np.zeros((1, 1, diff_samples))], axis=-1)
+            chunks = np.vstack([chunks, last_chunk])
+
         for i, waveform in enumerate(chunks):
-            window = SlidingWindow(
-                start=i * self.step_duration,
-                duration=self.resolution,
-                step=self.resolution
-            )
-            chunk = SlidingWindowFeature(waveform.T, window)
             try:
-                self.stream.on_next(chunk)
+                self.stream.on_next(waveform)
             except Exception as e:
                 self.stream.on_error(e)
         self.stream.on_completed()
@@ -134,9 +114,11 @@ class PrecalculatedFeaturesAudioSource(FileAudioSource):
         batch_size: int = 32,
         progress_msg: Optional[Text] = None,
     ):
-        super().__init__(file, sample_rate, chunk_duration, step_duration)
+        super().__init__(file, sample_rate)
         self.segmentation = segmentation
         self.embedding = embedding
+        self.chunk_duration = chunk_duration
+        self.step_duration = step_duration
         self.batch_size = batch_size
         self.progress_msg = progress_msg
 
