@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
-from typing import Union, Text, Optional, Callable, Tuple
+from typing import Union, Text, Optional, Callable, Tuple, List
 
+import numpy as np
 import pandas as pd
+import rx
 import rx.operators as ops
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
@@ -10,7 +13,7 @@ from rx.core import Observer
 
 import diart.operators as dops
 import diart.sources as src
-from diart.pipelines import OnlineSpeakerDiarization
+from diart.blocks import OnlineSpeakerDiarization, Resample
 from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot
 
 
@@ -28,21 +31,66 @@ class RealTimeInference:
         Audio source to be read and streamed.
     do_plot: bool
         Whether to draw predictions in a moving plot. Defaults to True.
+    TODO add remaining parameters
     """
     def __init__(
         self,
         pipeline: OnlineSpeakerDiarization,
         source: src.AudioSource,
-        do_plot: bool = True
+        batch_size: int = 1,
+        do_profile: bool = True,
+        do_plot: bool = False,
+        show_progress: bool = True,
+        progress_desc: Optional[Text] = None,
     ):
         self.pipeline = pipeline
         self.source = source
+        self.batch_size = batch_size
         self.do_plot = do_plot
-        self.accumulator = DiarizationPredictionAccumulator()
-        self.stream = self.pipeline.from_audio_source(source).pipe(
-            dops.progress(f"Streaming {source.uri}", total=source.length, leave=True),
+        self.accumulator = DiarizationPredictionAccumulator(source.uri)
+
+        # Inform the pipeline of the duration of the stream so that the last outputs aren't ignored
+        self.pipeline.set_stream_duration(source.duration)
+
+        chunk_duration = self.pipeline.config.duration
+        step_duration = self.pipeline.config.step
+        sample_rate = self.pipeline.config.sample_rate
+
+        operators = []
+
+        # Dynamic resampling if the audio source isn't compatible
+        if sample_rate != source.sample_rate:
+            msg = f"Audio source has sample rate {source.sample_rate}, " \
+                  f"but pipeline's is {sample_rate}. Will resample."
+            logging.warning(msg)
+            operators.append(ops.map(Resample(source.sample_rate, sample_rate)))
+
+        # Estimate the total number of chunks that the source will emit
+        self.num_chunks, self.num_batches = None, None
+        if source.duration is not None:
+            numerator = source.duration - chunk_duration + step_duration
+            self.num_chunks = int(np.ceil(numerator / step_duration))
+
+        # Add rx operators to manage the inputs and outputs of the pipeline
+        operators += [
+            dops.regularize_audio_stream(chunk_duration, step_duration, sample_rate),
+            ops.buffer_with_count(count=self.batch_size),
+            ops.map(pipeline),
+            ops.flat_map(lambda results: rx.from_iterable(results)),
+            ops.filter(lambda result: result is not None),
             ops.do(self.accumulator),
-        )
+        ]
+
+        # Show progress if required
+        if show_progress:
+            desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
+            operators.append(dops.progress(desc, total=self.num_chunks, leave=True))
+
+        # Profile pipeline if required
+        if do_profile:
+            self.stream = dops.profile(self.source.stream, operators)
+        else:
+            self.stream = self.source.stream.pipe(*operators)
 
     def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
         """Attach hooks to the pipeline.
@@ -153,10 +201,8 @@ class Benchmark:
         self.show_report = show_report
         self.batch_size = batch_size
 
-    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Optional[pd.DataFrame]:
-        """
-        Run a given pipeline on a set of audio files using
-        pre-calculated segmentation and embeddings in batches.
+    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
+        """Run a given pipeline on a set of audio files.
 
         Parameters
         ----------
@@ -165,55 +211,31 @@ class Benchmark:
 
         Returns
         -------
-        performance: pandas.DataFrame, optional
-            DataFrame with detailed performance on each file, as well as average performance.
-            None if the reference is not provided.
+        performance: pandas.DataFrame or List[Annotation]
+            If reference annotations are given, a DataFrame with detailed
+            performance on each file as well as average performance.
+
+            If no reference annotations, a list of predictions.
         """
-        loader = src.AudioLoader(pipeline.config.sample_rate, mono=True)
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
-            num_chunks = loader.get_num_sliding_chunks(
-                filepath, pipeline.config.duration, pipeline.config.step
+            source = src.FileAudioSource(filepath, pipeline.config.sample_rate)
+            inference = RealTimeInference(
+                pipeline,
+                source,
+                self.batch_size,
+                do_profile=False,
+                do_plot=False,
+                show_progress=self.show_progress,
+                progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})"
             )
-
-            # Stream fully online if batch size is 1 or lower
-            if self.batch_size < 2:
-                source = src.FileAudioSource(filepath, pipeline.config.sample_rate)
-                observable = pipeline.from_audio_source(source)
-            else:
-                msg = f"Pre-calculating {filepath.stem} ({i + 1}/{num_audio_files})"
-                source = src.PrecalculatedFeaturesAudioSource(
-                    filepath,
-                    pipeline.config.sample_rate,
-                    pipeline.segmentation,
-                    pipeline.embedding,
-                    pipeline.config.duration,
-                    pipeline.config.step,
-                    self.batch_size,
-                    progress_msg=msg if self.show_progress else None,
-                )
-                observable = pipeline.from_feature_source(source)
-
-            if self.show_progress:
-                observable = observable.pipe(
-                    dops.progress(
-                        desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})",
-                        total=num_chunks,
-                        leave=False,
-                    )
-                )
-
             if self.output_path is not None:
-                observable = observable.pipe(
-                    ops.do(RTTMWriter(self.output_path / f"{source.uri}.rttm"))
+                inference.attach_observers(
+                    RTTMWriter(source.uri, self.output_path / f"{source.uri}.rttm")
                 )
-
-            accumulator = DiarizationPredictionAccumulator()
-            observable.subscribe(accumulator)
-            source.read()
-            predictions.append(accumulator.get_prediction())
+            predictions.append(inference())
 
         # Run evaluation
         if self.reference_path is not None:
@@ -223,3 +245,5 @@ class Benchmark:
                 metric(ref, hyp)
 
             return metric.report(display=self.show_report)
+
+        return predictions
