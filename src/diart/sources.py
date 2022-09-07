@@ -6,6 +6,7 @@ from typing import Text, Optional, AnyStr
 
 import numpy as np
 import sounddevice as sd
+import torch
 import websockets
 from einops import rearrange
 from rx.subject import Subject
@@ -49,35 +50,51 @@ class FileAudioSource(AudioSource):
     sample_rate: int
         Sample rate of the chunks emitted.
     """
-    def __init__(self, file: FilePath, sample_rate: int):
+    def __init__(
+        self,
+        file: FilePath,
+        sample_rate: int,
+        padding_end: float = 0,
+        block_size: int = 1024
+    ):
         super().__init__(Path(file).stem, sample_rate)
         self.loader = AudioLoader(self.sample_rate, mono=True)
         self._duration = self.loader.get_duration(file)
         self.file = file
         self.resolution = 1 / self.sample_rate
-        self.block_size = 1024
+        self.block_size = block_size
+        self.padding_end = padding_end
 
     @property
     def duration(self) -> Optional[float]:
         # The duration of a file is known
-        return self._duration
+        return self._duration + self.padding_end
 
     def read(self):
         """Send each chunk of samples through the stream"""
         waveform = self.loader.load(self.file)
+
+        # Add zero padding at the end if required
+        if self.padding_end > 0:
+            num_pad_samples = int(np.rint(self.padding_end * self.sample_rate))
+            zero_padding = torch.zeros(waveform.shape[0], num_pad_samples)
+            waveform = torch.cat([waveform, zero_padding], dim=1)
+
+        # Split into blocks
         _, num_samples = waveform.shape
         chunks = rearrange(
             waveform.unfold(1, self.block_size, self.block_size),
             "channel chunk sample -> chunk channel sample",
         ).numpy()
 
-        # Add padded last chunk
+        # Add last incomplete chunk with padding
         if num_samples % self.block_size != 0:
             last_chunk = waveform[:, chunks.shape[0] * self.block_size:].unsqueeze(0).numpy()
             diff_samples = self.block_size - last_chunk.shape[-1]
             last_chunk = np.concatenate([last_chunk, np.zeros((1, 1, diff_samples))], axis=-1)
             chunks = np.vstack([chunks, last_chunk])
 
+        # Stream blocks
         for i, waveform in enumerate(chunks):
             try:
                 self.stream.on_next(waveform)
@@ -89,9 +106,9 @@ class FileAudioSource(AudioSource):
 class MicrophoneAudioSource(AudioSource):
     """Represents an audio source tied to the default microphone available"""
 
-    def __init__(self, sample_rate: int):
+    def __init__(self, sample_rate: int, block_size: int = 1024):
         super().__init__("live_recording", sample_rate)
-        self.block_size = 1024
+        self.block_size = block_size
         self.mic_stream = sd.InputStream(
             channels=1,
             samplerate=sample_rate,
@@ -193,11 +210,13 @@ class TorchStreamAudioSource(AudioSource):
         sample_rate: int,
         streamer: StreamReader,
         stream_index: Optional[int] = None,
+        block_size: int = 1024,
     ):
         super().__init__(uri, sample_rate)
+        self.block_size = block_size
         self._streamer = streamer
         self._streamer.add_basic_audio_stream(
-            frames_per_chunk=1024,
+            frames_per_chunk=self.block_size,
             stream_index=stream_index,
             format="fltp",
             sample_rate=self.sample_rate,

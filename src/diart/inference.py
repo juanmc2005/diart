@@ -49,9 +49,6 @@ class RealTimeInference:
         self.do_plot = do_plot
         self.accumulator = DiarizationPredictionAccumulator(source.uri)
 
-        # Inform the pipeline of the duration of the stream so that the last outputs aren't ignored
-        self.pipeline.set_stream_duration(source.duration)
-
         chunk_duration = self.pipeline.config.duration
         step_duration = self.pipeline.config.step
         sample_rate = self.pipeline.config.sample_rate
@@ -66,14 +63,14 @@ class RealTimeInference:
             operators.append(ops.map(Resample(source.sample_rate, sample_rate)))
 
         # Estimate the total number of chunks that the source will emit
-        self.num_chunks, self.num_batches = None, None
+        self.num_chunks = None
         if source.duration is not None:
             numerator = source.duration - chunk_duration + step_duration
             self.num_chunks = int(np.ceil(numerator / step_duration))
 
         # Add rx operators to manage the inputs and outputs of the pipeline
         operators += [
-            dops.regularize_audio_stream(chunk_duration, step_duration, sample_rate),
+            dops.rearrange_audio_stream(chunk_duration, step_duration, sample_rate),
             ops.buffer_with_count(count=self.batch_size),
             ops.map(pipeline),
             ops.flat_map(lambda results: rx.from_iterable(results)),
@@ -221,7 +218,8 @@ class Benchmark:
         num_audio_files = len(audio_file_paths)
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
-            source = src.FileAudioSource(filepath, pipeline.config.sample_rate)
+            stream_padding = pipeline.config.latency - pipeline.config.step
+            source = src.FileAudioSource(filepath, pipeline.config.sample_rate, padding_end=stream_padding)
             inference = RealTimeInference(
                 pipeline,
                 source,
