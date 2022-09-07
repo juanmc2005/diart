@@ -102,7 +102,7 @@ class EmbeddingNormalization:
             assert batch_size1 == batch_size2 and num_speakers1 == num_speakers2
         with torch.no_grad():
             norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=-1, keepdim=True)
-        return norm_embs.squeeze()
+        return norm_embs
 
 
 class OverlapAwareSpeakerEmbedding:

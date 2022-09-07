@@ -6,7 +6,7 @@ import torch
 import diart.argdoc as argdoc
 import diart.sources as src
 from diart.inference import RealTimeInference
-from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
 from diart.sinks import RTTMWriter
 from diart.models import SegmentationModel, EmbeddingModel
 
@@ -38,7 +38,7 @@ def run():
 
     # Define online speaker diarization pipeline
     config = PipelineConfig.from_namespace(args)
-    pipeline = OnlineSpeakerDiarization(config, profile=True)
+    pipeline = OnlineSpeakerDiarization(config)  # , profile=True)
 
     # Manage audio source
     if args.source != "microphone":
@@ -51,7 +51,7 @@ def run():
 
     # Run online inference
     inference = RealTimeInference(pipeline, audio_source, do_plot=not args.no_plot)
-    inference.attach_observers(RTTMWriter(args.output / f"{audio_source.uri}.rttm"))
+    inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
     inference()
 
 

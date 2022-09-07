@@ -10,7 +10,7 @@ from tqdm import trange, tqdm
 
 from .audio import FilePath
 from .benchmark import Benchmark
-from .pipelines import PipelineConfig, OnlineSpeakerDiarization
+from .blocks import PipelineConfig, OnlineSpeakerDiarization
 
 
 @dataclass
@@ -105,7 +105,7 @@ class Optimizer:
             raise TrialPruned()
 
         # Instantiate pipeline with the new configuration
-        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config), profile=False)
+        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config))
 
         # Run pipeline over the dataset
         report = self.benchmark(pipeline)

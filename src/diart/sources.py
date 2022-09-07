@@ -1,22 +1,17 @@
 import asyncio
 import base64
-import math
 from pathlib import Path
 from queue import SimpleQueue
-from typing import Text, Optional, Callable, AnyStr
+from typing import Text, Optional, AnyStr
 
 import numpy as np
 import sounddevice as sd
-import torch
 import websockets
 from einops import rearrange
-from pyannote.core import SlidingWindowFeature, SlidingWindow
 from rx.subject import Subject
-from tqdm import tqdm
 from torchaudio.io import StreamReader
 
 from .audio import FilePath, AudioLoader
-from .features import TemporalFeatures
 
 
 class AudioSource:
@@ -37,11 +32,6 @@ class AudioSource:
     @property
     def duration(self) -> Optional[float]:
         """The duration of the stream if known. Defaults to None (unknown duration)"""
-        return None
-
-    @property
-    def length(self) -> Optional[int]:
-        """Return the number of audio chunks emitted by this source"""
         return None
 
     def read(self):
@@ -72,12 +62,6 @@ class FileAudioSource(AudioSource):
         # The duration of a file is known
         return self._duration
 
-    @property
-    def length(self) -> Optional[int]:
-        total_duration = AudioLoader.get_duration(self.file)
-        total_size = int(np.rint(total_duration * self.sample_rate))
-        return int(np.ceil(total_size / self.block_size))
-
     def read(self):
         """Send each chunk of samples through the stream"""
         waveform = self.loader.load(self.file)
@@ -99,87 +83,6 @@ class FileAudioSource(AudioSource):
                 self.stream.on_next(waveform)
             except Exception as e:
                 self.stream.on_error(e)
-        self.stream.on_completed()
-
-
-class PrecalculatedFeaturesAudioSource(FileAudioSource):
-    def __init__(
-        self,
-        file: FilePath,
-        sample_rate: int,
-        segmentation: Callable[[TemporalFeatures], TemporalFeatures],
-        embedding: Callable[[TemporalFeatures, TemporalFeatures], TemporalFeatures],
-        chunk_duration: float = 5,
-        step_duration: float = 0.5,
-        batch_size: int = 32,
-        progress_msg: Optional[Text] = None,
-    ):
-        super().__init__(file, sample_rate)
-        self.segmentation = segmentation
-        self.embedding = embedding
-        self.chunk_duration = chunk_duration
-        self.step_duration = step_duration
-        self.batch_size = batch_size
-        self.progress_msg = progress_msg
-
-    def read(self):
-        # Split audio into chunks
-        chunks = rearrange(
-            self.loader.load_sliding_chunks(
-                self.file, self.chunk_duration, self.step_duration
-            ),
-            "chunk channel sample -> chunk sample channel"
-        )
-        num_chunks = chunks.shape[0]
-
-        # Set progress if needed
-        iterator = range(0, num_chunks, self.batch_size)
-        if self.progress_msg is not None:
-            total = int(math.ceil(num_chunks / self.batch_size))
-            iterator = tqdm(iterator, desc=self.progress_msg, total=total, unit="batch", leave=False)
-
-        # Pre-calculate segmentation and embeddings
-        segmentation, embeddings = [], []
-        for i in iterator:
-            i_end = i + self.batch_size
-            if i_end > num_chunks:
-                i_end = num_chunks
-            batch = chunks[i:i_end]
-            seg = self.segmentation(batch)
-            # Edge case: add batch dimension if i == i_end + 1
-            if seg.ndim == 2:
-                seg = seg[np.newaxis]
-            emb = self.embedding(batch, seg)
-            # Edge case: add batch dimension if i == i_end + 1
-            if emb.ndim == 2:
-                emb = emb.unsqueeze(0)
-            segmentation.append(seg)
-            embeddings.append(emb)
-        segmentation = np.vstack(segmentation)
-        embeddings = torch.vstack(embeddings)
-
-        # Stream pre-calculated segmentation, embeddings and chunks
-        seg_resolution = self.chunk_duration / segmentation.shape[1]
-        for i in range(num_chunks):
-            chunk_window = SlidingWindow(
-                start=i * self.step_duration,
-                duration=self.resolution,
-                step=self.resolution,
-            )
-            seg_window = SlidingWindow(
-                start=i * self.step_duration,
-                duration=seg_resolution,
-                step=seg_resolution,
-            )
-            try:
-                self.stream.on_next((
-                    SlidingWindowFeature(chunks[i], chunk_window),
-                    SlidingWindowFeature(segmentation[i], seg_window),
-                    embeddings[i]
-                ))
-            except Exception as e:
-                self.stream.on_error(e)
-
         self.stream.on_completed()
 
 
