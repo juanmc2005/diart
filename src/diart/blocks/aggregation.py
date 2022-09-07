@@ -134,15 +134,10 @@ class DelayedAggregation:
         step: float,
         latency: Optional[float] = None,
         strategy: Literal["mean", "hamming", "first"] = "hamming",
-        stream_duration: Optional[float] = None
     ):
         self.step = step
         self.latency = latency
         self.strategy = strategy
-
-        self.stream_end = None
-        if stream_duration is not None:
-            self.stream_end = stream_duration - stream_duration % self.step
 
         if self.latency is None:
             self.latency = self.step
@@ -152,7 +147,7 @@ class DelayedAggregation:
         self.num_overlapping_windows = int(round(self.latency / self.step))
         self.aggregate = AggregationStrategy.build(self.strategy)
 
-    def _prepend_or_append(
+    def _prepend(
         self,
         output_window: SlidingWindowFeature,
         output_region: Segment,
@@ -172,29 +167,10 @@ class DelayedAggregation:
                 first_output,
                 SlidingWindow(start=0, duration=resolution, step=resolution)
             )
-        # Append rest of the outputs
-        elif self.stream_end is not None and last_buffer.end == self.stream_end:
-            # FIXME instead of appending a larger chunk than expected when latency > step,
-            #  make the stream keep emitting with 0 padding until there is no more signal.
-            num_frames = output_window.data.shape[0]
-            last_region = Segment(output_region.start, last_buffer.end)
-            last_output = buffers[-1].crop(
-                last_region, fixed=last_region.duration
-            )
-            last_output[:num_frames] = output_window.data
-            resolution = self.latency / last_output.shape[0]
-            output_window = SlidingWindowFeature(
-                last_output,
-                SlidingWindow(
-                    start=output_region.start,
-                    duration=resolution,
-                    step=resolution
-                )
-            )
         return output_window
 
     def __call__(self, buffers: List[SlidingWindowFeature]) -> SlidingWindowFeature:
         # Determine overlapping region to aggregate
         start = buffers[-1].extent.end - self.latency
         region = Segment(start, start + self.step)
-        return self._prepend_or_append(self.aggregate(buffers, region), region, buffers)
+        return self._prepend(self.aggregate(buffers, region), region, buffers)

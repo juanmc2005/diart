@@ -37,7 +37,7 @@ class AudioBufferState:
         return call_fn
 
 
-def regularize_audio_stream(
+def rearrange_audio_stream(
     duration: float = 5,
     step: float = 0.5,
     sample_rate: int = 16000

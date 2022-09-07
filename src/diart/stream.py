@@ -38,19 +38,20 @@ def run():
 
     # Define online speaker diarization pipeline
     config = PipelineConfig.from_namespace(args)
-    pipeline = OnlineSpeakerDiarization(config)  # , profile=True)
+    pipeline = OnlineSpeakerDiarization(config)
 
     # Manage audio source
     if args.source != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
-        audio_source = src.FileAudioSource(args.source, config.sample_rate)
+        stream_padding = config.latency - config.step
+        audio_source = src.FileAudioSource(args.source, config.sample_rate, padding_end=stream_padding)
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
         audio_source = src.MicrophoneAudioSource(config.sample_rate)
 
     # Run online inference
-    inference = RealTimeInference(pipeline, audio_source, do_plot=not args.no_plot)
+    inference = RealTimeInference(pipeline, audio_source, do_profile=True, do_plot=not args.no_plot)
     inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
     inference()
 

@@ -86,7 +86,7 @@ class PipelineConfig:
 
 
 class OnlineSpeakerDiarization:
-    def __init__(self, config: Optional[PipelineConfig] = None, stream_duration: Optional[float] = None):
+    def __init__(self, config: Optional[PipelineConfig] = None):
         self.config = PipelineConfig() if config is None else config
 
         msg = f"Latency should be in the range [{self.config.step}, {self.config.duration}]"
@@ -103,28 +103,18 @@ class OnlineSpeakerDiarization:
             "cosine",
             self.config.max_speakers,
         )
-        self.binarize = Binarize(self.config.tau_active)
-        self.chunk_buffer, self.pred_buffer = [], []
-
-        self.pred_aggregation = None
-        self.audio_aggregation = None
-        self.set_stream_duration(stream_duration)
-
-    def set_stream_duration(self, duration: Optional[float]):
-        # DelayedAggregation is stateless, so calling set_stream_duration
-        # while the pipeline is running should only change its behavior towards the end
         self.pred_aggregation = DelayedAggregation(
             self.config.step,
             self.config.latency,
             strategy="hamming",
-            stream_duration=duration,
         )
         self.audio_aggregation = DelayedAggregation(
             self.config.step,
             self.config.latency,
             strategy="first",
-            stream_duration=duration,
         )
+        self.binarize = Binarize(self.config.tau_active)
+        self.chunk_buffer, self.pred_buffer = [], []
 
     def __call__(
         self,
@@ -164,17 +154,14 @@ class OnlineSpeakerDiarization:
             self.chunk_buffer.append(wav)
             self.pred_buffer.append(permuted_seg)
 
-            buffer_size = len(self.chunk_buffer)
-            if buffer_size < self.pred_aggregation.num_overlapping_windows:
-                # Not enough chunks in the buffer
-                # TODO return predictions progressively according to latency
-                outputs.append(None)
-            else:
-                # There are enough chunks in buffer, compute output
-                agg_waveform = self.audio_aggregation(self.chunk_buffer)
-                agg_prediction = self.pred_aggregation(self.pred_buffer)
+            # Aggregate buffer outputs for this time step
+            agg_waveform = self.audio_aggregation(self.chunk_buffer)
+            agg_prediction = self.pred_aggregation(self.pred_buffer)
+            outputs.append((self.binarize(agg_prediction), agg_waveform))
+
+            # Make place for new chunks in buffer if required
+            if len(self.chunk_buffer) <= self.pred_aggregation.num_overlapping_windows:
                 self.chunk_buffer = self.chunk_buffer[1:]
                 self.pred_buffer = self.pred_buffer[1:]
-                outputs.append((self.binarize(agg_prediction), agg_waveform))
 
         return outputs
