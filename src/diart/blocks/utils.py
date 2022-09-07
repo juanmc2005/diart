@@ -1,4 +1,4 @@
-from typing import Text
+from typing import Text, Optional
 
 import numpy as np
 import torch
@@ -15,13 +15,13 @@ class Binarize:
 
     Parameters
     ----------
-    uri: Text
-        Uri of the audio stream.
     threshold: float
         Probability threshold to determine if a speaker is active at a given frame.
+    uri: Optional[Text]
+        Uri of the audio stream. Defaults to no uri.
     """
 
-    def __init__(self, uri: Text, threshold: float):
+    def __init__(self, threshold: float, uri: Optional[Text] = None):
         self.uri = uri
         self.threshold = threshold
 

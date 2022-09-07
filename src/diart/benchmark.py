@@ -1,12 +1,13 @@
 import argparse
 from pathlib import Path
 
+import pandas as pd
 import torch
 
 import diart.argdoc as argdoc
+from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
 from diart.inference import Benchmark
 from diart.models import SegmentationModel, EmbeddingModel
-from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
 
 
 def run():
@@ -44,9 +45,9 @@ def run():
         batch_size=args.batch_size,
     )
 
-    pipeline = OnlineSpeakerDiarization(PipelineConfig.from_namespace(args), profile=True)
+    pipeline = OnlineSpeakerDiarization(PipelineConfig.from_namespace(args))
     report = benchmark(pipeline)
-    if args.output is not None and report is not None:
+    if args.output is not None and isinstance(report, pd.DataFrame):
         report.to_csv(args.output / "benchmark_report.csv")
 
 

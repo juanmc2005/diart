@@ -112,16 +112,16 @@ See `diart.stream -h` for more options.
 Use `RealTimeInference` to easily run a pipeline on an audio source and write the results to disk:
 
 ```python
+from diart import OnlineSpeakerDiarization
 from diart.sources import MicrophoneAudioSource
 from diart.inference import RealTimeInference
-from diart.pipelines import OnlineSpeakerDiarization
 from diart.sinks import RTTMWriter
 
 pipeline = OnlineSpeakerDiarization()
 mic = MicrophoneAudioSource(pipeline.config.sample_rate)
 inference = RealTimeInference(pipeline, mic, do_plot=True)
-inference.attach_observers(RTTMWriter("/output/file.rttm"))
-inference()
+inference.attach_observers(RTTMWriter(mic.uri, "/output/file.rttm"))
+prediction = inference()
 ```
 
 For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#reproducibility)).
@@ -133,8 +133,8 @@ Third-party models can be integrated seamlessly by subclassing `SegmentationMode
 ```python
 import torch
 from typing import Optional
+from diart import OnlineSpeakerDiarization, PipelineConfig
 from diart.models import EmbeddingModel
-from diart.pipelines import PipelineConfig, OnlineSpeakerDiarization
 from diart.sources import MicrophoneAudioSource
 from diart.inference import RealTimeInference
 
@@ -154,7 +154,7 @@ config = PipelineConfig(embedding=MyEmbeddingModel())
 pipeline = OnlineSpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
 inference = RealTimeInference(pipeline, mic)
-inference()
+prediction = inference()
 ```
 
 ## Tune hyper-parameters
@@ -255,7 +255,7 @@ Diart is also compatible with the WebSocket protocol to serve pipelines on the w
 In the following example we build a minimal server that receives audio chunks and sends back predictions in RTTM format:
 
 ```python
-from diart.pipelines import OnlineSpeakerDiarization
+from diart import OnlineSpeakerDiarization
 from diart.sources import WebSocketAudioSource
 from diart.inference import RealTimeInference
 
@@ -263,7 +263,7 @@ pipeline = OnlineSpeakerDiarization()
 source = WebSocketAudioSource(pipeline.config.sample_rate, "localhost", 7007)
 inference = RealTimeInference(pipeline, source, do_plot=True)
 inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
-inference()
+prediction = inference()
 ```
 
 ## Powered by research
@@ -319,7 +319,7 @@ or using the inference API:
 
 ```python
 from diart.inference import Benchmark
-from diart.pipelines import OnlineSpeakerDiarization, PipelineConfig
+from diart import OnlineSpeakerDiarization, PipelineConfig
 from diart.models import SegmentationModel
 
 config = PipelineConfig(

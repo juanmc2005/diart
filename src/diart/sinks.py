@@ -24,8 +24,9 @@ def _extract_annotation(value: Union[Tuple, Annotation]) -> Annotation:
 
 
 class RTTMWriter(Observer):
-    def __init__(self, path: Union[Path, Text], patch_collar: float = 0.05):
+    def __init__(self, uri: Text, path: Union[Path, Text], patch_collar: float = 0.05):
         super().__init__()
+        self.uri = uri
         self.patch_collar = patch_collar
         self.path = Path(path).expanduser()
         if self.path.exists():
@@ -35,11 +36,14 @@ class RTTMWriter(Observer):
         """Stitch same-speaker turns that are close to each other"""
         annotations = list(load_rttm(self.path).values())
         if annotations:
+            annotation = annotations[0]
+            annotation.uri = self.uri
             with open(self.path, 'w') as file:
-                annotations[0].support(self.patch_collar).write_rttm(file)
+                annotation.support(self.patch_collar).write_rttm(file)
 
     def on_next(self, value: Union[Tuple, Annotation]):
         annotation = _extract_annotation(value)
+        annotation.uri = self.uri
         with open(self.path, 'a') as file:
             annotation.write_rttm(file)
 
@@ -52,8 +56,9 @@ class RTTMWriter(Observer):
 
 
 class DiarizationPredictionAccumulator(Observer):
-    def __init__(self, patch_collar: float = 0.05):
+    def __init__(self, uri: Optional[Text] = None, patch_collar: float = 0.05):
         super().__init__()
+        self.uri = uri
         self.patch_collar = patch_collar
         self._annotation = None
 
@@ -69,6 +74,7 @@ class DiarizationPredictionAccumulator(Observer):
 
     def on_next(self, value: Union[Tuple, Annotation]):
         annotation = _extract_annotation(value)
+        annotation.uri = self.uri
         if self._annotation is None:
             self._annotation = annotation
         else:

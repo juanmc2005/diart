@@ -102,9 +102,9 @@ class DelayedAggregation:
         "mean": simple average
         "hamming": average weighted by the Hamming window values (aligned to the buffer)
         "any": no aggregation, pick the first overlapping window
-    stream_end: float, optional
-        Stream end time (in seconds). Defaults to None.
-        If the stream end time is known, then append remaining outputs at the end,
+    stream_duration: float, optional
+        Total stream duration (in seconds). Defaults to None.
+        If known, it will append remaining outputs at the end,
         otherwise the last `latency - step` seconds are ignored.
 
     Example
@@ -134,12 +134,15 @@ class DelayedAggregation:
         step: float,
         latency: Optional[float] = None,
         strategy: Literal["mean", "hamming", "first"] = "hamming",
-        stream_end: Optional[float] = None
+        stream_duration: Optional[float] = None
     ):
         self.step = step
         self.latency = latency
         self.strategy = strategy
-        self.stream_end = stream_end
+
+        self.stream_end = None
+        if stream_duration is not None:
+            self.stream_end = stream_duration - stream_duration % self.step
 
         if self.latency is None:
             self.latency = self.step
@@ -172,8 +175,7 @@ class DelayedAggregation:
         # Append rest of the outputs
         elif self.stream_end is not None and last_buffer.end == self.stream_end:
             # FIXME instead of appending a larger chunk than expected when latency > step,
-            #  keep emitting windows until the signal ends.
-            #  This should be fixed at the observable level and not within the aggregation block.
+            #  make the stream keep emitting with 0 padding until there is no more signal.
             num_frames = output_window.data.shape[0]
             last_region = Segment(output_region.start, last_buffer.end)
             last_output = buffers[-1].crop(

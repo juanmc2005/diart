@@ -8,7 +8,7 @@ from optuna.samplers import TPESampler
 import diart.argdoc as argdoc
 from diart.models import SegmentationModel, EmbeddingModel
 from diart.optim import Optimizer, HyperParameter
-from diart.pipelines import PipelineConfig
+from diart.blocks import PipelineConfig
 
 
 def run():
