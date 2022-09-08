@@ -1,14 +1,15 @@
 import argparse
 from pathlib import Path
 
+import numpy as np
 import torch
 
 import diart.argdoc as argdoc
 import diart.sources as src
-from diart.inference import RealTimeInference
 from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
-from diart.sinks import RTTMWriter
+from diart.inference import RealTimeInference
 from diart.models import SegmentationModel, EmbeddingModel
+from diart.sinks import RTTMWriter
 
 
 def run():
@@ -41,14 +42,15 @@ def run():
     pipeline = OnlineSpeakerDiarization(config)
 
     # Manage audio source
+    block_size = int(np.rint(config.step * config.sample_rate))
     if args.source != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
         stream_padding = config.latency - config.step
-        audio_source = src.FileAudioSource(args.source, config.sample_rate, padding_end=stream_padding)
+        audio_source = src.FileAudioSource(args.source, config.sample_rate, stream_padding, block_size)
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
-        audio_source = src.MicrophoneAudioSource(config.sample_rate)
+        audio_source = src.MicrophoneAudioSource(config.sample_rate, block_size)
 
     # Run online inference
     inference = RealTimeInference(pipeline, audio_source, do_profile=True, do_plot=not args.no_plot)

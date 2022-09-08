@@ -55,7 +55,7 @@ class FileAudioSource(AudioSource):
         file: FilePath,
         sample_rate: int,
         padding_end: float = 0,
-        block_size: int = 1024
+        block_size: int = 1000,
     ):
         super().__init__(Path(file).stem, sample_rate)
         self.loader = AudioLoader(self.sample_rate, mono=True)
@@ -106,7 +106,7 @@ class FileAudioSource(AudioSource):
 class MicrophoneAudioSource(AudioSource):
     """Represents an audio source tied to the default microphone available"""
 
-    def __init__(self, sample_rate: int, block_size: int = 1024):
+    def __init__(self, sample_rate: int, block_size: int = 1000):
         super().__init__("live_recording", sample_rate)
         self.block_size = block_size
         self.mic_stream = sd.InputStream(
@@ -210,7 +210,7 @@ class TorchStreamAudioSource(AudioSource):
         sample_rate: int,
         streamer: StreamReader,
         stream_index: Optional[int] = None,
-        block_size: int = 1024,
+        block_size: int = 1000,
     ):
         super().__init__(uri, sample_rate)
         self.block_size = block_size
