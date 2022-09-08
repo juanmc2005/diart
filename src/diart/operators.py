@@ -45,6 +45,9 @@ def rearrange_audio_stream(
     chunk_samples = int(round(sample_rate * duration))
     step_samples = int(round(sample_rate * step))
 
+    # FIXME this should flush buffer contents when the audio stops being emitted.
+    #  Right now this can be solved by using a block size that's equal to the step duration
+
     def accumulate(state: AudioBufferState, value: np.ndarray):
         # State contains the last emitted chunk, the current step buffer and the last starting time
         if value.ndim != 2 or value.shape[0] != 1:
