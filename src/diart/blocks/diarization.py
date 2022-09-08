@@ -160,7 +160,7 @@ class OnlineSpeakerDiarization:
             outputs.append((self.binarize(agg_prediction), agg_waveform))
 
             # Make place for new chunks in buffer if required
-            if len(self.chunk_buffer) <= self.pred_aggregation.num_overlapping_windows:
+            if len(self.chunk_buffer) == self.pred_aggregation.num_overlapping_windows:
                 self.chunk_buffer = self.chunk_buffer[1:]
                 self.pred_buffer = self.pred_buffer[1:]
 
