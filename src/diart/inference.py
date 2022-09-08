@@ -74,7 +74,6 @@ class RealTimeInference:
             ops.buffer_with_count(count=self.batch_size),
             ops.map(pipeline),
             ops.flat_map(lambda results: rx.from_iterable(results)),
-            ops.filter(lambda result: result is not None),
             ops.do(self.accumulator),
         ]
 
@@ -219,7 +218,8 @@ class Benchmark:
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
             stream_padding = pipeline.config.latency - pipeline.config.step
-            source = src.FileAudioSource(filepath, pipeline.config.sample_rate, padding_end=stream_padding)
+            block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
+            source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
             inference = RealTimeInference(
                 pipeline,
                 source,
