@@ -153,6 +153,10 @@ class DelayedAggregation:
         output_region: Segment,
         buffers: List[SlidingWindowFeature]
     ):
+        # FIXME instead of prepending the output of the first chunk,
+        #  add padding of `chunk_duration - latency` seconds at the
+        #  beginning of the stream so scores can be aggregated accordingly.
+        #  Remember to shift predictions by the padding.
         last_buffer = buffers[-1].extent
         # Prepend prediction until we match the latency in case of first buffer
         if len(buffers) == 1 and last_buffer.start == 0:
