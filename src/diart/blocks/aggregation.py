@@ -102,10 +102,6 @@ class DelayedAggregation:
         "mean": simple average
         "hamming": average weighted by the Hamming window values (aligned to the buffer)
         "any": no aggregation, pick the first overlapping window
-    stream_duration: float, optional
-        Total stream duration (in seconds). Defaults to None.
-        If known, it will append remaining outputs at the end,
-        otherwise the last `latency - step` seconds are ignored.
 
     Example
     --------
