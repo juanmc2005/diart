@@ -53,7 +53,7 @@ def run():
         audio_source = src.MicrophoneAudioSource(config.sample_rate, block_size)
 
     # Run online inference
-    inference = RealTimeInference(pipeline, audio_source, do_profile=True, do_plot=not args.no_plot)
+    inference = RealTimeInference(pipeline, audio_source, batch_size=1, do_profile=True, do_plot=not args.no_plot)
     inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
     inference()
 

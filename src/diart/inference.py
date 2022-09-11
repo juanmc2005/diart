@@ -18,6 +18,7 @@ from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePl
 
 
 class RealTimeInference:
+    # TODO add remaining parameters
     """
     Simplifies inference in real time for users that do not want to play with the reactivex interface.
     Streams an audio source to an online speaker diarization pipeline.
@@ -31,7 +32,6 @@ class RealTimeInference:
         Audio source to be read and streamed.
     do_plot: bool
         Whether to draw predictions in a moving plot. Defaults to True.
-    TODO add remaining parameters
     """
     def __init__(
         self,
@@ -53,40 +53,46 @@ class RealTimeInference:
         step_duration = self.pipeline.config.step
         sample_rate = self.pipeline.config.sample_rate
 
-        operators = []
-
-        # Dynamic resampling if the audio source isn't compatible
-        if sample_rate != source.sample_rate:
-            msg = f"Audio source has sample rate {source.sample_rate}, " \
-                  f"but pipeline's is {sample_rate}. Will resample."
-            logging.warning(msg)
-            operators.append(ops.map(Resample(source.sample_rate, sample_rate)))
-
         # Estimate the total number of chunks that the source will emit
         self.num_chunks = None
         if source.duration is not None:
             numerator = source.duration - chunk_duration + step_duration
             self.num_chunks = int(np.ceil(numerator / step_duration))
 
+        self.stream = self.source.stream
+
+        # Dynamic resampling if the audio source isn't compatible
+        if sample_rate != source.sample_rate:
+            msg = f"Audio source has sample rate {source.sample_rate}, " \
+                  f"but pipeline's is {sample_rate}. Will resample."
+            logging.warning(msg)
+            self.stream = self.stream.pipe(
+                ops.map(Resample(source.sample_rate, sample_rate))
+            )
+
         # Add rx operators to manage the inputs and outputs of the pipeline
-        operators += [
+        self.stream = self.stream.pipe(
             dops.rearrange_audio_stream(chunk_duration, step_duration, sample_rate),
             ops.buffer_with_count(count=self.batch_size),
-            ops.map(pipeline),
+        )
+
+        if do_profile:
+            unit = "chunk" if batch_size == 1 else "batch"
+            self.stream = dops.profile(self.stream, [ops.map(pipeline)], unit)
+        else:
+            self.stream = self.stream.pipe(ops.map(pipeline))
+
+        self.stream = self.stream.pipe(
             ops.flat_map(lambda results: rx.from_iterable(results)),
             ops.do(self.accumulator),
-        ]
+        )
 
         # Show progress if required
         if show_progress:
             desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
-            operators.append(dops.progress(desc, total=self.num_chunks, leave=True))
-
-        # Profile pipeline if required
-        if do_profile:
-            self.stream = dops.profile(self.source.stream, operators)
-        else:
-            self.stream = self.source.stream.pipe(*operators)
+            self.stream = self.stream.pipe(
+                dops.progress(desc, total=self.num_chunks, leave=True)
+            )
 
     def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
         """Attach hooks to the pipeline.
