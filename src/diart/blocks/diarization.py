@@ -96,13 +96,6 @@ class OnlineSpeakerDiarization:
         self.embedding = OverlapAwareSpeakerEmbedding(
             self.config.embedding, self.config.gamma, self.config.beta, norm=1, device=self.config.device
         )
-        self.clustering = OnlineSpeakerClustering(
-            self.config.tau_active,
-            self.config.rho_update,
-            self.config.delta_new,
-            "cosine",
-            self.config.max_speakers,
-        )
         self.pred_aggregation = DelayedAggregation(
             self.config.step,
             self.config.latency,
@@ -114,6 +107,20 @@ class OnlineSpeakerDiarization:
             strategy="first",
         )
         self.binarize = Binarize(self.config.tau_active)
+
+        # Internal state, handle with care
+        self.clustering = None
+        self.chunk_buffer, self.pred_buffer = [], []
+        self.reset()
+
+    def reset(self):
+        self.clustering = OnlineSpeakerClustering(
+            self.config.tau_active,
+            self.config.rho_update,
+            self.config.delta_new,
+            "cosine",
+            self.config.max_speakers,
+        )
         self.chunk_buffer, self.pred_buffer = [], []
 
     def __call__(
