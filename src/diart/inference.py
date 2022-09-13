@@ -91,7 +91,7 @@ class RealTimeInference:
         if show_progress:
             desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
             self.stream = self.stream.pipe(
-                dops.progress(desc, total=self.num_chunks, leave=True)
+                dops.progress(desc, total=self.num_chunks, unit="chunk", leave=False)
             )
 
     def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
