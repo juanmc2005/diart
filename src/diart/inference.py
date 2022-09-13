@@ -205,6 +205,7 @@ class Benchmark:
 
     def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
+        Notice that the internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
@@ -219,6 +220,8 @@ class Benchmark:
 
             If no reference annotations, a list of predictions.
         """
+        # Reset pipeline to initial state in case it was modified before
+        pipeline.reset()
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         predictions = []
@@ -240,6 +243,8 @@ class Benchmark:
                     RTTMWriter(source.uri, self.output_path / f"{source.uri}.rttm")
                 )
             predictions.append(inference())
+            # Reset internal state for the next file
+            pipeline.reset()
 
         # Run evaluation
         if self.reference_path is not None:
