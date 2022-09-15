@@ -1,20 +1,20 @@
 import logging
 from pathlib import Path
+from traceback import print_exc
 from typing import Union, Text, Optional, Callable, Tuple, List
 
+import diart.operators as dops
+import diart.sources as src
 import numpy as np
 import pandas as pd
 import rx
 import rx.operators as ops
+from diart.blocks import OnlineSpeakerDiarization, Resample
+from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot, WindowClosedException
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
-
-import diart.operators as dops
-import diart.sources as src
-from diart.blocks import OnlineSpeakerDiarization, Resample
-from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot
 
 
 class RealTimeInference:
@@ -42,6 +42,7 @@ class RealTimeInference:
         do_plot: bool = False,
         show_progress: bool = True,
         progress_desc: Optional[Text] = None,
+        leave_progress_bar: bool = False,
     ):
         self.pipeline = pipeline
         self.source = source
@@ -77,6 +78,7 @@ class RealTimeInference:
         )
 
         if do_profile:
+            # FIXME this has no effect
             unit = "chunk" if batch_size == 1 else "batch"
             self.stream = dops.profile(self.stream, [ops.map(pipeline)], unit)
         else:
@@ -91,7 +93,7 @@ class RealTimeInference:
         if show_progress:
             desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
             self.stream = self.stream.pipe(
-                dops.progress(desc, total=self.num_chunks, unit="chunk", leave=False)
+                dops.progress(desc, total=self.num_chunks, unit="chunk", leave=leave_progress_bar)
             )
 
     def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
@@ -114,6 +116,11 @@ class RealTimeInference:
         """
         self.stream = self.stream.pipe(*[ops.do(sink) for sink in observers])
 
+    def _handle_error_with_plot(self, error: Exception):
+        self.source.close()
+        if not isinstance(error, WindowClosedException):
+            print_exc()
+
     def __call__(self) -> Annotation:
         """Stream audio chunks from `source` to `pipeline`.
 
@@ -124,7 +131,9 @@ class RealTimeInference:
         """
         config = self.pipeline.config
         observable = self.stream
+        on_error = None
         if self.do_plot:
+            rt_plot = RealTimePlot(config.duration, config.latency)
             # Buffering is needed for the real-time plot, so we do this at the very end
             observable = self.stream.pipe(
                 dops.buffer_output(
@@ -133,9 +142,10 @@ class RealTimeInference:
                     latency=config.latency,
                     sample_rate=config.sample_rate,
                 ),
-                ops.do(RealTimePlot(config.duration, config.latency)),
+                ops.do(rt_plot)
             )
-        observable.subscribe()
+            on_error = self._handle_error_with_plot
+        observable.subscribe(on_error=on_error)
         self.source.read()
         return self.accumulator.get_prediction()
 
@@ -236,7 +246,8 @@ class Benchmark:
                 do_profile=False,
                 do_plot=False,
                 show_progress=self.show_progress,
-                progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})"
+                progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})",
+                leave_progress_bar=False,
             )
             if self.output_path is not None:
                 inference.attach_observers(

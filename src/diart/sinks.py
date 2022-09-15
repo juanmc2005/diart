@@ -1,4 +1,5 @@
 from pathlib import Path
+from traceback import print_exc
 from typing import Union, Text, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -7,7 +8,6 @@ from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
-from traceback import print_exc
 
 
 class WindowClosedException(Exception):
@@ -105,6 +105,7 @@ class RealTimePlot(Observer):
         self.window_duration = duration
         self.latency = latency
         self.figure, self.axs, self.num_axs = None, None, -1
+        # This flag allows to catch the matplotlib window closed event and make the next call stop iterating
         self.window_closed = False
 
     def _on_window_closed(self, event):
@@ -165,7 +166,3 @@ class RealTimePlot(Observer):
         self.figure.canvas.draw()
         self.figure.canvas.flush_events()
         plt.pause(0.05)
-
-    def on_error(self, error: Exception):
-        if not isinstance(error, WindowClosedException):
-            print_exc()
