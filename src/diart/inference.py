@@ -11,6 +11,7 @@ import rx
 import rx.operators as ops
 from diart.blocks import OnlineSpeakerDiarization, Resample
 from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot, WindowClosedException
+from diart.utils import Chronometer
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
@@ -18,9 +19,8 @@ from rx.core import Observer
 
 
 class RealTimeInference:
-    # TODO add remaining parameters
     """
-    Simplifies inference in real time for users that do not want to play with the reactivex interface.
+    Performs inference in real time given a pipeline and an audio source.
     Streams an audio source to an online speaker diarization pipeline.
     It allows users to attach a chain of operations in the form of hooks.
 
@@ -30,8 +30,24 @@ class RealTimeInference:
         Configured speaker diarization pipeline.
     source: AudioSource
         Audio source to be read and streamed.
+    batch_size: int
+        Number of inputs to send to the pipeline at once.
+        Defaults to 1.
+    do_profile: bool
+        If True, compute and report the processing time of the pipeline.
+        Defaults to True.
     do_plot: bool
-        Whether to draw predictions in a moving plot. Defaults to True.
+        If True, draw predictions in a moving plot.
+        Defaults to False.
+    show_progress: bool
+        If True, show a progress bar.
+        Defaults to True.
+    progress_desc: Optional[Text]
+        Message to show in the progress bar.
+        Defaults to 'Streaming <source uri>'.
+    leave_progress_bar: bool
+        If True, leaves the progress bar on the screen after the stream has finished.
+        Defaults to False.
     """
     def __init__(
         self,
@@ -47,8 +63,10 @@ class RealTimeInference:
         self.pipeline = pipeline
         self.source = source
         self.batch_size = batch_size
+        self.do_profile = do_profile
         self.do_plot = do_plot
         self.accumulator = DiarizationPredictionAccumulator(source.uri)
+        self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
 
         chunk_duration = self.pipeline.config.duration
         step_duration = self.pipeline.config.step
@@ -77,10 +95,12 @@ class RealTimeInference:
             ops.buffer_with_count(count=self.batch_size),
         )
 
-        if do_profile:
-            # FIXME this has no effect
-            unit = "chunk" if batch_size == 1 else "batch"
-            self.stream = dops.profile(self.stream, [ops.map(pipeline)], unit)
+        if self.do_profile:
+            self.stream = self.stream.pipe(
+                ops.do_action(on_next=lambda _: self._chrono.start()),
+                ops.map(pipeline),
+                ops.do_action(on_next=lambda _: self._chrono.stop()),
+            )
         else:
             self.stream = self.stream.pipe(ops.map(pipeline))
 
@@ -116,10 +136,24 @@ class RealTimeInference:
         """
         self.stream = self.stream.pipe(*[ops.do(sink) for sink in observers])
 
-    def _handle_error_with_plot(self, error: Exception):
+    def _handle_error(self, error: BaseException):
+        # Always close the source in case of bad termination
         self.source.close()
-        if not isinstance(error, WindowClosedException):
+        # Special treatment for a user interruption (counted as normal termination)
+        window_closed = isinstance(error, WindowClosedException)
+        interrupted = isinstance(error, KeyboardInterrupt)
+        if not window_closed and not interrupted:
             print_exc()
+        # If profiling is enabled, report its results in spite of the error
+        if self.do_profile:
+            if self._chrono.is_running:
+                self._chrono.stop(do_count=False)
+            self._chrono.report()
+
+    def _handle_completion(self):
+        # If profiling is enabled, report results upon termination
+        if self.do_profile:
+            self._chrono.report()
 
     def __call__(self) -> Annotation:
         """Stream audio chunks from `source` to `pipeline`.
@@ -131,7 +165,6 @@ class RealTimeInference:
         """
         config = self.pipeline.config
         observable = self.stream
-        on_error = None
         if self.do_plot:
             rt_plot = RealTimePlot(config.duration, config.latency)
             # Buffering is needed for the real-time plot, so we do this at the very end
@@ -144,8 +177,10 @@ class RealTimeInference:
                 ),
                 ops.do(rt_plot)
             )
-            on_error = self._handle_error_with_plot
-        observable.subscribe(on_error=on_error)
+        observable.subscribe(
+            on_error=self._handle_error,
+            on_completed=self._handle_completion,
+        )
         self.source.read()
         return self.accumulator.get_prediction()
 
