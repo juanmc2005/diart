@@ -1,10 +1,9 @@
+import time
 from typing import Optional, List, Tuple, Text
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
-
-import time
 
 
 class Chronometer:
