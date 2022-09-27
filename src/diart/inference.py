@@ -16,6 +16,7 @@ from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
+from tqdm import tqdm
 
 
 class RealTimeInference:
@@ -110,11 +111,23 @@ class RealTimeInference:
         )
 
         # Show progress if required
+        self._pbar = None
         if show_progress:
             desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
+            self._pbar = tqdm(desc=desc, total=self.num_chunks, unit="chunk", leave=leave_progress_bar)
             self.stream = self.stream.pipe(
-                dops.progress(desc, total=self.num_chunks, unit="chunk", leave=leave_progress_bar)
+                ops.do_action(on_next=lambda _: self._pbar.update())
             )
+
+    def _close_pbar(self):
+        if self._pbar is not None:
+            self._pbar.close()
+
+    def _close_chronometer(self):
+        if self.do_profile:
+            if self._chrono.is_running:
+                self._chrono.stop(do_count=False)
+            self._chrono.report()
 
     def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
         """Attach hooks to the pipeline.
@@ -144,16 +157,14 @@ class RealTimeInference:
         interrupted = isinstance(error, KeyboardInterrupt)
         if not window_closed and not interrupted:
             print_exc()
-        # If profiling is enabled, report its results in spite of the error
-        if self.do_profile:
-            if self._chrono.is_running:
-                self._chrono.stop(do_count=False)
-            self._chrono.report()
+        # Close progress and chronometer states
+        self._close_pbar()
+        self._close_chronometer()
 
     def _handle_completion(self):
-        # If profiling is enabled, report results upon termination
-        if self.do_profile:
-            self._chrono.report()
+        # Close progress and chronometer states
+        self._close_pbar()
+        self._close_chronometer()
 
     def __call__(self) -> Annotation:
         """Stream audio chunks from `source` to `pipeline`.
@@ -175,12 +186,13 @@ class RealTimeInference:
                     latency=config.latency,
                     sample_rate=config.sample_rate,
                 ),
-                ops.do(rt_plot)
+                ops.do(rt_plot),
             )
         observable.subscribe(
             on_error=self._handle_error,
             on_completed=self._handle_completion,
         )
+        # FIXME if read() isn't blocking, the prediction returned is empty
         self.source.read()
         return self.accumulator.get_prediction()
 

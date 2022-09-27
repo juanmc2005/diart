@@ -1,13 +1,11 @@
-import time
 from dataclasses import dataclass
-from typing import Callable, Optional, List, Any, Tuple, Text
+from typing import Callable, Optional, List, Any, Tuple
 
 import numpy as np
 import rx
 from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature, Segment
 from rx import operators as ops
 from rx.core import Observable
-from tqdm import tqdm
 
 Operator = Callable[[Observable], Observable]
 
@@ -287,20 +285,4 @@ def buffer_output(
     return rx.pipe(
         ops.scan(accumulate, OutputAccumulationState.initial()),
         ops.map(OutputAccumulationState.to_tuple),
-    )
-
-
-def progress(
-    desc: Optional[Text] = None,
-    total: Optional[int] = None,
-    unit: Text = "it",
-    leave: bool = True
-) -> Operator:
-    pbar = tqdm(desc=desc, total=total, unit=unit, leave=leave)
-    return rx.pipe(
-        ops.do_action(
-            on_next=lambda _: pbar.update(),
-            on_error=lambda _: pbar.close(),
-            on_completed=lambda: pbar.close(),
-        )
     )
