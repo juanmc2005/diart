@@ -106,10 +106,9 @@ class FileAudioSource(AudioSource):
                 if self.is_closed:
                     break
                 self.stream.on_next(waveform)
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
+            except BaseException as e:
                 self.stream.on_error(e)
+                break
         self.stream.on_completed()
         self.close()
 
@@ -143,9 +142,7 @@ class MicrophoneAudioSource(AudioSource):
                     if self._mic_stream.closed:
                         break
                 self.stream.on_next(self._queue.get_nowait())
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
+            except BaseException as e:
                 self.stream.on_error(e)
                 break
         self.stream.on_completed()
@@ -265,9 +262,7 @@ class TorchStreamAudioSource(AudioSource):
                 # shape (samples, channels) to (1, samples)
                 chunk = np.mean(item[0].numpy(), axis=1, keepdims=True).T
                 self.stream.on_next(chunk)
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
+            except BaseException as e:
                 self.stream.on_error(e)
                 break
         self.stream.on_completed()
