@@ -304,39 +304,3 @@ def progress(
             on_completed=lambda: pbar.close(),
         )
     )
-
-
-class _Chronometer:
-    def __init__(self):
-        self.current_start_time = None
-        self.history = []
-
-    def start(self):
-        self.current_start_time = time.monotonic()
-
-    def stop(self):
-        msg = "No start time available, Did you call stop() before start()?"
-        assert self.current_start_time is not None, msg
-        end_time = time.monotonic() - self.current_start_time
-        self.current_start_time = None
-        self.history.append(end_time)
-
-    def report(self, unit: Text = "iteration"):
-        print(
-            f"Took {np.mean(self.history).item():.3f} "
-            f"(+/-{np.std(self.history).item():.3f}) seconds/{unit} "
-            f"-- ran {len(self.history)} times"
-        )
-
-
-def profile(observable: rx.Observable, operations: List[Operator], unit: Text = "iteration") -> rx.Observable:
-    chronometer = _Chronometer()
-    return observable.pipe(
-        ops.do_action(lambda _: chronometer.start()),
-        *operations,
-        ops.do_action(
-            on_next=lambda _: chronometer.stop(),
-            on_error=lambda _: chronometer.report(unit),
-            on_completed=lambda: chronometer.report(unit),
-        )
-    )
