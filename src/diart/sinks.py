@@ -1,5 +1,4 @@
 from pathlib import Path
-from traceback import print_exc
 from typing import Union, Text, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -49,7 +48,6 @@ class RTTMWriter(Observer):
 
     def on_error(self, error: Exception):
         self.patch()
-        print_exc()
 
     def on_completed(self):
         self.patch()
@@ -82,7 +80,6 @@ class DiarizationPredictionAccumulator(Observer):
 
     def on_error(self, error: Exception):
         self.patch()
-        print_exc()
 
     def on_completed(self):
         self.patch()
