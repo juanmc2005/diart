@@ -44,6 +44,7 @@ class Optimizer:
         batch_size: int = 32,
         hparams: Optional[Sequence[HyperParameter]] = None,
         base_config: Optional[PipelineConfig] = None,
+        do_kickstart_hparams: bool = True,
     ):
         self.benchmark = Benchmark(
             speech_path,
@@ -52,7 +53,13 @@ class Optimizer:
             show_report=False,
             batch_size=batch_size,
         )
-        self.base_config = PipelineConfig() if base_config is None else base_config
+
+        self.base_config = base_config
+        self.do_kickstart_hparams = do_kickstart_hparams
+        if self.base_config is None:
+            self.base_config = PipelineConfig()
+            self.do_kickstart_hparams = False
+
         self.hparams = hparams
         if self.hparams is None:
             self.hparams = [TauActive, RhoUpdate, DeltaNew]
@@ -121,9 +128,10 @@ class Optimizer:
             if self.study.trials:
                 last_trial = self.study.trials[-1].number
             self._progress.set_description(f"Trial {last_trial + 1}")
-        # Start with base config hyper-parameters
-        self.study.enqueue_trial({
-            param.name: getattr(self.base_config, param.name)
-            for param in self.hparams
-        })
+        # Start with base config hyper-parameters if config was given
+        if self.do_kickstart_hparams:
+            self.study.enqueue_trial({
+                param.name: getattr(self.base_config, param.name)
+                for param in self.hparams
+            }, skip_if_exists=True)
         self.study.optimize(self.objective, num_iter, callbacks=[self._callback])
