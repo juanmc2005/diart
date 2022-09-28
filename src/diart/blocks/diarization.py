@@ -13,7 +13,25 @@ from .utils import Binarize
 from .. import models as m
 
 
-class PipelineConfig:
+class BasePipelineConfig:
+    @property
+    def duration(self) -> float:
+        raise NotImplementedError
+
+    @property
+    def step(self) -> float:
+        raise NotImplementedError
+
+    @property
+    def latency(self) -> float:
+        raise NotImplementedError
+
+    @property
+    def sample_rate(self) -> int:
+        raise NotImplementedError
+
+
+class PipelineConfig(BasePipelineConfig):
     def __init__(
         self,
         segmentation: Optional[m.SegmentationModel] = None,
@@ -36,12 +54,12 @@ class PipelineConfig:
             self.segmentation = m.SegmentationModel.from_pyannote("pyannote/segmentation")
 
         # Default duration is the one given by the segmentation model
-        self.duration = duration
-        if self.duration is None:
-            self.duration = self.segmentation.get_duration()
+        self._duration = duration
+        if self._duration is None:
+            self._duration = self.segmentation.get_duration()
 
         # Expected sample rate is given by the segmentation model
-        self.sample_rate = self.segmentation.get_sample_rate()
+        self._sample_rate = self.segmentation.get_sample_rate()
 
         # Default embedding model is pyannote/embedding
         self.embedding = embedding
@@ -49,12 +67,12 @@ class PipelineConfig:
             self.embedding = m.EmbeddingModel.from_pyannote("pyannote/embedding")
 
         # Latency defaults to the step duration
-        self.step = step
-        self.latency = latency
-        if self.latency is None or self.latency == "min":
-            self.latency = self.step
-        elif latency == "max":
-            self.latency = self.duration
+        self._step = step
+        self._latency = latency
+        if self._latency is None or self._latency == "min":
+            self._latency = self._step
+        elif self._latency == "max":
+            self._latency = self._duration
 
         self.tau_active = tau_active
         self.rho_update = rho_update
@@ -84,34 +102,69 @@ class PipelineConfig:
             device=args.device,
         )
 
+    @property
+    def duration(self) -> float:
+        return self._duration
 
-class OnlineSpeakerDiarization:
+    @property
+    def step(self) -> float:
+        return self._step
+
+    @property
+    def latency(self) -> float:
+        return self._latency
+
+    @property
+    def sample_rate(self) -> int:
+        return self._sample_rate
+
+
+class BasePipeline:
+    @property
+    def config(self) -> BasePipelineConfig:
+        raise NotImplementedError
+
+    def reset(self):
+        raise NotImplementedError
+
+    def __call__(
+        self,
+        waveforms: Sequence[SlidingWindowFeature]
+    ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
+        raise NotImplementedError
+
+
+class OnlineSpeakerDiarization(BasePipeline):
     def __init__(self, config: Optional[PipelineConfig] = None):
-        self.config = PipelineConfig() if config is None else config
+        self._config = PipelineConfig() if config is None else config
 
-        msg = f"Latency should be in the range [{self.config.step}, {self.config.duration}]"
-        assert self.config.step <= self.config.latency <= self.config.duration, msg
+        msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
+        assert self._config.step <= self._config.latency <= self._config.duration, msg
 
-        self.segmentation = SpeakerSegmentation(self.config.segmentation, self.config.device)
+        self.segmentation = SpeakerSegmentation(self._config.segmentation, self._config.device)
         self.embedding = OverlapAwareSpeakerEmbedding(
-            self.config.embedding, self.config.gamma, self.config.beta, norm=1, device=self.config.device
+            self._config.embedding, self._config.gamma, self._config.beta, norm=1, device=self._config.device
         )
         self.pred_aggregation = DelayedAggregation(
-            self.config.step,
-            self.config.latency,
+            self._config.step,
+            self._config.latency,
             strategy="hamming",
         )
         self.audio_aggregation = DelayedAggregation(
-            self.config.step,
-            self.config.latency,
+            self._config.step,
+            self._config.latency,
             strategy="first",
         )
-        self.binarize = Binarize(self.config.tau_active)
+        self.binarize = Binarize(self._config.tau_active)
 
         # Internal state, handle with care
         self.clustering = None
         self.chunk_buffer, self.pred_buffer = [], []
         self.reset()
+
+    @property
+    def config(self) -> PipelineConfig:
+        return self._config
 
     def reset(self):
         self.clustering = OnlineSpeakerClustering(
@@ -126,7 +179,7 @@ class OnlineSpeakerDiarization:
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature]
-    ) -> Sequence[Optional[Tuple[Annotation, SlidingWindowFeature]]]:
+    ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
         assert batch_size >= 1, msg

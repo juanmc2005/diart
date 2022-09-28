@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, Text, Optional, Union
+from typing import Sequence, Text, Optional, Union, Any
 
 from optuna import TrialPruned, Study, create_study
 from optuna.samplers import TPESampler
@@ -10,7 +10,7 @@ from tqdm import trange, tqdm
 
 from .audio import FilePath
 from .benchmark import Benchmark
-from .blocks import PipelineConfig, OnlineSpeakerDiarization
+from .blocks import BasePipelineConfig, PipelineConfig, OnlineSpeakerDiarization
 
 
 @dataclass
@@ -39,13 +39,15 @@ class Optimizer:
     def __init__(
         self,
         speech_path: Union[Text, Path],
-        reference_path: Optional[Union[Text, Path]],
+        reference_path: Union[Text, Path],
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
+        pipeline_class: type = OnlineSpeakerDiarization,
         hparams: Optional[Sequence[HyperParameter]] = None,
-        base_config: Optional[PipelineConfig] = None,
+        base_config: Optional[BasePipelineConfig] = None,
         do_kickstart_hparams: bool = True,
     ):
+        self.pipeline_class = pipeline_class
         self.benchmark = Benchmark(
             speech_path,
             reference_path,
@@ -63,6 +65,13 @@ class Optimizer:
         self.hparams = hparams
         if self.hparams is None:
             self.hparams = [TauActive, RhoUpdate, DeltaNew]
+
+        # Make sure hyper-parameters exist in the configuration class given
+        possible_hparams = vars(self.base_config)
+        for param in self.hparams:
+            msg = f"Hyper-parameter {param.name} not found " \
+                  f"in configuration {self.base_config.__class__.__name__}"
+            assert param in possible_hparams, msg
 
         self._progress: Optional[tqdm] = None
 
@@ -112,7 +121,8 @@ class Optimizer:
             raise TrialPruned()
 
         # Instantiate pipeline with the new configuration
-        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config))
+        config_class = self.base_config.__class__
+        pipeline = self.pipeline_class(config_class(**trial_config))
 
         # Run pipeline over the dataset
         report = self.benchmark(pipeline)

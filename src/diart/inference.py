@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import rx
 import rx.operators as ops
-from diart.blocks import OnlineSpeakerDiarization, Resample
-from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot, WindowClosedException
+from diart.blocks import BasePipeline, Resample
+from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from diart.utils import Chronometer
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
@@ -27,7 +27,7 @@ class RealTimeInference:
 
     Parameters
     ----------
-    pipeline: OnlineSpeakerDiarization
+    pipeline: BasePipeline
         Configured speaker diarization pipeline.
     source: AudioSource
         Audio source to be read and streamed.
@@ -52,7 +52,7 @@ class RealTimeInference:
     """
     def __init__(
         self,
-        pipeline: OnlineSpeakerDiarization,
+        pipeline: BasePipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
@@ -264,13 +264,13 @@ class Benchmark:
         self.show_report = show_report
         self.batch_size = batch_size
 
-    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
+    def __call__(self, pipeline: BasePipeline) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
-        pipeline: OnlineSpeakerDiarization
+        pipeline: BasePipeline
             Configured speaker diarization pipeline.
 
         Returns
