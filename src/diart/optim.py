@@ -95,10 +95,11 @@ class Optimizer:
     def objective(self, trial: Trial) -> float:
         # Set suggested values for optimized hyper-parameters
         trial_config = vars(self.base_config)
-        for hparam in self.hparams:
-            trial_config[hparam.name] = trial.suggest_uniform(
-                hparam.name, hparam.low, hparam.high
-            )
+        if trial.number > 0:
+            for hparam in self.hparams:
+                trial_config[hparam.name] = trial.suggest_uniform(
+                    hparam.name, hparam.low, hparam.high
+                )
 
         # Prune trial if required
         if trial.should_prune():
