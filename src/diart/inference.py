@@ -68,6 +68,7 @@ class RealTimeInference:
         self.do_plot = do_plot
         self.accumulator = DiarizationPredictionAccumulator(source.uri)
         self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
+        self._observers = []
 
         chunk_duration = self.pipeline.config.duration
         step_duration = self.pipeline.config.step
@@ -148,8 +149,12 @@ class RealTimeInference:
             Observers to consume emitted annotations and audio.
         """
         self.stream = self.stream.pipe(*[ops.do(sink) for sink in observers])
+        self._observers.extend(observers)
 
     def _handle_error(self, error: BaseException):
+        # Compensate for Rx not always calling on_error
+        for sink in self._observers:
+            sink.on_error(error)
         # Always close the source in case of bad termination
         self.source.close()
         # Special treatment for a user interruption (counted as normal termination)
@@ -177,7 +182,6 @@ class RealTimeInference:
         config = self.pipeline.config
         observable = self.stream
         if self.do_plot:
-            rt_plot = RealTimePlot(config.duration, config.latency)
             # Buffering is needed for the real-time plot, so we do this at the very end
             observable = self.stream.pipe(
                 dops.buffer_output(
@@ -186,7 +190,7 @@ class RealTimeInference:
                     latency=config.latency,
                     sample_rate=config.sample_rate,
                 ),
-                ops.do(rt_plot),
+                ops.do(RealTimePlot(config.duration, config.latency)),
             )
         observable.subscribe(
             on_error=self._handle_error,
@@ -296,11 +300,14 @@ class Benchmark:
                 progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})",
                 leave_progress_bar=False,
             )
+            pred = inference()
+            pred.uri = source.uri
+            predictions.append(pred)
+
             if self.output_path is not None:
-                inference.attach_observers(
-                    RTTMWriter(source.uri, self.output_path / f"{source.uri}.rttm")
-                )
-            predictions.append(inference())
+                with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
+                    pred.write_rttm(out_file)
+
             # Reset internal state for the next file
             pipeline.reset()
 
