@@ -23,11 +23,23 @@ authors:
   - name: Sophie Rosset
     orcid: 0000-0002-6865-4989
     affiliation: 1
+  - name: Khaled Zaouk
+    affiliation: 3
+  - name: Amit Kesari
+    affiliation: 4
+  - name: Yagna Thakkar
+    affiliation: 5
 affiliations:
   - name: Université Paris-Saclay CNRS, LISN, Orsay, France
     index: 1
   - name: IRIT, Université de Toulouse, CNRS, Toulouse, France
     index: 2
+  - name: Ava, France
+    index: 3
+  - name: Indian Institute of Technology, Tirupati, India
+    index: 4
+  - name: Tridhya Intuit Pvt Ltd, Gujarat, India
+    index: 5
 date: 23 September 2022
 bibliography: paper.bib
 ---
