@@ -316,11 +316,6 @@ class Benchmark:
         self.hooks = [] if hooks is None else hooks
         self.inference_hooks = inference_hooks
 
-    def _call_hooks(self, method: Text, *args: Any):
-        """Call ``method`` on every attached hook with parameters ``args``"""
-        for hook in self.hooks:
-            getattr(hook, method)(*args)
-
     def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
@@ -343,7 +338,11 @@ class Benchmark:
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         predictions, references = [], []
-        self._call_hooks("on_before_dataset", num_audio_files)
+
+        # Hook calls
+        for hook in self.hooks:
+            hook.on_before_dataset(num_audio_files)
+
         for i, filepath in enumerate(audio_file_paths):
             stream_padding = pipeline.config.latency - pipeline.config.step
             block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
@@ -359,16 +358,23 @@ class Benchmark:
                 leave_progress_bar=False,
                 hooks=self.inference_hooks,
             )
-            self._call_hooks("on_before_file", source)
+
+            # Hook calls
+            for hook in self.hooks:
+                hook.on_before_file(source)
+
             pred = inference()
             pred.uri = source.uri
 
-            # Load reference file for hook call if possible
+            # Load reference file for hook calls if possible
             ref = None
             if self.reference_path is not None:
                 ref = load_rttm(self.reference_path / f"{source.uri}.rttm").popitem()[1]
                 references.append(ref)
-            self._call_hooks("on_after_file", source, pred, ref)
+
+            # Hook calls
+            for hook in self.hooks:
+                hook.on_after_file(source, pred, ref)
 
             predictions.append(pred)
 
@@ -379,7 +385,9 @@ class Benchmark:
             # Reset internal state for the next file
             pipeline.reset()
 
-        self._call_hooks("on_after_dataset", predictions, None if references else references)
+        # Hook calls
+        for hook in self.hooks:
+            hook.on_after_dataset(predictions, None if references else references)
 
         # Run evaluation
         if self.reference_path is not None:
