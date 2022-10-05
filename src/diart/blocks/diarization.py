@@ -126,7 +126,7 @@ class OnlineSpeakerDiarization:
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature]
-    ) -> Sequence[Optional[Tuple[Annotation, SlidingWindowFeature]]]:
+    ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
         assert batch_size >= 1, msg
