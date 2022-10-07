@@ -29,7 +29,7 @@ class RealTimeInferenceHook:
     def on_prediction_batch(self, batch: Sequence[Tuple[Annotation, SlidingWindowFeature]]):
         pass
 
-    def on_prediction(self, prediction: Tuple[Annotation, SlidingWindowFeature]):
+    def on_prediction(self, prediction: Annotation, waveform: SlidingWindowFeature):
         pass
 
     def on_completion(self, prediction: Annotation):
@@ -134,7 +134,7 @@ class RealTimeInference:
         self.stream = self.stream.pipe(
             ops.do_action(lambda pred_batch: self._call_hooks("on_prediction_batch", pred_batch)),
             ops.flat_map(lambda results: rx.from_iterable(results)),
-            ops.do_action(lambda pred: self._call_hooks("on_prediction", pred)),
+            ops.do_action(lambda pred: self._call_hooks("on_prediction", *pred)),
             ops.do(self.accumulator),
         )
 
@@ -147,10 +147,10 @@ class RealTimeInference:
                 ops.do_action(on_next=lambda _: self._pbar.update())
             )
 
-    def _call_hooks(self, method: Text, arg: Any):
-        """Call ``method`` on every attached hook with parameter ``arg``"""
+    def _call_hooks(self, method: Text, *args: Any):
+        """Call ``method`` on every attached hook with parameters ``args``"""
         for hook in self.hooks:
-            getattr(hook, method)(arg)
+            getattr(hook, method)(*args)
 
     def _close_pbar(self):
         if self._pbar is not None:
