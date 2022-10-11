@@ -25,10 +25,13 @@ authors:
     affiliation: 1
   - name: Khaled Zaouk
     affiliation: 3
-  - name: Amit Kesari
+  - name: Ingo Fruend
     affiliation: 4
-  - name: Yagna Thakkar
+    orcid: 0000-0003-4594-1763
+  - name: Amit Kesari
     affiliation: 5
+  - name: Yagna Thakkar
+    affiliation: 6
 affiliations:
   - name: Université Paris-Saclay CNRS, LISN, Orsay, France
     index: 1
@@ -36,10 +39,12 @@ affiliations:
     index: 2
   - name: Ava, France
     index: 3
-  - name: Indian Institute of Technology, Tirupati, India
+  - name: Verbally GmbH
     index: 4
-  - name: Tridhya Intuit Pvt Ltd, Gujarat, India
+  - name: Indian Institute of Technology, Tirupati, India
     index: 5
+  - name: Tridhya Intuit Pvt Ltd, Gujarat, India
+    index: 6
 date: 23 September 2022
 bibliography: paper.bib
 ---
