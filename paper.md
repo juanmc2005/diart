@@ -39,7 +39,7 @@ affiliations:
     index: 2
   - name: Ava, France
     index: 3
-  - name: Verbally GmbH
+  - name: Verbally GmbH, Germany
     index: 4
   - name: Indian Institute of Technology, Tirupati, India
     index: 5
