@@ -8,6 +8,7 @@ from typing_extensions import Literal
 from .aggregation import DelayedAggregation
 from .clustering import OnlineSpeakerClustering
 from .embedding import OverlapAwareSpeakerEmbedding
+from ..features import TemporalFeatures
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
@@ -85,9 +86,67 @@ class PipelineConfig:
         )
 
 
+class OnlineSpeakerDiarizationHook:
+    def on_local_segmentation_batch(
+        self,
+        audio_batch: torch.Tensor,
+        segmentation_batch: TemporalFeatures
+    ):
+        pass
+
+    def on_embedding_batch(
+        self,
+        audio_batch: torch.Tensor,
+        embedding_batch: torch.Tensor
+    ):
+        pass
+
+    def on_local_segmentation(
+        self,
+        waveform: SlidingWindowFeature,
+        segmentation: SlidingWindowFeature
+    ):
+        pass
+
+    def on_embeddings(self, waveform: SlidingWindowFeature, embeddings: torch.Tensor):
+        pass
+
+    def on_before_clustering(
+        self,
+        waveform: SlidingWindowFeature,
+        clustering: OnlineSpeakerClustering
+    ):
+        pass
+
+    def on_after_clustering(
+        self,
+        waveform: SlidingWindowFeature,
+        clustering: OnlineSpeakerClustering,
+        segmentation: SlidingWindowFeature
+    ):
+        pass
+
+    def on_soft_prediction(self, waveform: SlidingWindowFeature, segmentation: SlidingWindowFeature):
+        pass
+
+    def on_binary_prediction(self, waveform: SlidingWindowFeature, diarization: Annotation):
+        pass
+
+    def on_before_reset(self):
+        pass
+
+    def on_after_reset(self):
+        pass
+
+
 class OnlineSpeakerDiarization:
-    def __init__(self, config: Optional[PipelineConfig] = None):
+    def __init__(
+        self,
+        config: Optional[PipelineConfig] = None,
+        hooks: Optional[Sequence[OnlineSpeakerDiarizationHook]] = None,
+    ):
         self.config = PipelineConfig() if config is None else config
+        self.hooks = [] if hooks is None else hooks
 
         msg = f"Latency should be in the range [{self.config.step}, {self.config.duration}]"
         assert self.config.step <= self.config.latency <= self.config.duration, msg
@@ -114,6 +173,9 @@ class OnlineSpeakerDiarization:
         self.reset()
 
     def reset(self):
+        for hook in self.hooks:
+            hook.on_before_reset()
+
         self.clustering = OnlineSpeakerClustering(
             self.config.tau_active,
             self.config.rho_update,
@@ -122,6 +184,9 @@ class OnlineSpeakerDiarization:
             self.config.max_speakers,
         )
         self.chunk_buffer, self.pred_buffer = [], []
+
+        for hook in self.hooks:
+            hook.on_after_reset()
 
     def __call__(
         self,
@@ -140,7 +205,12 @@ class OnlineSpeakerDiarization:
 
         # Extract segmentation and embeddings
         segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
+        for hook in self.hooks:
+            hook.on_local_segmentation_batch(batch, segmentations)
+
         embeddings = self.embedding(batch, segmentations)  # shape (batch, speakers, emb_dim)
+        for hook in self.hooks:
+            hook.on_embedding_batch(batch, embeddings)
 
         seg_resolution = waveforms[0].extent.duration / segmentations.shape[1]
 
@@ -154,8 +224,17 @@ class OnlineSpeakerDiarization:
             )
             seg = SlidingWindowFeature(seg.cpu().numpy(), sw)
 
+            for hook in self.hooks:
+                hook.on_local_segmentation(wav, seg)
+            for hook in self.hooks:
+                hook.on_embeddings(wav, emb)
+            for hook in self.hooks:
+                hook.on_before_clustering(wav, self.clustering)
+
             # Update clustering state and permute segmentation
             permuted_seg = self.clustering(seg, emb)
+            for hook in self.hooks:
+                hook.on_after_clustering(wav, self.clustering, permuted_seg)
 
             # Update sliding buffer
             self.chunk_buffer.append(wav)
@@ -164,7 +243,13 @@ class OnlineSpeakerDiarization:
             # Aggregate buffer outputs for this time step
             agg_waveform = self.audio_aggregation(self.chunk_buffer)
             agg_prediction = self.pred_aggregation(self.pred_buffer)
-            outputs.append((self.binarize(agg_prediction), agg_waveform))
+            for hook in self.hooks:
+                hook.on_soft_prediction(agg_waveform, agg_prediction)
+
+            bin_prediction = self.binarize(agg_prediction)
+            outputs.append((bin_prediction, agg_waveform))
+            for hook in self.hooks:
+                hook.on_binary_prediction(agg_waveform, bin_prediction)
 
             # Make place for new chunks in buffer if required
             if len(self.chunk_buffer) == self.pred_aggregation.num_overlapping_windows:

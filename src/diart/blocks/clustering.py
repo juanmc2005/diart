@@ -59,10 +59,19 @@ class OnlineSpeakerClustering:
     @property
     def inactive_centers(self) -> List[int]:
         return [
-            c
-            for c in range(self.max_speakers)
+            c for c in range(self.max_speakers)
             if c not in self.active_centers or c in self.blocked_centers
         ]
+
+    @property
+    def center_matrix(self) -> Optional[np.ndarray]:
+        if self.centers is None:
+            return None
+        active = np.array([
+            c for c in range(self.max_speakers)
+            if c in self.active_centers and c not in self.blocked_centers
+        ], dtype=np.int)
+        return self.centers[active]
 
     def get_next_center_position(self) -> Optional[int]:
         for center in range(self.max_speakers):
