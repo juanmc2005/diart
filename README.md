@@ -308,6 +308,7 @@ To obtain the best results, make sure to use the following hyper-parameters:
 | VoxConverse | any     | 0.576  | 0.915  | 0.648 |
 | DIHARD II   | 1s      | 0.619  | 0.326  | 0.997 |
 | DIHARD II   | 5s      | 0.555  | 0.422  | 1.517 |
+| Ego4D       | 5s      | 0.513  | 0.126  | 1.890 |
 
 `diart.benchmark` and `diart.inference.Benchmark` can run, evaluate and measure the real-time latency of the pipeline. For instance, for a DIHARD III configuration:
 
