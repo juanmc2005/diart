@@ -100,11 +100,13 @@ class OnlineSpeakerDiarization:
             self.config.step,
             self.config.latency,
             strategy="hamming",
+            cropping_mode="loose",
         )
         self.audio_aggregation = DelayedAggregation(
             self.config.step,
             self.config.latency,
             strategy="first",
+            cropping_mode="center",
         )
         self.binarize = Binarize(self.config.tau_active)
 
