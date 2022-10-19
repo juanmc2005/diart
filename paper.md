@@ -28,6 +28,9 @@ authors:
   - name: Ingo Fruend
     affiliation: 4
     orcid: 0000-0003-4594-1763
+  - name: Bertrand Higy
+    affiliation: 3
+    orcid: 0000-0002-8198-8676
   - name: Amit Kesari
     affiliation: 5
   - name: Yagna Thakkar
