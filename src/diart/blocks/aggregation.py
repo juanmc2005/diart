@@ -6,18 +6,34 @@ from typing_extensions import Literal
 
 
 class AggregationStrategy:
-    """Abstract class representing a strategy to aggregate overlapping buffers"""
+    """Abstract class representing a strategy to aggregate overlapping buffers
+
+    Parameters
+    ----------
+    cropping_mode: ("strict", "loose", "center"), optional
+        Defines the cropping mode. Defaults to "loose".
+        This will define the value of the mode parameter used in SlidingWindowFeature.crop
+        (from pyannote.core, see https://pyannote.github.io/pyannote-core/reference.html#pyannote.core.SlidingWindowFeature.crop
+        for more details).
+    """
+
+    def __init__(self, cropping_mode: Literal["strict", "loose", "center"] = "loose"):
+        assert cropping_mode in ["strict", "loose", "center"], f"Invalid cropping mode `{cropping_mode}`"
+        self.cropping_mode = cropping_mode
 
     @staticmethod
-    def build(name: Literal["mean", "hamming", "first"]) -> 'AggregationStrategy':
+    def build(
+        name: Literal["mean", "hamming", "first"],
+        cropping_mode: Literal["strict", "loose", "center"] = "loose"
+    ) -> 'AggregationStrategy':
         """Build an AggregationStrategy instance based on its name"""
         assert name in ("mean", "hamming", "first")
         if name == "mean":
-            return AverageStrategy()
+            return AverageStrategy(cropping_mode)
         elif name == "hamming":
-            return HammingWeightedAverageStrategy()
+            return HammingWeightedAverageStrategy(cropping_mode)
         else:
-            return FirstOnlyStrategy()
+            return FirstOnlyStrategy(cropping_mode)
 
     def __call__(self, buffers: List[SlidingWindowFeature], focus: Segment) -> SlidingWindowFeature:
         """Aggregate chunks over a specific region.
@@ -55,11 +71,11 @@ class HammingWeightedAverageStrategy(AggregationStrategy):
         hamming, intersection = [], []
         for buffer in buffers:
             # Crop buffer to focus region
-            b = buffer.crop(focus, fixed=focus.duration)
+            b = buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
             # Crop Hamming window to focus region
             h = np.expand_dims(np.hamming(num_frames), axis=-1)
             h = SlidingWindowFeature(h, buffer.sliding_window)
-            h = h.crop(focus, fixed=focus.duration)
+            h = h.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
             hamming.append(h.data)
             intersection.append(b.data)
         hamming, intersection = np.stack(hamming), np.stack(intersection)
@@ -73,7 +89,7 @@ class AverageStrategy(AggregationStrategy):
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
         # Stack all overlapping regions
         intersection = np.stack([
-            buffer.crop(focus, fixed=focus.duration)
+            buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
             for buffer in buffers
         ])
         return np.mean(intersection, axis=0)
@@ -83,7 +99,7 @@ class FirstOnlyStrategy(AggregationStrategy):
     """Instead of aggregating, keep the first focus region in the buffer list"""
 
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
-        return buffers[0].crop(focus, fixed=focus.duration)
+        return buffers[0].crop(focus, mode=self.cropping_mode, fixed=focus.duration)
 
 
 class DelayedAggregation:
