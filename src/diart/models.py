@@ -36,7 +36,7 @@ class SegmentationModel(nn.Module):
         assert _has_pyannote, "No pyannote.audio installation found"
 
         class PyannoteSegmentationModel(SegmentationModel):
-            def __init__(self, pyannote_model, token: Optional[Text]):
+            def __init__(self, pyannote_model, token: Union[Text, bool, None] = None):
                 super().__init__()
                 self.model = pyannote.get_model(pyannote_model, token)
 
@@ -98,7 +98,7 @@ class EmbeddingModel(nn.Module):
         assert _has_pyannote, "No pyannote.audio installation found"
 
         class PyannoteEmbeddingModel(EmbeddingModel):
-            def __init__(self, pyannote_model, token: Optional[Text]):
+            def __init__(self, pyannote_model, token: Union[Text, bool, None] = None):
                 super().__init__()
                 self.model = pyannote.get_model(pyannote_model, token)
 
