@@ -16,7 +16,7 @@ class SegmentationModel(nn.Module):
     """
 
     @staticmethod
-    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = None) -> 'SegmentationModel':
+    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = True) -> 'SegmentationModel':
         """
         Returns a `SegmentationModel` wrapping a pyannote model.
 
@@ -36,7 +36,7 @@ class SegmentationModel(nn.Module):
         assert _has_pyannote, "No pyannote.audio installation found"
 
         class PyannoteSegmentationModel(SegmentationModel):
-            def __init__(self, pyannote_model, token: Union[Text, bool, None] = None):
+            def __init__(self, pyannote_model, token: Union[Text, bool, None] = True):
                 super().__init__()
                 self.model = pyannote.get_model(pyannote_model, token)
 
@@ -78,7 +78,7 @@ class EmbeddingModel(nn.Module):
     """Minimal interface for an embedding model."""
 
     @staticmethod
-    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = None) -> 'EmbeddingModel':
+    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = True) -> 'EmbeddingModel':
         """
         Returns an `EmbeddingModel` wrapping a pyannote model.
 
@@ -98,7 +98,7 @@ class EmbeddingModel(nn.Module):
         assert _has_pyannote, "No pyannote.audio installation found"
 
         class PyannoteEmbeddingModel(EmbeddingModel):
-            def __init__(self, pyannote_model, token: Union[Text, bool, None] = None):
+            def __init__(self, pyannote_model, token: Union[Text, bool, None] = True):
                 super().__init__()
                 self.model = pyannote.get_model(pyannote_model, token)
 
