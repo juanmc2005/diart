@@ -1,5 +1,5 @@
 import time
-from typing import Optional, List, Tuple, Text
+from typing import Optional, Text, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,8 +35,12 @@ class Chronometer:
         )
 
 
-def unzip(zipped: List[Tuple]) -> Tuple:
-    return tuple(zip(*zipped))
+def parse_hf_token_arg(hf_token: Text) -> Union[bool, Text]:
+    if hf_token.lower() == "true":
+        return True
+    elif hf_token.lower() == "false":
+        return False
+    return hf_token
 
 
 def visualize_feature(duration: Optional[float] = None):

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Text, Union
 
 import torch
 import torch.nn as nn
@@ -16,13 +16,18 @@ class SegmentationModel(nn.Module):
     """
 
     @staticmethod
-    def from_pyannote(model) -> 'SegmentationModel':
+    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = None) -> 'SegmentationModel':
         """
         Returns a `SegmentationModel` wrapping a pyannote model.
 
         Parameters
         ----------
         model: pyannote.PipelineModel
+            The pyannote.audio model to fetch.
+        use_hf_token: str | bool, optional
+            The Huggingface access token to use when downloading the model.
+            If True, use huggingface-cli login token.
+            Defaults to None.
 
         Returns
         -------
@@ -31,9 +36,9 @@ class SegmentationModel(nn.Module):
         assert _has_pyannote, "No pyannote.audio installation found"
 
         class PyannoteSegmentationModel(SegmentationModel):
-            def __init__(self, pyannote_model):
+            def __init__(self, pyannote_model, token: Optional[Text]):
                 super().__init__()
-                self.model = pyannote.get_model(pyannote_model)
+                self.model = pyannote.get_model(pyannote_model, token)
 
             def get_sample_rate(self) -> int:
                 return self.model.audio.sample_rate
@@ -44,7 +49,7 @@ class SegmentationModel(nn.Module):
             def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
                 return self.model(waveform)
 
-        return PyannoteSegmentationModel(model)
+        return PyannoteSegmentationModel(model, use_hf_token)
 
     def get_sample_rate(self) -> int:
         """Return the sample rate expected for model inputs"""
@@ -73,13 +78,18 @@ class EmbeddingModel(nn.Module):
     """Minimal interface for an embedding model."""
 
     @staticmethod
-    def from_pyannote(model) -> 'EmbeddingModel':
+    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = None) -> 'EmbeddingModel':
         """
         Returns an `EmbeddingModel` wrapping a pyannote model.
 
         Parameters
         ----------
         model: pyannote.PipelineModel
+            The pyannote.audio model to fetch.
+        use_hf_token: str | bool, optional
+            The Huggingface access token to use when downloading the model.
+            If True, use huggingface-cli login token.
+            Defaults to None.
 
         Returns
         -------
@@ -88,9 +98,9 @@ class EmbeddingModel(nn.Module):
         assert _has_pyannote, "No pyannote.audio installation found"
 
         class PyannoteEmbeddingModel(EmbeddingModel):
-            def __init__(self, pyannote_model):
+            def __init__(self, pyannote_model, token: Optional[Text]):
                 super().__init__()
-                self.model = pyannote.get_model(pyannote_model)
+                self.model = pyannote.get_model(pyannote_model, token)
 
             def __call__(
                 self,
@@ -99,7 +109,7 @@ class EmbeddingModel(nn.Module):
             ) -> torch.Tensor:
                 return self.model(waveform, weights=weights)
 
-        return PyannoteEmbeddingModel(model)
+        return PyannoteEmbeddingModel(model, use_hf_token)
 
     def __call__(
         self,
