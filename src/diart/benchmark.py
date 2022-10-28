@@ -1,10 +1,10 @@
 import argparse
 from pathlib import Path
 
+import diart.argdoc as argdoc
 import pandas as pd
 import torch
-
-import diart.argdoc as argdoc
+from diart import utils
 from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
 from diart.inference import Benchmark
 from diart.models import SegmentationModel, EmbeddingModel
@@ -31,10 +31,15 @@ def run():
     parser.add_argument("--cpu", dest="cpu", action="store_true",
                         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=Path, help=f"{argdoc.OUTPUT}. Defaults to no writing")
+    parser.add_argument("--hf-token", default="true", type=str,
+                        help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
     args.device = torch.device("cpu") if args.cpu else None
-    args.segmentation = SegmentationModel.from_pyannote(args.segmentation)
-    args.embedding = EmbeddingModel.from_pyannote(args.embedding)
+    args.hf_token = utils.parse_hf_token_arg(args.hf_token)
+
+    # Download pyannote models (or get from cache)
+    args.segmentation = SegmentationModel.from_pyannote(args.segmentation, args.hf_token)
+    args.embedding = EmbeddingModel.from_pyannote(args.embedding, args.hf_token)
 
     benchmark = Benchmark(
         args.root,
