@@ -243,9 +243,10 @@ mic.read()
 Output:
 
 ```
-torch.Size([4, 512])
-torch.Size([4, 512])
-torch.Size([4, 512])
+# Shape is (batch_size, num_speakers, embedding_dim)
+torch.Size([1, 3, 512])
+torch.Size([1, 3, 512])
+torch.Size([1, 3, 512])
 ...
 ```
 
