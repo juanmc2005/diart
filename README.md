@@ -74,9 +74,7 @@ conda install portaudio
 conda install pysoundfile -c conda-forge
 ```
 
-3) [Install PyTorch >= 1.12.1](https://pytorch.org/get-started/locally/#start-locally)
-
-4) Install diart:
+3) Install diart:
 ```shell
 pip install diart
 ```
