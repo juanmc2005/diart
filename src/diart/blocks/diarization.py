@@ -149,11 +149,13 @@ class OnlineSpeakerDiarization(BasePipeline):
             self._config.step,
             self._config.latency,
             strategy="hamming",
+            cropping_mode="loose",
         )
         self.audio_aggregation = DelayedAggregation(
             self._config.step,
             self._config.latency,
             strategy="first",
+            cropping_mode="center",
         )
         self.binarize = Binarize(self._config.tau_active)
 

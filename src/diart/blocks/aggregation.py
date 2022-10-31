@@ -6,18 +6,33 @@ from typing_extensions import Literal
 
 
 class AggregationStrategy:
-    """Abstract class representing a strategy to aggregate overlapping buffers"""
+    """Abstract class representing a strategy to aggregate overlapping buffers
+
+    Parameters
+    ----------
+    cropping_mode: ("strict", "loose", "center"), optional
+        Defines the mode to crop buffer chunks as in pyannote.core.
+        See https://pyannote.github.io/pyannote-core/reference.html#pyannote.core.SlidingWindowFeature.crop
+        Defaults to "loose".
+    """
+
+    def __init__(self, cropping_mode: Literal["strict", "loose", "center"] = "loose"):
+        assert cropping_mode in ["strict", "loose", "center"], f"Invalid cropping mode `{cropping_mode}`"
+        self.cropping_mode = cropping_mode
 
     @staticmethod
-    def build(name: Literal["mean", "hamming", "first"]) -> 'AggregationStrategy':
+    def build(
+        name: Literal["mean", "hamming", "first"],
+        cropping_mode: Literal["strict", "loose", "center"] = "loose"
+    ) -> 'AggregationStrategy':
         """Build an AggregationStrategy instance based on its name"""
         assert name in ("mean", "hamming", "first")
         if name == "mean":
-            return AverageStrategy()
+            return AverageStrategy(cropping_mode)
         elif name == "hamming":
-            return HammingWeightedAverageStrategy()
+            return HammingWeightedAverageStrategy(cropping_mode)
         else:
-            return FirstOnlyStrategy()
+            return FirstOnlyStrategy(cropping_mode)
 
     def __call__(self, buffers: List[SlidingWindowFeature], focus: Segment) -> SlidingWindowFeature:
         """Aggregate chunks over a specific region.
@@ -55,11 +70,11 @@ class HammingWeightedAverageStrategy(AggregationStrategy):
         hamming, intersection = [], []
         for buffer in buffers:
             # Crop buffer to focus region
-            b = buffer.crop(focus, fixed=focus.duration)
+            b = buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
             # Crop Hamming window to focus region
             h = np.expand_dims(np.hamming(num_frames), axis=-1)
             h = SlidingWindowFeature(h, buffer.sliding_window)
-            h = h.crop(focus, fixed=focus.duration)
+            h = h.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
             hamming.append(h.data)
             intersection.append(b.data)
         hamming, intersection = np.stack(hamming), np.stack(intersection)
@@ -73,7 +88,7 @@ class AverageStrategy(AggregationStrategy):
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
         # Stack all overlapping regions
         intersection = np.stack([
-            buffer.crop(focus, fixed=focus.duration)
+            buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
             for buffer in buffers
         ])
         return np.mean(intersection, axis=0)
@@ -83,7 +98,7 @@ class FirstOnlyStrategy(AggregationStrategy):
     """Instead of aggregating, keep the first focus region in the buffer list"""
 
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
-        return buffers[0].crop(focus, fixed=focus.duration)
+        return buffers[0].crop(focus, mode=self.cropping_mode, fixed=focus.duration)
 
 
 class DelayedAggregation:
@@ -97,11 +112,15 @@ class DelayedAggregation:
     latency: float, optional
         Desired latency, in seconds. Defaults to step.
         The higher the latency, the more overlapping windows to aggregate.
-    strategy: ("mean", "hamming", "any"), optional
+    strategy: ("mean", "hamming", "first"), optional
         Specifies how to aggregate overlapping windows. Defaults to "hamming".
         "mean": simple average
         "hamming": average weighted by the Hamming window values (aligned to the buffer)
-        "any": no aggregation, pick the first overlapping window
+        "first": no aggregation, pick the first overlapping window
+    cropping_mode: ("strict", "loose", "center"), optional
+        Defines the mode to crop buffer chunks as in pyannote.core.
+        See https://pyannote.github.io/pyannote-core/reference.html#pyannote.core.SlidingWindowFeature.crop
+        Defaults to "loose".
 
     Example
     --------
@@ -130,10 +149,13 @@ class DelayedAggregation:
         step: float,
         latency: Optional[float] = None,
         strategy: Literal["mean", "hamming", "first"] = "hamming",
+        cropping_mode: Literal["strict", "loose", "center"] = "loose"
     ):
         self.step = step
         self.latency = latency
         self.strategy = strategy
+        assert cropping_mode in ["strict", "loose", "center"], f"Invalid cropping mode `{cropping_mode}`"
+        self.cropping_mode = cropping_mode
 
         if self.latency is None:
             self.latency = self.step
@@ -141,7 +163,7 @@ class DelayedAggregation:
         assert self.step <= self.latency, "Invalid latency requested"
 
         self.num_overlapping_windows = int(round(self.latency / self.step))
-        self.aggregate = AggregationStrategy.build(self.strategy)
+        self.aggregate = AggregationStrategy.build(self.strategy, self.cropping_mode)
 
     def _prepend(
         self,
@@ -159,7 +181,7 @@ class DelayedAggregation:
             num_frames = output_window.data.shape[0]
             first_region = Segment(0, output_region.end)
             first_output = buffers[0].crop(
-                first_region, fixed=first_region.duration
+                first_region, mode=self.cropping_mode, fixed=first_region.duration
             )
             first_output[-num_frames:] = output_window.data
             resolution = output_region.end / first_output.shape[0]

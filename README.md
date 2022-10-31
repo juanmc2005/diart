@@ -74,20 +74,19 @@ conda install portaudio
 conda install pysoundfile -c conda-forge
 ```
 
-3) [Install PyTorch](https://pytorch.org/get-started/locally/#start-locally)
-
-4) Install pyannote.audio
-
-```shell
-pip install pyannote.audio==2.0.1
-```
-
-**Note:** starting from version 0.4, installing pyannote.audio is mandatory to run the default system or to use pyannote-based models. In any other case, this step can be ignored.
-
-5) Install diart:
+3) Install diart:
 ```shell
 pip install diart
 ```
+
+### Get access to pyannote models
+
+By default, diart is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) models stored in the [huggingface](https://huggingface.co/) hub.
+To allow diart to use them, you need to follow these steps:
+
+1) [Accept user conditions](https://huggingface.co/pyannote/segmentation) for the `pyannote/segmentation` model
+2) [Accept user conditions](https://huggingface.co/pyannote/embedding) for the `pyannote/embedding` model
+3) Install [huggingface-cli](https://huggingface.co/docs/huggingface_hub/quick-start#install-the-hub-library) and [log in](https://huggingface.co/docs/huggingface_hub/quick-start#login) with your user access token (or provide it manually in diart CLI or API).
 
 ## Stream audio
 
@@ -231,7 +230,7 @@ mic = MicrophoneAudioSource(sample_rate)
 
 stream = mic.stream.pipe(
     # Reformat stream to 5s duration and 500ms shift
-    dops.rearrange_audio_stream(sample_rate),
+    dops.rearrange_audio_stream(sample_rate=sample_rate),
     ops.map(lambda wav: (wav, segmentation(wav))),
     ops.starmap(embedding)
 ).subscribe(on_next=lambda emb: print(emb.shape))
@@ -242,9 +241,10 @@ mic.read()
 Output:
 
 ```
-torch.Size([4, 512])
-torch.Size([4, 512])
-torch.Size([4, 512])
+# Shape is (batch_size, num_speakers, embedding_dim)
+torch.Size([1, 3, 512])
+torch.Size([1, 3, 512])
+torch.Size([1, 3, 512])
 ...
 ```
 
