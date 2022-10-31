@@ -1,11 +1,11 @@
 import argparse
 from pathlib import Path
 
-import numpy as np
-import torch
-
 import diart.argdoc as argdoc
 import diart.sources as src
+import numpy as np
+import torch
+from diart import utils
 from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
 from diart.inference import RealTimeInference
 from diart.models import SegmentationModel, EmbeddingModel
@@ -32,10 +32,15 @@ def run():
                         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=str,
                         help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
+    parser.add_argument("--hf-token", default="true", type=str,
+                        help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
     args.device = torch.device("cpu") if args.cpu else None
-    args.segmentation = SegmentationModel.from_pyannote(args.segmentation)
-    args.embedding = EmbeddingModel.from_pyannote(args.embedding)
+    args.hf_token = utils.parse_hf_token_arg(args.hf_token)
+
+    # Download pyannote models (or get from cache)
+    args.segmentation = SegmentationModel.from_pyannote(args.segmentation, args.hf_token)
+    args.embedding = EmbeddingModel.from_pyannote(args.embedding, args.hf_token)
 
     # Define online speaker diarization pipeline
     config = PipelineConfig.from_namespace(args)

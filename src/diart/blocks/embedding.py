@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, Text
 
 import torch
 from einops import rearrange
@@ -19,8 +19,13 @@ class SpeakerEmbedding:
         self.weights_formatter = TemporalFeatureFormatter()
 
     @staticmethod
-    def from_pyannote(model, device: Optional[torch.device] = None) -> 'SpeakerEmbedding':
-        return SpeakerEmbedding(EmbeddingModel.from_pyannote(model), device)
+    def from_pyannote(
+        model,
+        use_hf_token: Union[Text, bool, None] = True,
+        device: Optional[torch.device] = None
+    ) -> 'SpeakerEmbedding':
+        emb_model = EmbeddingModel.from_pyannote(model, use_hf_token)
+        return SpeakerEmbedding(emb_model, device)
 
     def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None) -> torch.Tensor:
         """
@@ -144,9 +149,10 @@ class OverlapAwareSpeakerEmbedding:
         gamma: float = 3,
         beta: float = 10,
         norm: Union[float, torch.Tensor] = 1,
+        use_hf_token: Union[Text, bool, None] = True,
         device: Optional[torch.device] = None,
     ):
-        model = EmbeddingModel.from_pyannote(model)
+        model = EmbeddingModel.from_pyannote(model, use_hf_token)
         return OverlapAwareSpeakerEmbedding(model, gamma, beta, norm, device)
 
     def __call__(self, waveform: TemporalFeatures, segmentation: TemporalFeatures) -> torch.Tensor:
