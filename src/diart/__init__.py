@@ -1,1 +1,1 @@
-from .blocks import OnlineSpeakerDiarization, PipelineConfig
+from .blocks import OnlineSpeakerDiarization, PipelineConfig, OnlineSpeakerDiarizationHook

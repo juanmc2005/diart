@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, Text, Optional, Union
+from typing import Sequence, Text, Optional, Union, Any, Dict
 
 from optuna import TrialPruned, Study, create_study
 from optuna.samplers import TPESampler
@@ -75,12 +75,19 @@ class Optimizer:
             raise ValueError(msg)
 
     @property
-    def best_performance(self):
+    def best_performance(self) -> float:
         return self.study.best_value
 
     @property
-    def best_hparams(self):
+    def best_hparams(self) -> Dict[Text, float]:
         return self.study.best_params
+
+    @property
+    def best_config(self) -> PipelineConfig:
+        config = vars(self.base_config)
+        for name, value in self.best_hparams.items():
+            config[name] = value
+        return PipelineConfig(**config)
 
     def _callback(self, study: Study, trial: FrozenTrial):
         if self._progress is None:

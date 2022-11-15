@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List
+from typing import Union, Text, Optional, Any, Tuple, List, Sequence
 
 import diart.operators as dops
 import diart.sources as src
@@ -10,13 +10,33 @@ import pandas as pd
 import rx
 import rx.operators as ops
 from diart.blocks import OnlineSpeakerDiarization, Resample
-from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot, WindowClosedException
+from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from diart.utils import Chronometer
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from tqdm import tqdm
+
+
+class RealTimeInferenceHook:
+    def on_audio_chunk(self, waveform: SlidingWindowFeature):
+        pass
+
+    def on_audio_batch(self, batch: Sequence[SlidingWindowFeature]):
+        pass
+
+    def on_prediction_batch(self, batch: Sequence[Tuple[Annotation, SlidingWindowFeature]]):
+        pass
+
+    def on_prediction(self, prediction: Annotation, waveform: SlidingWindowFeature):
+        pass
+
+    def on_completion(self, prediction: Annotation):
+        pass
+
+    def on_error(self, error: BaseException):
+        pass
 
 
 class RealTimeInference:
@@ -60,12 +80,15 @@ class RealTimeInference:
         show_progress: bool = True,
         progress_desc: Optional[Text] = None,
         leave_progress_bar: bool = False,
+        hooks: Optional[Sequence[RealTimeInferenceHook]] = None,
     ):
         self.pipeline = pipeline
         self.source = source
         self.batch_size = batch_size
         self.do_profile = do_profile
         self.do_plot = do_plot
+        # TODO replace profiling and progress bar with hooks
+        self.hooks = [] if hooks is None else hooks
         self.accumulator = DiarizationPredictionAccumulator(source.uri)
         self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
         self._observers = []
@@ -94,7 +117,9 @@ class RealTimeInference:
         # Add rx operators to manage the inputs and outputs of the pipeline
         self.stream = self.stream.pipe(
             dops.rearrange_audio_stream(chunk_duration, step_duration, sample_rate),
+            ops.do_action(lambda wav: self._call_hooks("on_audio_chunk", wav)),
             ops.buffer_with_count(count=self.batch_size),
+            ops.do_action(lambda batch: self._call_hooks("on_audio_batch", batch)),
         )
 
         if self.do_profile:
@@ -107,7 +132,9 @@ class RealTimeInference:
             self.stream = self.stream.pipe(ops.map(pipeline))
 
         self.stream = self.stream.pipe(
+            ops.do_action(lambda pred_batch: self._call_hooks("on_prediction_batch", pred_batch)),
             ops.flat_map(lambda results: rx.from_iterable(results)),
+            ops.do_action(lambda pred: self._call_hooks("on_prediction", *pred)),
             ops.do(self.accumulator),
         )
 
@@ -120,6 +147,11 @@ class RealTimeInference:
                 ops.do_action(on_next=lambda _: self._pbar.update())
             )
 
+    def _call_hooks(self, method: Text, *args: Any):
+        """Call ``method`` on every attached hook with parameters ``args``"""
+        for hook in self.hooks:
+            getattr(hook, method)(*args)
+
     def _close_pbar(self):
         if self._pbar is not None:
             self._pbar.close()
@@ -129,16 +161,6 @@ class RealTimeInference:
             if self._chrono.is_running:
                 self._chrono.stop(do_count=False)
             self._chrono.report()
-
-    def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
-        """Attach hooks to the pipeline.
-
-        Parameters
-        ----------
-        *hooks: (Tuple[Annotation, SlidingWindowFeature]) -> None
-            Hook functions to consume emitted annotations and audio.
-        """
-        self.stream = self.stream.pipe(*[ops.do_action(hook) for hook in hooks])
 
     def attach_observers(self, *observers: Observer):
         """Attach rx observers to the pipeline.
@@ -155,6 +177,7 @@ class RealTimeInference:
         # Compensate for Rx not always calling on_error
         for sink in self._observers:
             sink.on_error(error)
+        self._call_hooks("on_error", error)
         # Always close the source in case of bad termination
         self.source.close()
         # Special treatment for a user interruption (counted as normal termination)
@@ -167,6 +190,7 @@ class RealTimeInference:
         self._close_chronometer()
 
     def _handle_completion(self):
+        self._call_hooks("on_completion", self.accumulator.get_prediction())
         # Close progress and chronometer states
         self._close_pbar()
         self._close_chronometer()
@@ -199,6 +223,34 @@ class RealTimeInference:
         # FIXME if read() isn't blocking, the prediction returned is empty
         self.source.read()
         return self.accumulator.get_prediction()
+
+
+class BenchmarkHook:
+    def on_before_dataset(self, num_files: int):
+        pass
+
+    def on_before_file(
+        self,
+        source: src.FileAudioSource,
+        pipeline: OnlineSpeakerDiarization
+    ):
+        pass
+
+    def on_after_file(
+        self,
+        source: src.FileAudioSource,
+        pipeline: OnlineSpeakerDiarization,
+        prediction: Annotation,
+        reference: Optional[Annotation],
+    ):
+        pass
+
+    def on_after_dataset(
+        self,
+        predictions: Sequence[Annotation],
+        references: Optional[Sequence[Annotation]],
+    ):
+        pass
 
 
 class Benchmark:
@@ -242,6 +294,8 @@ class Benchmark:
         show_progress: bool = True,
         show_report: bool = True,
         batch_size: int = 32,
+        hooks: Optional[Sequence[BenchmarkHook]] = None,
+        inference_hooks: Optional[Sequence[RealTimeInferenceHook]] = None,
     ):
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
@@ -263,6 +317,9 @@ class Benchmark:
         self.show_progress = show_progress
         self.show_report = show_report
         self.batch_size = batch_size
+        # TODO implement writing to disk and evaluation/reporting as hooks
+        self.hooks = [] if hooks is None else hooks
+        self.inference_hooks = inference_hooks
 
     def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
@@ -285,7 +342,12 @@ class Benchmark:
         pipeline.reset()
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
-        predictions = []
+        predictions, references = [], []
+
+        # Hook calls
+        for hook in self.hooks:
+            hook.on_before_dataset(num_audio_files)
+
         for i, filepath in enumerate(audio_file_paths):
             stream_padding = pipeline.config.latency - pipeline.config.step
             block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
@@ -299,9 +361,26 @@ class Benchmark:
                 show_progress=self.show_progress,
                 progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})",
                 leave_progress_bar=False,
+                hooks=self.inference_hooks,
             )
+
+            # Hook calls
+            for hook in self.hooks:
+                hook.on_before_file(source, pipeline)
+
             pred = inference()
             pred.uri = source.uri
+
+            # Load reference file for hook calls if possible
+            ref = None
+            if self.reference_path is not None:
+                ref = load_rttm(self.reference_path / f"{source.uri}.rttm").popitem()[1]
+                references.append(ref)
+
+            # Hook calls
+            for hook in self.hooks:
+                hook.on_after_file(source, pipeline, pred, ref)
+
             predictions.append(pred)
 
             if self.output_path is not None:
@@ -310,6 +389,10 @@ class Benchmark:
 
             # Reset internal state for the next file
             pipeline.reset()
+
+        # Hook calls
+        for hook in self.hooks:
+            hook.on_after_dataset(predictions, None if references else references)
 
         # Run evaluation
         if self.reference_path is not None:

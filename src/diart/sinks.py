@@ -9,6 +9,9 @@ from rx.core import Observer
 from typing_extensions import Literal
 
 
+# TODO sinks could also implement inference hooks
+
+
 class WindowClosedException(Exception):
     pass
 
