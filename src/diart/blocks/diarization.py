@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Any, Union, Tuple, Sequence
 
 import numpy as np
@@ -8,10 +10,10 @@ from typing_extensions import Literal
 from .aggregation import DelayedAggregation
 from .clustering import OnlineSpeakerClustering
 from .embedding import OverlapAwareSpeakerEmbedding
-from ..features import TemporalFeatures
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
+from ..features import TemporalFeatures
 
 
 class PipelineConfig:
@@ -89,6 +91,7 @@ class PipelineConfig:
 class OnlineSpeakerDiarizationHook:
     def on_local_segmentation_batch(
         self,
+        pipeline: OnlineSpeakerDiarization,
         audio_batch: torch.Tensor,
         segmentation_batch: TemporalFeatures
     ):
@@ -96,6 +99,7 @@ class OnlineSpeakerDiarizationHook:
 
     def on_embedding_batch(
         self,
+        pipeline: OnlineSpeakerDiarization,
         audio_batch: torch.Tensor,
         embedding_batch: torch.Tensor
     ):
@@ -103,39 +107,56 @@ class OnlineSpeakerDiarizationHook:
 
     def on_local_segmentation(
         self,
+        pipeline: OnlineSpeakerDiarization,
         waveform: SlidingWindowFeature,
         segmentation: SlidingWindowFeature
     ):
         pass
 
-    def on_embeddings(self, waveform: SlidingWindowFeature, embeddings: torch.Tensor):
+    def on_embeddings(
+        self,
+        pipeline: OnlineSpeakerDiarization,
+        waveform: SlidingWindowFeature,
+        embeddings: torch.Tensor
+    ):
         pass
 
     def on_before_clustering(
         self,
-        waveform: SlidingWindowFeature,
-        clustering: OnlineSpeakerClustering
+        pipeline: OnlineSpeakerDiarization,
+        waveform: SlidingWindowFeature
     ):
         pass
 
     def on_after_clustering(
         self,
+        pipeline: OnlineSpeakerDiarization,
         waveform: SlidingWindowFeature,
         clustering: OnlineSpeakerClustering,
         segmentation: SlidingWindowFeature
     ):
         pass
 
-    def on_soft_prediction(self, waveform: SlidingWindowFeature, segmentation: SlidingWindowFeature):
+    def on_soft_prediction(
+        self,
+        pipeline: OnlineSpeakerDiarization,
+        waveform: SlidingWindowFeature,
+        segmentation: SlidingWindowFeature
+    ):
         pass
 
-    def on_binary_prediction(self, waveform: SlidingWindowFeature, diarization: Annotation):
+    def on_binary_prediction(
+        self,
+        pipeline: OnlineSpeakerDiarization,
+        waveform: SlidingWindowFeature,
+        diarization: Annotation
+    ):
         pass
 
-    def on_before_reset(self):
+    def on_before_reset(self, pipeline: OnlineSpeakerDiarization):
         pass
 
-    def on_after_reset(self):
+    def on_after_reset(self, pipeline: OnlineSpeakerDiarization,):
         pass
 
 
@@ -170,13 +191,13 @@ class OnlineSpeakerDiarization:
         self.binarize = Binarize(self.config.tau_active)
 
         # Internal state, handle with care
-        self.clustering = None
+        self.clustering: Optional[OnlineSpeakerClustering] = None
         self.chunk_buffer, self.pred_buffer = [], []
         self.reset()
 
     def reset(self):
         for hook in self.hooks:
-            hook.on_before_reset()
+            hook.on_before_reset(self)
 
         self.clustering = OnlineSpeakerClustering(
             self.config.tau_active,
@@ -188,7 +209,7 @@ class OnlineSpeakerDiarization:
         self.chunk_buffer, self.pred_buffer = [], []
 
         for hook in self.hooks:
-            hook.on_after_reset()
+            hook.on_after_reset(self)
 
     def __call__(
         self,
@@ -208,11 +229,11 @@ class OnlineSpeakerDiarization:
         # Extract segmentation and embeddings
         segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
         for hook in self.hooks:
-            hook.on_local_segmentation_batch(batch, segmentations)
+            hook.on_local_segmentation_batch(self, batch, segmentations)
 
         embeddings = self.embedding(batch, segmentations)  # shape (batch, speakers, emb_dim)
         for hook in self.hooks:
-            hook.on_embedding_batch(batch, embeddings)
+            hook.on_embedding_batch(self, batch, embeddings)
 
         seg_resolution = waveforms[0].extent.duration / segmentations.shape[1]
 
@@ -227,16 +248,16 @@ class OnlineSpeakerDiarization:
             seg = SlidingWindowFeature(seg.cpu().numpy(), sw)
 
             for hook in self.hooks:
-                hook.on_local_segmentation(wav, seg)
+                hook.on_local_segmentation(self, wav, seg)
             for hook in self.hooks:
-                hook.on_embeddings(wav, emb)
+                hook.on_embeddings(self, wav, emb)
             for hook in self.hooks:
-                hook.on_before_clustering(wav, self.clustering)
+                hook.on_before_clustering(self, wav)
 
             # Update clustering state and permute segmentation
             permuted_seg = self.clustering(seg, emb)
             for hook in self.hooks:
-                hook.on_after_clustering(wav, self.clustering, permuted_seg)
+                hook.on_after_clustering(self, wav, self.clustering, permuted_seg)
 
             # Update sliding buffer
             self.chunk_buffer.append(wav)
@@ -246,12 +267,12 @@ class OnlineSpeakerDiarization:
             agg_waveform = self.audio_aggregation(self.chunk_buffer)
             agg_prediction = self.pred_aggregation(self.pred_buffer)
             for hook in self.hooks:
-                hook.on_soft_prediction(agg_waveform, agg_prediction)
+                hook.on_soft_prediction(self, agg_waveform, agg_prediction)
 
             bin_prediction = self.binarize(agg_prediction)
             outputs.append((bin_prediction, agg_waveform))
             for hook in self.hooks:
-                hook.on_binary_prediction(agg_waveform, bin_prediction)
+                hook.on_binary_prediction(self, agg_waveform, bin_prediction)
 
             # Make place for new chunks in buffer if required
             if len(self.chunk_buffer) == self.pred_aggregation.num_overlapping_windows:

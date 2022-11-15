@@ -229,12 +229,17 @@ class BenchmarkHook:
     def on_before_dataset(self, num_files: int):
         pass
 
-    def on_before_file(self, source: src.FileAudioSource):
+    def on_before_file(
+        self,
+        source: src.FileAudioSource,
+        pipeline: OnlineSpeakerDiarization
+    ):
         pass
 
     def on_after_file(
         self,
         source: src.FileAudioSource,
+        pipeline: OnlineSpeakerDiarization,
         prediction: Annotation,
         reference: Optional[Annotation],
     ):
@@ -361,7 +366,7 @@ class Benchmark:
 
             # Hook calls
             for hook in self.hooks:
-                hook.on_before_file(source)
+                hook.on_before_file(source, pipeline)
 
             pred = inference()
             pred.uri = source.uri
@@ -374,7 +379,7 @@ class Benchmark:
 
             # Hook calls
             for hook in self.hooks:
-                hook.on_after_file(source, pred, ref)
+                hook.on_after_file(source, pipeline, pred, ref)
 
             predictions.append(pred)
 
