@@ -71,7 +71,7 @@ class Optimizer:
         for param in self.hparams:
             msg = f"Hyper-parameter {param.name} not found " \
                   f"in configuration {self.base_config.__class__.__name__}"
-            assert param in possible_hparams, msg
+            assert param.name in possible_hparams, msg
 
         self._progress: Optional[tqdm] = None
 
