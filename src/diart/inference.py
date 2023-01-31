@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import rx
 import rx.operators as ops
-from diart.blocks import OnlineSpeakerDiarization, Resample
-from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot, WindowClosedException
+from diart.blocks import BasePipeline, Resample
+from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from diart.utils import Chronometer
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
@@ -20,14 +20,13 @@ from tqdm import tqdm
 
 
 class RealTimeInference:
-    """
-    Performs inference in real time given a pipeline and an audio source.
+    """Performs inference in real time given a pipeline and an audio source.
     Streams an audio source to an online speaker diarization pipeline.
     It allows users to attach a chain of operations in the form of hooks.
 
     Parameters
     ----------
-    pipeline: OnlineSpeakerDiarization
+    pipeline: BasePipeline
         Configured speaker diarization pipeline.
     source: AudioSource
         Audio source to be read and streamed.
@@ -52,7 +51,7 @@ class RealTimeInference:
     """
     def __init__(
         self,
-        pipeline: OnlineSpeakerDiarization,
+        pipeline: BasePipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
@@ -66,7 +65,7 @@ class RealTimeInference:
         self.batch_size = batch_size
         self.do_profile = do_profile
         self.do_plot = do_plot
-        self.accumulator = DiarizationPredictionAccumulator(source.uri)
+        self.accumulator = DiarizationPredictionAccumulator(self.source.uri)
         self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
         self._observers = []
 
@@ -76,19 +75,19 @@ class RealTimeInference:
 
         # Estimate the total number of chunks that the source will emit
         self.num_chunks = None
-        if source.duration is not None:
-            numerator = source.duration - chunk_duration + step_duration
+        if self.source.duration is not None:
+            numerator = self.source.duration - chunk_duration + step_duration
             self.num_chunks = int(np.ceil(numerator / step_duration))
 
         self.stream = self.source.stream
 
         # Dynamic resampling if the audio source isn't compatible
-        if sample_rate != source.sample_rate:
-            msg = f"Audio source has sample rate {source.sample_rate}, " \
+        if sample_rate != self.source.sample_rate:
+            msg = f"Audio source has sample rate {self.source.sample_rate}, " \
                   f"but pipeline's is {sample_rate}. Will resample."
             logging.warning(msg)
             self.stream = self.stream.pipe(
-                ops.map(Resample(source.sample_rate, sample_rate))
+                ops.map(Resample(self.source.sample_rate, sample_rate))
             )
 
         # Add rx operators to manage the inputs and outputs of the pipeline
@@ -100,11 +99,11 @@ class RealTimeInference:
         if self.do_profile:
             self.stream = self.stream.pipe(
                 ops.do_action(on_next=lambda _: self._chrono.start()),
-                ops.map(pipeline),
+                ops.map(self.pipeline),
                 ops.do_action(on_next=lambda _: self._chrono.stop()),
             )
         else:
-            self.stream = self.stream.pipe(ops.map(pipeline))
+            self.stream = self.stream.pipe(ops.map(self.pipeline))
 
         self.stream = self.stream.pipe(
             ops.flat_map(lambda results: rx.from_iterable(results)),
@@ -114,7 +113,7 @@ class RealTimeInference:
         # Show progress if required
         self._pbar = None
         if show_progress:
-            desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
+            desc = f"Streaming {self.source.uri}" if progress_desc is None else progress_desc
             self._pbar = tqdm(desc=desc, total=self.num_chunks, unit="chunk", leave=leave_progress_bar)
             self.stream = self.stream.pipe(
                 ops.do_action(on_next=lambda _: self._pbar.update())
@@ -264,13 +263,13 @@ class Benchmark:
         self.show_report = show_report
         self.batch_size = batch_size
 
-    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
+    def __call__(self, pipeline: BasePipeline) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
-        pipeline: OnlineSpeakerDiarization
+        pipeline: BasePipeline
             Configured speaker diarization pipeline.
 
         Returns

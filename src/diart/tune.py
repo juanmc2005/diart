@@ -5,7 +5,7 @@ import diart.argdoc as argdoc
 import optuna
 import torch
 from diart import utils
-from diart.blocks import PipelineConfig
+from diart.blocks import PipelineConfig, OnlineSpeakerDiarization
 from diart.models import SegmentationModel, EmbeddingModel
 from diart.optim import Optimizer, HyperParameter
 from optuna.samplers import TPESampler
@@ -73,6 +73,7 @@ def run():
         reference_path=args.reference,
         study_or_path=study_or_path,
         batch_size=args.batch_size,
+        pipeline_class=OnlineSpeakerDiarization,
         hparams=hparams,
         base_config=base_config,
     )(num_iter=args.num_iter, show_progress=True)

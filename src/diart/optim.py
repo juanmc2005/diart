@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, Text, Optional, Union
+from typing import Sequence, Text, Optional, Union, Any
 
 from optuna import TrialPruned, Study, create_study
 from optuna.samplers import TPESampler
@@ -10,7 +10,7 @@ from tqdm import trange, tqdm
 
 from .audio import FilePath
 from .benchmark import Benchmark
-from .blocks import PipelineConfig, OnlineSpeakerDiarization
+from .blocks import BasePipelineConfig, PipelineConfig, OnlineSpeakerDiarization
 
 
 @dataclass
@@ -39,12 +39,15 @@ class Optimizer:
     def __init__(
         self,
         speech_path: Union[Text, Path],
-        reference_path: Optional[Union[Text, Path]],
+        reference_path: Union[Text, Path],
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
+        pipeline_class: type = OnlineSpeakerDiarization,
         hparams: Optional[Sequence[HyperParameter]] = None,
-        base_config: Optional[PipelineConfig] = None,
+        base_config: Optional[BasePipelineConfig] = None,
+        do_kickstart_hparams: bool = True,
     ):
+        self.pipeline_class = pipeline_class
         self.benchmark = Benchmark(
             speech_path,
             reference_path,
@@ -52,10 +55,23 @@ class Optimizer:
             show_report=False,
             batch_size=batch_size,
         )
-        self.base_config = PipelineConfig() if base_config is None else base_config
+
+        self.base_config = base_config
+        self.do_kickstart_hparams = do_kickstart_hparams
+        if self.base_config is None:
+            self.base_config = PipelineConfig()
+            self.do_kickstart_hparams = False
+
         self.hparams = hparams
         if self.hparams is None:
             self.hparams = [TauActive, RhoUpdate, DeltaNew]
+
+        # Make sure hyper-parameters exist in the configuration class given
+        possible_hparams = vars(self.base_config)
+        for param in self.hparams:
+            msg = f"Hyper-parameter {param.name} not found " \
+                  f"in configuration {self.base_config.__class__.__name__}"
+            assert param.name in possible_hparams, msg
 
         self._progress: Optional[tqdm] = None
 
@@ -105,7 +121,8 @@ class Optimizer:
             raise TrialPruned()
 
         # Instantiate pipeline with the new configuration
-        pipeline = OnlineSpeakerDiarization(PipelineConfig(**trial_config))
+        config_class = self.base_config.__class__
+        pipeline = self.pipeline_class(config_class(**trial_config))
 
         # Run pipeline over the dataset
         report = self.benchmark(pipeline)
@@ -121,4 +138,10 @@ class Optimizer:
             if self.study.trials:
                 last_trial = self.study.trials[-1].number
             self._progress.set_description(f"Trial {last_trial + 1}")
+        # Start with base config hyper-parameters if config was given
+        if self.do_kickstart_hparams:
+            self.study.enqueue_trial({
+                param.name: getattr(self.base_config, param.name)
+                for param in self.hparams
+            }, skip_if_exists=True)
         self.study.optimize(self.objective, num_iter, callbacks=[self._callback])
