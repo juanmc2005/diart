@@ -4,6 +4,75 @@ from typing import Optional, Text, Union
 import matplotlib.pyplot as plt
 import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
+from rich.progress import Progress, TaskID
+
+
+class ProgressBar:
+    def __init__(
+        self,
+        bar: Optional[Progress] = None,
+        task_id: Optional[TaskID] = None,
+        default_description: Optional[Text] = None,
+    ):
+        self.bar = bar
+        self.task_id = task_id
+        self._task_id_given = False
+
+        self.default_description = default_description
+        if self.default_description is None:
+            self.default_description = "[cyan]Streaming"
+
+        if self.bar is None:
+            self.bar = Progress()
+            if self.task_id is not None:
+                msg = "WARNING: ProgressBar was given a task ID without a progress bar, ignoring..."
+                print(msg)
+                self.task_id = None
+        elif self.task_id is not None:
+            # Both progress bar and task id were provided, not closing because of parallel bars
+            self._task_id_given = True
+
+        self.bar.start()
+
+    def create(self, total: int, description: Optional[Text] = None, **kwargs):
+        if self.task_id is None:
+            desc = self.default_description if description is None else description
+            self.task_id = self.bar.add_task(
+                desc,
+                start=False,
+                total=total,
+                completed=0,
+                visible=True,
+                **kwargs
+            )
+
+    def start(self):
+        assert self.task_id is not None
+        self.bar.start_task(self.task_id)
+
+    def update(self, n: int = 1):
+        assert self.task_id is not None
+        self.bar.update(self.task_id, advance=n)
+
+    def stop(self):
+        assert self.task_id is not None
+        self.bar.stop_task(self.task_id)
+
+    def close(self):
+        if not self._task_id_given:
+            self.bar.stop()
+
+
+class ParallelProgressBars:
+    def __init__(self, leave: bool = True):
+        self.progress = Progress(transient=not leave)
+
+    def add_bar(self, description: Text):
+        task_id = self.progress.add_task(description, start=False)
+        return ProgressBar(self.progress, task_id)
+
+    def close(self):
+        self.progress.stop()
 
 
 class Chronometer:
