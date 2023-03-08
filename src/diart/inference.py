@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 from traceback import print_exc
 from typing import Union, Text, Optional, Callable, Tuple, List
@@ -11,12 +12,13 @@ import rx
 import rx.operators as ops
 from diart.blocks import BasePipeline, Resample
 from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
-from diart.utils import Chronometer
+from diart.utils import Chronometer, ProgressBar, ParallelProgressBars
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
-from tqdm import tqdm
+from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 
 
 class RealTimeInference:
@@ -57,14 +59,14 @@ class RealTimeInference:
         do_profile: bool = True,
         do_plot: bool = False,
         show_progress: bool = True,
-        progress_desc: Optional[Text] = None,
-        leave_progress_bar: bool = False,
+        progress_bar: Optional[ProgressBar] = None,
     ):
         self.pipeline = pipeline
         self.source = source
         self.batch_size = batch_size
         self.do_profile = do_profile
         self.do_plot = do_plot
+        self.show_progress = show_progress
         self.accumulator = DiarizationPredictionAccumulator(self.source.uri)
         self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
         self._observers = []
@@ -78,6 +80,13 @@ class RealTimeInference:
         if self.source.duration is not None:
             numerator = self.source.duration - chunk_duration + step_duration
             self.num_chunks = int(np.ceil(numerator / step_duration))
+
+        # Show progress if required
+        self._pbar = progress_bar
+        if self.show_progress:
+            if self._pbar is None:
+                self._pbar = ProgressBar(default_description=f"Streaming {self.source.uri}")
+            self._pbar.create(total=self.num_chunks)
 
         self.stream = self.source.stream
 
@@ -110,11 +119,7 @@ class RealTimeInference:
             ops.do(self.accumulator),
         )
 
-        # Show progress if required
-        self._pbar = None
         if show_progress:
-            desc = f"Streaming {self.source.uri}" if progress_desc is None else progress_desc
-            self._pbar = tqdm(desc=desc, total=self.num_chunks, unit="chunk", leave=leave_progress_bar)
             self.stream = self.stream.pipe(
                 ops.do_action(on_next=lambda _: self._pbar.update())
             )
@@ -161,12 +166,12 @@ class RealTimeInference:
         interrupted = isinstance(error, KeyboardInterrupt)
         if not window_closed and not interrupted:
             print_exc()
-        # Close progress and chronometer states
+        # Close internal states
         self._close_pbar()
         self._close_chronometer()
 
     def _handle_completion(self):
-        # Close progress and chronometer states
+        # Close internal states
         self._close_pbar()
         self._close_chronometer()
 
@@ -178,6 +183,8 @@ class RealTimeInference:
         predictions: Annotation
             Speaker diarization pipeline predictions
         """
+        if self.show_progress:
+            self._pbar.start()
         config = self.pipeline.config
         observable = self.stream
         if self.do_plot:
@@ -241,6 +248,7 @@ class Benchmark:
         show_progress: bool = True,
         show_report: bool = True,
         batch_size: int = 32,
+        num_workers: int = 2,
     ):
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
@@ -262,6 +270,33 @@ class Benchmark:
         self.show_progress = show_progress
         self.show_report = show_report
         self.batch_size = batch_size
+        self.num_workers = num_workers
+
+    def _run_on_file(self, shared_pipeline: BasePipeline, filepath: Path, pbar: ProgressBar):
+        start = time.monotonic()
+        pipeline = deepcopy(shared_pipeline)  # TODO implement a multithreading pipeline to share models
+        print("deepcopy took:", time.monotonic() - start)
+        pipeline.reset()
+        stream_padding = pipeline.config.latency - pipeline.config.step
+        block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
+        source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
+        inference = RealTimeInference(
+            pipeline,
+            source,
+            self.batch_size,
+            do_profile=False,
+            do_plot=False,
+            show_progress=self.show_progress,
+            progress_bar=pbar,
+        )
+        pred = inference()
+        pred.uri = source.uri
+
+        if self.output_path is not None:
+            with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
+                pred.write_rttm(out_file)
+
+        return pred
 
     def __call__(self, pipeline: BasePipeline) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
@@ -280,35 +315,16 @@ class Benchmark:
 
             If no reference annotations, a list of predictions.
         """
-        # Reset pipeline to initial state in case it was modified before
-        pipeline.reset()
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
         predictions = []
-        for i, filepath in enumerate(audio_file_paths):
-            stream_padding = pipeline.config.latency - pipeline.config.step
-            block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
-            source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
-            inference = RealTimeInference(
-                pipeline,
-                source,
-                self.batch_size,
-                do_profile=False,
-                do_plot=False,
-                show_progress=self.show_progress,
-                progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})",
-                leave_progress_bar=False,
-            )
-            pred = inference()
-            pred.uri = source.uri
-            predictions.append(pred)
+        pbars = ParallelProgressBars()
+        with ThreadPoolExecutor(max_workers=self.num_workers) as pool:
+            for i, filepath in enumerate(audio_file_paths):
+                new_pbar = pbars.add_bar(f"[cyan]Streaming {filepath.stem} ({i + 1}/{num_audio_files})")
+                pool.submit(self._run_on_file, pipeline, filepath, new_pbar)
 
-            if self.output_path is not None:
-                with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
-                    pred.write_rttm(out_file)
-
-            # Reset internal state for the next file
-            pipeline.reset()
+        print("Out of the 'with'")
 
         # Run evaluation
         if self.reference_path is not None:

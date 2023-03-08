@@ -65,7 +65,6 @@ def run():
         do_profile=True,
         do_plot=not args.no_plot,
         show_progress=True,
-        leave_progress_bar=True,
     )
     inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
     inference()
