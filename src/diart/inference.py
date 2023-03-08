@@ -273,9 +273,7 @@ class Benchmark:
         self.num_workers = num_workers
 
     def _run_on_file(self, shared_pipeline: BasePipeline, filepath: Path, pbar: ProgressBar):
-        start = time.monotonic()
         pipeline = deepcopy(shared_pipeline)  # TODO implement a multithreading pipeline to share models
-        print("deepcopy took:", time.monotonic() - start)
         pipeline.reset()
         stream_padding = pipeline.config.latency - pipeline.config.step
         block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
@@ -323,8 +321,6 @@ class Benchmark:
             for i, filepath in enumerate(audio_file_paths):
                 new_pbar = pbars.add_bar(f"[cyan]Streaming {filepath.stem} ({i + 1}/{num_audio_files})")
                 pool.submit(self._run_on_file, pipeline, filepath, new_pbar)
-
-        print("Out of the 'with'")
 
         # Run evaluation
         if self.reference_path is not None:
