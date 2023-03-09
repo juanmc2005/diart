@@ -48,13 +48,14 @@ class Optimizer:
         do_kickstart_hparams: bool = True,
     ):
         self.pipeline_class = pipeline_class
+        # FIXME can we run this benchmark in parallel?
+        #  Currently it breaks the trial progress bar
         self.benchmark = Benchmark(
             speech_path,
             reference_path,
             show_progress=True,
             show_report=False,
             batch_size=batch_size,
-            num_workers=0,  # FIXME multiprocessing breaks the trial progress bar
         )
 
         self.base_config = base_config
@@ -123,8 +124,10 @@ class Optimizer:
 
         # Instantiate pipeline with the new configuration
         config_class = self.base_config.__class__
+        pipeline = self.pipeline_class(config_class(**trial_config))
+
         # Run pipeline over the dataset
-        report = self.benchmark(self.pipeline_class, config_class(**trial_config))
+        report = self.benchmark(pipeline)
 
         # Extract DER from report
         return report.loc["TOTAL", "diarization error rate"]["%"]

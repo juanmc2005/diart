@@ -11,7 +11,7 @@ import pandas as pd
 import rx
 import rx.operators as ops
 import torch
-from diart.blocks import BasePipeline, BasePipelineConfig, Resample
+from diart.blocks import BasePipeline, Resample
 from diart.progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from diart.utils import Chronometer
@@ -216,9 +216,9 @@ class RealTimeInference:
 class Benchmark:
     """
     Run an online speaker diarization pipeline on a set of audio files in batches.
-    It writes predictions to a given output directory.
+    Write predictions to a given output directory.
 
-    If the reference is given, it calculates the average diarization error rate.
+    If the reference is given, calculate the average diarization error rate.
 
     Parameters
     ----------
@@ -245,9 +245,6 @@ class Benchmark:
         embeddings, running the rest in real time.
         The performance between this two modes does not differ.
         Defaults to 32.
-    num_workers: int
-        Number of parallel workers.
-        Defaults to 0 (no parallelism).
     """
     def __init__(
         self,
@@ -257,7 +254,6 @@ class Benchmark:
         show_progress: bool = True,
         show_report: bool = True,
         batch_size: int = 32,
-        num_workers: int = 0,
     ):
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
@@ -279,18 +275,61 @@ class Benchmark:
         self.show_progress = show_progress
         self.show_report = show_report
         self.batch_size = batch_size
-        self.num_workers = num_workers
 
     @staticmethod
-    def _get_pbar_description(filepath: Path, idx_file: int, num_files: int) -> Text:
+    def get_pbar_description(filepath: Path, idx_file: int, num_files: int) -> Text:
+        """Return the description of the progress bar for the run on this file.
+
+        Parameters
+        ----------
+        filepath: Path
+            Path to the target file.
+        idx_file: int
+            The file number within the entire dataset.
+        num_files: int
+            The total number of files in the dataset.
+
+        Returns
+        -------
+        description: Text
+            Description for the progress bar.
+        """
         return f"Streaming {filepath.stem} ({idx_file + 1}/{num_files})"
 
-    def _run_inference(
+    def get_file_paths(self) -> List[Path]:
+        """Return the path for each file in the benchmark.
+
+        Returns
+        -------
+        paths: List[Path]
+            List of audio file paths.
+        """
+        return list(self.speech_path.iterdir())
+
+    def run_single(
         self,
         pipeline: BasePipeline,
         filepath: Path,
-        progress_bar: ProgressBar
-    ):
+        progress_bar: ProgressBar,
+    ) -> Annotation:
+        """Run a given pipeline on a given file.
+        Note that this method does NOT reset the
+        state of the pipeline before execution.
+
+        Parameters
+        ----------
+        pipeline: BasePipeline
+            Speaker diarization pipeline to run.
+        filepath: Path
+            Path to the target file.
+        progress_bar: diart.progress.ProgressBar
+            An object to manage the progress of this run.
+
+        Returns
+        -------
+        prediction: Annotation
+            Pipeline prediction for the given file.
+        """
         stream_padding = pipeline.config.latency - pipeline.config.step
         block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
         source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
@@ -313,30 +352,35 @@ class Benchmark:
 
         return pred
 
-    def _run_inference_job(
-        self,
-        pipeline_class: type,
-        config_dict: Dict[Text, Hashable],
-        filepath: Path,
-        progress_description: Text,
-    ):
-        idx_process = int(current_process().name.split('-')[1]) - 1
-        # TODO share models across processes
-        config = pipeline_class.get_config_class().from_dict(config_dict)
-        pipeline = pipeline_class(config)
-        progress = TQDMProgressBar(
-            progress_description,
-            leave=False,
-            position=idx_process,
-            do_close=True,
-        )
-        return self._run_inference(pipeline, filepath, progress)
+    def evaluate(self, predictions: List[Annotation]) -> Union[pd.DataFrame, List[Annotation]]:
+        """If a reference path was provided,
+        compute the diarization error rate of a list of predictions.
 
-    def __call__(
-        self,
-        pipeline_class: type,
-        config: Union[BasePipelineConfig, Dict[Text, Hashable]],
-    ) -> Union[pd.DataFrame, List[Annotation]]:
+        Parameters
+        ----------
+        predictions: List[Annotation]
+            Predictions to evaluate.
+
+        Returns
+        -------
+        report_or_predictions: Union[pd.DataFrame, List[Annotation]]
+            A performance report as a pandas `DataFrame` if a
+            reference path was given. Otherwise return the same predictions.
+        """
+        if self.reference_path is not None:
+            metric = DiarizationErrorRate(collar=0, skip_overlap=False)
+            progress_bar = TQDMProgressBar("Computing DER", leave=False)
+            progress_bar.create(total=len(predictions), unit="file")
+            progress_bar.start()
+            for hyp in predictions:
+                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
+                metric(ref, hyp)
+                progress_bar.update()
+            progress_bar.close()
+            return metric.report(display=self.show_report)
+        return predictions
+
+    def __call__(self, pipeline: BasePipeline) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
 
@@ -353,63 +397,130 @@ class Benchmark:
 
             If no reference annotations, a list of predictions.
         """
-        audio_file_paths = list(self.speech_path.iterdir())
+        audio_file_paths = self.get_file_paths()
         num_audio_files = len(audio_file_paths)
 
-        if self.num_workers == 0:
-            # Run sequentially
-            predictions = []
-            if isinstance(config, dict):
-                config = pipeline_class.get_config_class().from_dict(config)
-            pipeline = pipeline_class(config)
+        predictions = []
+        for i, filepath in enumerate(audio_file_paths):
+            pipeline.reset()
+            desc = self.get_pbar_description(filepath, i, num_audio_files)
+            progress = TQDMProgressBar(desc, leave=False, do_close=True)
+            predictions.append(self.run_single(pipeline, filepath, progress))
 
-            for i, filepath in enumerate(audio_file_paths):
-                pipeline.reset()
-                progress = TQDMProgressBar(
-                    self._get_pbar_description(filepath, i, num_audio_files),
-                    leave=False,
-                    do_close=True,
-                )
-                predictions.append(self._run_inference(pipeline, filepath, progress))
-        else:
-            # Run in parallel
-            msg = "Benchmark cannot run in parallel " \
-                  "if the pipeline config is already instantiated. " \
-                  "Try passing a dictionary instead."
-            assert isinstance(config, dict), msg
+        return self.evaluate(predictions)
 
-            # Workaround for multiprocessing with GPU
-            torch.multiprocessing.set_start_method('spawn')
-            # For Windows support
-            freeze_support()
 
-            pool = Pool(processes=self.num_workers, initargs=(RLock(),), initializer=tqdm.set_lock)
-            arg_list = [
-                (
-                    pipeline_class,
-                    config,
-                    filepath,
-                    self._get_pbar_description(filepath, i, num_audio_files)
-                )
-                for i, filepath in enumerate(audio_file_paths)
-            ]
+class Parallelize:
+    """Wrapper to parallelize the execution of a `Benchmark` instance.
+    Note that models will be copied in each worker instead of being reused.
 
-            jobs = [pool.apply_async(self._run_inference_job, args=args) for args in arg_list]
-            pool.close()
-            predictions = [job.get() for job in jobs]
+    Parameters
+    ----------
+    benchmark: Benchmark
+        Benchmark instance to execute in parallel.
+    num_workers: int
+        Number of parallel workers.
+        Defaults to 0 (no parallelism).
+    """
+    def __init__(
+        self,
+        benchmark: Benchmark,
+        num_workers: int = 4,
+    ):
+        self.benchmark = benchmark
+        self.num_workers = num_workers
 
-        # Run evaluation
-        if self.reference_path is not None:
-            metric = DiarizationErrorRate(collar=0, skip_overlap=False)
-            progress_bar = TQDMProgressBar("Computing DER", leave=False)
-            progress_bar.create(total=len(predictions), unit="file")
-            progress_bar.start()
-            for hyp in predictions:
-                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
-                metric(ref, hyp)
-                progress_bar.update()
-            progress_bar.close()
+    def run_single_job(
+        self,
+        pipeline_class: type,
+        config_dict: Dict[Text, Hashable],
+        filepath: Path,
+        description: Text,
+    ):
+        """Build and run a pipeline on a single file.
+        Configure execution to show progress alongside parallel runs.
 
-            return metric.report(display=self.show_report)
+        Parameters
+        ----------
+        pipeline_class: class
+            Class from the BasePipeline hierarchy.
+            A pipeline from this class will be instantiated.
+        config_dict: Dict[Text, Hashable]
+            A dictionary with the desired configuration values for the pipeline
+            (e.g. segmentation: Text, embedding: Text, cpu: bool, latency: float, etc.)
+        filepath: Path
+            Path to the target file.
+        description: Text
+            Description to show in the parallel progress bar.
 
-        return predictions
+        Returns
+        -------
+        prediction: Annotation
+            Pipeline prediction for the given file.
+        """
+        # The process ID inside the pool determines the position of the progress bar
+        idx_process = int(current_process().name.split('-')[1]) - 1
+        # TODO share models across processes
+        # Instantiate a config with the dict received from the main process
+        config = pipeline_class.get_config_class().from_dict(config_dict)
+        # Instantiate a pipeline with the config
+        pipeline = pipeline_class(config)
+        # Create the progress bar for this job
+        progress = TQDMProgressBar(description, leave=False, position=idx_process, do_close=True)
+        # Run the pipeline
+        return self.benchmark.run_single(pipeline, filepath, progress)
+
+    def __call__(
+        self,
+        pipeline_class: type,
+        config: Dict[Text, Hashable],
+    ) -> Union[pd.DataFrame, List[Annotation]]:
+        """Run a given pipeline on a set of audio files in parallel.
+        Each worker will build and run the pipeline on a different file.
+
+        Parameters
+        ----------
+        pipeline_class: class
+            Class from the BasePipeline hierarchy.
+            A pipeline from this class will be instantiated by each worker.
+        config: Dict[Text, Hashable]
+            A dictionary with the desired configuration values
+            (e.g. segmentation: Text, embedding: Text, cpu: bool, latency: float, etc.)
+
+        Returns
+        -------
+        performance: pandas.DataFrame or List[Annotation]
+            If reference annotations are given, a DataFrame with detailed
+            performance on each file as well as average performance.
+
+            If no reference annotations, a list of predictions.
+        """
+        audio_file_paths = self.benchmark.get_file_paths()
+        num_audio_files = len(audio_file_paths)
+
+        # Workaround for multiprocessing with GPU
+        torch.multiprocessing.set_start_method('spawn')
+        # For Windows support
+        freeze_support()
+
+        # Create the pool of workers using a lock for parallel tqdm usage
+        pool = Pool(processes=self.num_workers, initargs=(RLock(),), initializer=tqdm.set_lock)
+        # Determine the arguments for each job
+        arg_list = [
+            (
+                pipeline_class,
+                config,
+                filepath,
+                self.benchmark.get_pbar_description(filepath, i, num_audio_files)
+            )
+            for i, filepath in enumerate(audio_file_paths)
+        ]
+        # Submit all jobs
+        jobs = [pool.apply_async(self.run_single_job, args=args) for args in arg_list]
+
+        # Wait and collect results
+        pool.close()
+        predictions = [job.get() for job in jobs]
+
+        # Evaluate results
+        return self.benchmark.evaluate(predictions)

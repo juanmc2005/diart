@@ -318,13 +318,17 @@ diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1
 or using the inference API:
 
 ```python
-from diart.inference import Benchmark
+from diart.inference import Benchmark, Parallelize
 from diart import OnlineSpeakerDiarization, PipelineConfig
 from diart.models import SegmentationModel
 
+benchmark = Benchmark("/wav/dir", "/rttm/dir")
+
+name = "pyannote/segmentation@Interspeech2021"
+segmentation = SegmentationModel.from_pyannote(name)
 config = PipelineConfig(
     # Set the model used in the paper
-    segmentation=SegmentationModel.from_pyannote("pyannote/segmentation@Interspeech2021"),
+    segmentation=segmentation,
     step=0.5,
     latency=0.5,
     tau_active=0.555,
@@ -332,8 +336,17 @@ config = PipelineConfig(
     delta_new=1.517
 )
 pipeline = OnlineSpeakerDiarization(config)
-benchmark = Benchmark("/wav/dir", "/rttm/dir")
 benchmark(pipeline)
+
+# Run the same benchmark in parallel
+serializable_config = {
+    "segmentation": name, "step": 0.5,
+    "latency": 0.5, "tau": 0.555,
+    "rho": 0.422, "delta": 1.517
+}
+p_benchmark = Parallelize(benchmark, num_workers=4)
+if __name__ == "__main__":  # Needed for multiprocessing
+    p_benchmark(OnlineSpeakerDiarization, serializable_config)
 ```
 
 This pre-calculates model outputs in batches, so it runs a lot faster.
