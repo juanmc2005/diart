@@ -11,6 +11,7 @@ from .embedding import OverlapAwareSpeakerEmbedding
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
+from .. import utils
 
 
 class BasePipelineConfig:
@@ -28,6 +29,10 @@ class BasePipelineConfig:
 
     @property
     def sample_rate(self) -> int:
+        raise NotImplementedError
+
+    @staticmethod
+    def from_dict(data: Any) -> 'BasePipelineConfig':
         raise NotImplementedError
 
 
@@ -86,20 +91,32 @@ class PipelineConfig(BasePipelineConfig):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @staticmethod
-    def from_namespace(args: Any) -> 'PipelineConfig':
+    def from_dict(data: Any) -> 'PipelineConfig':
+        # Check for explicit device, otherwise check for 'cpu' bool, otherwise pass None
+        device = utils.get(data, "device", None)
+        if device is None:
+            device = torch.device("cpu") if utils.get(data, "cpu", False) else None
+
+        # Load and build models
+        hf_token = utils.parse_hf_token_arg(utils.get(data, "hf_token", True))
+        segmentation = utils.get(data, "segmentation", "pyannote/segmentation")
+        segmentation = m.SegmentationModel.from_pyannote(segmentation, hf_token)
+        embedding = utils.get(data, "embedding", "pyannote/embedding")
+        embedding = m.EmbeddingModel.from_pyannote(embedding, hf_token)
+
         return PipelineConfig(
-            segmentation=getattr(args, "segmentation", None),
-            embedding=getattr(args, "embedding", None),
-            duration=getattr(args, "duration", None),
-            step=args.step,
-            latency=args.latency,
-            tau_active=args.tau,
-            rho_update=args.rho,
-            delta_new=args.delta,
-            gamma=args.gamma,
-            beta=args.beta,
-            max_speakers=args.max_speakers,
-            device=args.device,
+            segmentation=segmentation,
+            embedding=embedding,
+            duration=utils.get(data, "duration", None),
+            step=utils.get(data, "step", 0.5),
+            latency=utils.get(data, "latency", None),
+            tau_active=utils.get(data, "tau", 0.6),
+            rho_update=utils.get(data, "rho", 0.3),
+            delta_new=utils.get(data, "delta", 1),
+            gamma=utils.get(data, "gamma", 3),
+            beta=utils.get(data, "beta", 10),
+            max_speakers=utils.get(data, "max_speakers", 20),
+            device=device,
         )
 
     @property
@@ -120,6 +137,10 @@ class PipelineConfig(BasePipelineConfig):
 
 
 class BasePipeline:
+    @staticmethod
+    def get_config_class() -> type:
+        raise NotImplementedError
+
     @property
     def config(self) -> BasePipelineConfig:
         raise NotImplementedError
@@ -163,6 +184,10 @@ class OnlineSpeakerDiarization(BasePipeline):
         self.clustering = None
         self.chunk_buffer, self.pred_buffer = [], []
         self.reset()
+
+    @staticmethod
+    def get_config_class() -> type:
+        return PipelineConfig
 
     @property
     def config(self) -> PipelineConfig:

@@ -3,11 +3,8 @@ from pathlib import Path
 
 import diart.argdoc as argdoc
 import pandas as pd
-import torch
-from diart import utils
-from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
+from diart.blocks import OnlineSpeakerDiarization
 from diart.inference import Benchmark
-from diart.models import SegmentationModel, EmbeddingModel
 
 
 def run():
@@ -28,18 +25,14 @@ def run():
     parser.add_argument("--beta", default=10, type=float, help=f"{argdoc.BETA}. Defaults to 10")
     parser.add_argument("--max-speakers", default=20, type=int, help=f"{argdoc.MAX_SPEAKERS}. Defaults to 20")
     parser.add_argument("--batch-size", default=32, type=int, help=f"{argdoc.BATCH_SIZE}. Defaults to 32")
+    parser.add_argument("--num-workers", default=0, type=int,
+                        help=f"{argdoc.NUM_WORKERS}. Defaults to 0 (no parallelism)")
     parser.add_argument("--cpu", dest="cpu", action="store_true",
                         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=Path, help=f"{argdoc.OUTPUT}. Defaults to no writing")
     parser.add_argument("--hf-token", default="true", type=str,
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
-    args.device = torch.device("cpu") if args.cpu else None
-    args.hf_token = utils.parse_hf_token_arg(args.hf_token)
-
-    # Download pyannote models (or get from cache)
-    args.segmentation = SegmentationModel.from_pyannote(args.segmentation, args.hf_token)
-    args.embedding = EmbeddingModel.from_pyannote(args.embedding, args.hf_token)
 
     benchmark = Benchmark(
         args.root,
@@ -48,10 +41,10 @@ def run():
         show_progress=True,
         show_report=True,
         batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
 
-    pipeline = OnlineSpeakerDiarization(PipelineConfig.from_namespace(args))
-    report = benchmark(pipeline)
+    report = benchmark(OnlineSpeakerDiarization, vars(args))
     if args.output is not None and isinstance(report, pd.DataFrame):
         report.to_csv(args.output / "benchmark_report.csv")
 
