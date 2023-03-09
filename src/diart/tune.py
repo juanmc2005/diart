@@ -3,10 +3,7 @@ from pathlib import Path
 
 import diart.argdoc as argdoc
 import optuna
-import torch
-from diart import utils
 from diart.blocks import PipelineConfig, OnlineSpeakerDiarization
-from diart.models import SegmentationModel, EmbeddingModel
 from diart.optim import Optimizer, HyperParameter
 from optuna.samplers import TPESampler
 
@@ -40,15 +37,9 @@ def run():
     parser.add_argument("--hf-token", default="true", type=str,
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
-    args.device = torch.device("cpu") if args.cpu else None
-    args.hf_token = utils.parse_hf_token_arg(args.hf_token)
-
-    # Download pyannote models (or get from cache)
-    args.segmentation = SegmentationModel.from_pyannote(args.segmentation, args.hf_token)
-    args.embedding = EmbeddingModel.from_pyannote(args.embedding, args.hf_token)
 
     # Create the base configuration for each trial
-    base_config = PipelineConfig.from_namespace(args)
+    base_config = PipelineConfig.from_dict(vars(args))
 
     # Create hyper-parameters to optimize
     hparams = [HyperParameter.from_name(name) for name in args.hparams]

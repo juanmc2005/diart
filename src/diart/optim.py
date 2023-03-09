@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, Text, Optional, Union, Any
+from typing import Sequence, Text, Optional, Union
 
 from optuna import TrialPruned, Study, create_study
 from optuna.samplers import TPESampler
@@ -54,6 +54,7 @@ class Optimizer:
             show_progress=True,
             show_report=False,
             batch_size=batch_size,
+            num_workers=0,  # FIXME multiprocessing breaks the trial progress bar
         )
 
         self.base_config = base_config
@@ -122,10 +123,8 @@ class Optimizer:
 
         # Instantiate pipeline with the new configuration
         config_class = self.base_config.__class__
-        pipeline = self.pipeline_class(config_class(**trial_config))
-
         # Run pipeline over the dataset
-        report = self.benchmark(pipeline)
+        report = self.benchmark(self.pipeline_class, config_class(**trial_config))
 
         # Extract DER from report
         return report.loc["TOTAL", "diarization error rate"]["%"]

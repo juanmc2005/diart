@@ -4,11 +4,8 @@ from pathlib import Path
 import diart.argdoc as argdoc
 import diart.sources as src
 import numpy as np
-import torch
-from diart import utils
 from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
 from diart.inference import RealTimeInference
-from diart.models import SegmentationModel, EmbeddingModel
 from diart.sinks import RTTMWriter
 
 
@@ -35,15 +32,9 @@ def run():
     parser.add_argument("--hf-token", default="true", type=str,
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
-    args.device = torch.device("cpu") if args.cpu else None
-    args.hf_token = utils.parse_hf_token_arg(args.hf_token)
-
-    # Download pyannote models (or get from cache)
-    args.segmentation = SegmentationModel.from_pyannote(args.segmentation, args.hf_token)
-    args.embedding = EmbeddingModel.from_pyannote(args.embedding, args.hf_token)
 
     # Define online speaker diarization pipeline
-    config = PipelineConfig.from_namespace(args)
+    config = PipelineConfig.from_dict(vars(args))
     pipeline = OnlineSpeakerDiarization(config)
 
     # Manage audio source

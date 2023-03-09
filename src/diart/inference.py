@@ -1,8 +1,8 @@
 import logging
-import time
+from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List
+from typing import Union, Text, Optional, Callable, Tuple, List, Dict, Hashable
 
 import diart.operators as dops
 import diart.sources as src
@@ -10,15 +10,16 @@ import numpy as np
 import pandas as pd
 import rx
 import rx.operators as ops
-from diart.blocks import BasePipeline, Resample
+import torch
+from diart.blocks import BasePipeline, BasePipelineConfig, Resample
+from diart.progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
-from diart.utils import Chronometer, ProgressBar, ParallelProgressBars
+from diart.utils import Chronometer
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
-from copy import deepcopy
-from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
 
 
 class RealTimeInference:
@@ -44,12 +45,10 @@ class RealTimeInference:
     show_progress: bool
         If True, show a progress bar.
         Defaults to True.
-    progress_desc: Optional[Text]
-        Message to show in the progress bar.
-        Defaults to 'Streaming <source uri>'.
-    leave_progress_bar: bool
-        If True, leaves the progress bar on the screen after the stream has finished.
-        Defaults to False.
+    progress_bar: Optional[diart.progress.ProgressBar]
+        Progress bar with which to show progress.
+        If description is not provided, it will be set to 'Streaming <source uri>'.
+        Defaults to RichProgressBar().
     """
     def __init__(
         self,
@@ -68,7 +67,7 @@ class RealTimeInference:
         self.do_plot = do_plot
         self.show_progress = show_progress
         self.accumulator = DiarizationPredictionAccumulator(self.source.uri)
-        self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
+        self.unit = "chunk" if self.batch_size == 1 else "batch"
         self._observers = []
 
         chunk_duration = self.pipeline.config.duration
@@ -85,8 +84,15 @@ class RealTimeInference:
         self._pbar = progress_bar
         if self.show_progress:
             if self._pbar is None:
-                self._pbar = ProgressBar(default_description=f"Streaming {self.source.uri}")
-            self._pbar.create(total=self.num_chunks)
+                self._pbar = RichProgressBar()
+            self._pbar.create(
+                total=self.num_chunks,
+                description=f"Streaming {self.source.uri}",
+                unit=self.unit
+            )
+
+        # Initialize chronometer for profiling
+        self._chrono = Chronometer(self.unit, self._pbar)
 
         self.stream = self.source.stream
 
@@ -239,6 +245,9 @@ class Benchmark:
         embeddings, running the rest in real time.
         The performance between this two modes does not differ.
         Defaults to 32.
+    num_workers: int
+        Number of parallel workers.
+        Defaults to 0 (no parallelism).
     """
     def __init__(
         self,
@@ -248,7 +257,7 @@ class Benchmark:
         show_progress: bool = True,
         show_report: bool = True,
         batch_size: int = 32,
-        num_workers: int = 2,
+        num_workers: int = 0,
     ):
         self.speech_path = Path(speech_path).expanduser()
         assert self.speech_path.is_dir(), "Speech path must be a directory"
@@ -272,9 +281,16 @@ class Benchmark:
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-    def _run_on_file(self, shared_pipeline: BasePipeline, filepath: Path, pbar: ProgressBar):
-        pipeline = deepcopy(shared_pipeline)  # TODO implement a multithreading pipeline to share models
-        pipeline.reset()
+    @staticmethod
+    def _get_pbar_description(filepath: Path, idx_file: int, num_files: int) -> Text:
+        return f"Streaming {filepath.stem} ({idx_file + 1}/{num_files})"
+
+    def _run_inference(
+        self,
+        pipeline: BasePipeline,
+        filepath: Path,
+        progress_bar: ProgressBar
+    ):
         stream_padding = pipeline.config.latency - pipeline.config.step
         block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
         source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
@@ -285,8 +301,9 @@ class Benchmark:
             do_profile=False,
             do_plot=False,
             show_progress=self.show_progress,
-            progress_bar=pbar,
+            progress_bar=progress_bar,
         )
+
         pred = inference()
         pred.uri = source.uri
 
@@ -296,7 +313,30 @@ class Benchmark:
 
         return pred
 
-    def __call__(self, pipeline: BasePipeline) -> Union[pd.DataFrame, List[Annotation]]:
+    def _run_inference_job(
+        self,
+        pipeline_class: type,
+        config_dict: Dict[Text, Hashable],
+        filepath: Path,
+        progress_description: Text,
+    ):
+        idx_process = int(current_process().name.split('-')[1]) - 1
+        # TODO share models across processes
+        config = pipeline_class.get_config_class().from_dict(config_dict)
+        pipeline = pipeline_class(config)
+        progress = TQDMProgressBar(
+            progress_description,
+            leave=False,
+            position=idx_process,
+            do_close=True,
+        )
+        return self._run_inference(pipeline, filepath, progress)
+
+    def __call__(
+        self,
+        pipeline_class: type,
+        config: Union[BasePipelineConfig, Dict[Text, Hashable]],
+    ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
 
@@ -315,19 +355,60 @@ class Benchmark:
         """
         audio_file_paths = list(self.speech_path.iterdir())
         num_audio_files = len(audio_file_paths)
-        predictions = []
-        pbars = ParallelProgressBars()
-        with ThreadPoolExecutor(max_workers=self.num_workers) as pool:
+
+        if self.num_workers == 0:
+            # Run sequentially
+            predictions = []
+            if isinstance(config, dict):
+                config = pipeline_class.get_config_class().from_dict(config)
+            pipeline = pipeline_class(config)
+
             for i, filepath in enumerate(audio_file_paths):
-                new_pbar = pbars.add_bar(f"[cyan]Streaming {filepath.stem} ({i + 1}/{num_audio_files})")
-                pool.submit(self._run_on_file, pipeline, filepath, new_pbar)
+                pipeline.reset()
+                progress = TQDMProgressBar(
+                    self._get_pbar_description(filepath, i, num_audio_files),
+                    leave=False,
+                    do_close=True,
+                )
+                predictions.append(self._run_inference(pipeline, filepath, progress))
+        else:
+            # Run in parallel
+            msg = "Benchmark cannot run in parallel " \
+                  "if the pipeline config is already instantiated. " \
+                  "Try passing a dictionary instead."
+            assert isinstance(config, dict), msg
+
+            # Workaround for multiprocessing with GPU
+            torch.multiprocessing.set_start_method('spawn')
+            # For Windows support
+            freeze_support()
+
+            pool = Pool(processes=self.num_workers, initargs=(RLock(),), initializer=tqdm.set_lock)
+            arg_list = [
+                (
+                    pipeline_class,
+                    config,
+                    filepath,
+                    self._get_pbar_description(filepath, i, num_audio_files)
+                )
+                for i, filepath in enumerate(audio_file_paths)
+            ]
+
+            jobs = [pool.apply_async(self._run_inference_job, args=args) for args in arg_list]
+            pool.close()
+            predictions = [job.get() for job in jobs]
 
         # Run evaluation
         if self.reference_path is not None:
             metric = DiarizationErrorRate(collar=0, skip_overlap=False)
+            progress_bar = TQDMProgressBar("Computing DER", leave=False)
+            progress_bar.create(total=len(predictions), unit="file")
+            progress_bar.start()
             for hyp in predictions:
                 ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
                 metric(ref, hyp)
+                progress_bar.update()
+            progress_bar.close()
 
             return metric.report(display=self.show_report)
 
