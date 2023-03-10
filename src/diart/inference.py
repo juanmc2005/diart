@@ -1,4 +1,5 @@
 import logging
+import time
 from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
@@ -11,7 +12,7 @@ import pandas as pd
 import rx
 import rx.operators as ops
 import torch
-from diart.blocks import BasePipeline, Resample
+from diart.blocks import BasePipeline, Resample, BasePipelineConfig
 from diart.progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from diart.utils import Chronometer
@@ -380,14 +381,21 @@ class Benchmark:
             return metric.report(display=self.show_report)
         return predictions
 
-    def __call__(self, pipeline: BasePipeline) -> Union[pd.DataFrame, List[Annotation]]:
+    def __call__(
+        self,
+        pipeline_class: type,
+        config: BasePipelineConfig,
+    ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
-        pipeline: BasePipeline
-            Configured speaker diarization pipeline.
+        pipeline_class: class
+            Class from the BasePipeline hierarchy.
+            A pipeline from this class will be instantiated by each worker.
+        config: BasePipelineConfig
+            Diarization pipeline configuration.
 
         Returns
         -------
@@ -399,6 +407,7 @@ class Benchmark:
         """
         audio_file_paths = self.get_file_paths()
         num_audio_files = len(audio_file_paths)
+        pipeline = pipeline_class(config)
 
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
@@ -433,7 +442,7 @@ class Parallelize:
     def run_single_job(
         self,
         pipeline_class: type,
-        config_dict: Dict[Text, Hashable],
+        config: BasePipelineConfig,
         filepath: Path,
         description: Text,
     ):
@@ -445,9 +454,8 @@ class Parallelize:
         pipeline_class: class
             Class from the BasePipeline hierarchy.
             A pipeline from this class will be instantiated.
-        config_dict: Dict[Text, Hashable]
-            A dictionary with the desired configuration values for the pipeline
-            (e.g. segmentation: Text, embedding: Text, cpu: bool, latency: float, etc.)
+        config: BasePipelineConfig
+            Diarization pipeline configuration.
         filepath: Path
             Path to the target file.
         description: Text
@@ -461,8 +469,6 @@ class Parallelize:
         # The process ID inside the pool determines the position of the progress bar
         idx_process = int(current_process().name.split('-')[1]) - 1
         # TODO share models across processes
-        # Instantiate a config with the dict received from the main process
-        config = pipeline_class.get_config_class().from_dict(config_dict)
         # Instantiate a pipeline with the config
         pipeline = pipeline_class(config)
         # Create the progress bar for this job
@@ -473,7 +479,7 @@ class Parallelize:
     def __call__(
         self,
         pipeline_class: type,
-        config: Dict[Text, Hashable],
+        config: BasePipelineConfig,
     ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files in parallel.
         Each worker will build and run the pipeline on a different file.
@@ -483,9 +489,8 @@ class Parallelize:
         pipeline_class: class
             Class from the BasePipeline hierarchy.
             A pipeline from this class will be instantiated by each worker.
-        config: Dict[Text, Hashable]
-            A dictionary with the desired configuration values
-            (e.g. segmentation: Text, embedding: Text, cpu: bool, latency: float, etc.)
+        config: BasePipelineConfig
+            Diarization pipeline configuration.
 
         Returns
         -------
