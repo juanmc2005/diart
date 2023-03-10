@@ -47,8 +47,8 @@ class RealTimeInference:
         If True, show a progress bar.
         Defaults to True.
     progress_bar: Optional[diart.progress.ProgressBar]
-        Progress bar with which to show progress.
-        If description is not provided, it will be set to 'Streaming <source uri>'.
+        Progress bar.
+        If description is not provided, set to 'Streaming <source uri>'.
         Defaults to RichProgressBar().
     """
     def __init__(
@@ -277,26 +277,6 @@ class Benchmark:
         self.show_report = show_report
         self.batch_size = batch_size
 
-    @staticmethod
-    def get_pbar_description(filepath: Path, idx_file: int, num_files: int) -> Text:
-        """Return the description of the progress bar for the run on this file.
-
-        Parameters
-        ----------
-        filepath: Path
-            Path to the target file.
-        idx_file: int
-            The file number within the entire dataset.
-        num_files: int
-            The total number of files in the dataset.
-
-        Returns
-        -------
-        description: Text
-            Description for the progress bar.
-        """
-        return f"Streaming {filepath.stem} ({idx_file + 1}/{num_files})"
-
     def get_file_paths(self) -> List[Path]:
         """Return the path for each file in the benchmark.
 
@@ -412,7 +392,7 @@ class Benchmark:
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
             pipeline.reset()
-            desc = self.get_pbar_description(filepath, i, num_audio_files)
+            desc = f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})"
             progress = TQDMProgressBar(desc, leave=False, do_close=True)
             predictions.append(self.run_single(pipeline, filepath, progress))
 
@@ -516,7 +496,7 @@ class Parallelize:
                 pipeline_class,
                 config,
                 filepath,
-                self.benchmark.get_pbar_description(filepath, i, num_audio_files)
+                f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
             )
             for i, filepath in enumerate(audio_file_paths)
         ]
