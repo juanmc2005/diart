@@ -118,7 +118,7 @@ from diart.sinks import RTTMWriter
 
 pipeline = OnlineSpeakerDiarization()
 mic = MicrophoneAudioSource(pipeline.config.sample_rate)
-inference = RealTimeInference(pipeline, mic, do_plot=True)
+inference = RealTimeInference(pipeline, mic)
 inference.attach_observers(RTTMWriter(mic.uri, "/output/file.rttm"))
 prediction = inference()
 ```
@@ -127,28 +127,45 @@ For inference and evaluation on a dataset we recommend to use `Benchmark` (see n
 
 ## Custom models
 
-Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel`:
+Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel` (which are PyTorch `Module` subclasses):
 
 ```python
-import torch
-from typing import Optional
 from diart import OnlineSpeakerDiarization, PipelineConfig
-from diart.models import EmbeddingModel
+from diart.models import EmbeddingModel, SegmentationModel
 from diart.sources import MicrophoneAudioSource
 from diart.inference import RealTimeInference
 
+
+def model_loader():
+    return load_pretrained_model("my_model.ckpt")
+
+
+class MySegmentationModel(SegmentationModel):
+    def __init__(self):
+        super().__init__(model_loader)
+    
+    @property
+    def sample_rate(self) -> int:
+        return 16000
+    
+    @property
+    def duration(self) -> float:
+        return 2  # seconds
+    
+    def forward(self, waveform):
+        # self.model is created lazily
+        return self.model(waveform)
+
+    
 class MyEmbeddingModel(EmbeddingModel):
     def __init__(self):
-        super().__init__()
-        self.my_pretrained_model = load("my_model.ckpt")
+        super().__init__(model_loader)
     
-    def __call__(
-        self,
-        waveform: torch.Tensor,
-        weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        return self.my_pretrained_model(waveform, weights)
+    def forward(self, waveform, weights):
+        # self.model is created lazily
+        return self.model(waveform, weights)
 
+    
 config = PipelineConfig(embedding=MyEmbeddingModel())
 pipeline = OnlineSpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
@@ -225,7 +242,7 @@ from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 
 segmentation = SpeakerSegmentation.from_pyannote("pyannote/segmentation")
 embedding = OverlapAwareSpeakerEmbedding.from_pyannote("pyannote/embedding")
-sample_rate = segmentation.model.get_sample_rate()
+sample_rate = segmentation.model.sample_rate
 mic = MicrophoneAudioSource(sample_rate)
 
 stream = mic.stream.pipe(
