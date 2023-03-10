@@ -335,18 +335,12 @@ config = PipelineConfig(
     rho_update=0.422,
     delta_new=1.517
 )
-pipeline = OnlineSpeakerDiarization(config)
-benchmark(pipeline)
+benchmark(OnlineSpeakerDiarization, config)
 
 # Run the same benchmark in parallel
-serializable_config = {
-    "segmentation": name, "step": 0.5,
-    "latency": 0.5, "tau": 0.555,
-    "rho": 0.422, "delta": 1.517
-}
 p_benchmark = Parallelize(benchmark, num_workers=4)
 if __name__ == "__main__":  # Needed for multiprocessing
-    p_benchmark(OnlineSpeakerDiarization, serializable_config)
+    p_benchmark(OnlineSpeakerDiarization, config)
 ```
 
 This pre-calculates model outputs in batches, so it runs a lot faster.

@@ -43,12 +43,11 @@ def run():
         batch_size=args.batch_size,
     )
 
+    config = PipelineConfig.from_dict(vars(args))
     if args.num_workers > 0:
         benchmark = Parallelize(benchmark, args.num_workers)
-        report = benchmark(OnlineSpeakerDiarization, vars(args))
-    else:
-        config = PipelineConfig.from_dict(vars(args))
-        report = benchmark(OnlineSpeakerDiarization(config))
+
+    report = benchmark(OnlineSpeakerDiarization, config)
 
     if args.output is not None and isinstance(report, pd.DataFrame):
         report.to_csv(args.output / "benchmark_report.csv")

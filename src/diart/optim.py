@@ -122,12 +122,11 @@ class Optimizer:
         if trial.should_prune():
             raise TrialPruned()
 
-        # Instantiate pipeline with the new configuration
-        config_class = self.base_config.__class__
-        pipeline = self.pipeline_class(config_class(**trial_config))
+        # Instantiate the new configuration for the trial
+        config = self.base_config.__class__(**trial_config)
 
         # Run pipeline over the dataset
-        report = self.benchmark(pipeline)
+        report = self.benchmark(self.pipeline_class, config)
 
         # Extract DER from report
         return report.loc["TOTAL", "diarization error rate"]["%"]
