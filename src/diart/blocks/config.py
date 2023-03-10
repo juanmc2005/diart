@@ -124,7 +124,7 @@ class PipelineConfig(BasePipelineConfig):
     @property
     def duration(self) -> float:
         if self._duration is None:
-            self._duration = self.segmentation.get_duration()
+            self._duration = self.segmentation.duration
         return self._duration
 
     @property
@@ -138,5 +138,5 @@ class PipelineConfig(BasePipelineConfig):
     @property
     def sample_rate(self) -> int:
         if self._sample_rate is None:
-            self._sample_rate = self.segmentation.get_sample_rate()
+            self._sample_rate = self.segmentation.sample_rate
         return self._sample_rate
