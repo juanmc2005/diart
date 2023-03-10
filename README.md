@@ -70,8 +70,7 @@ conda activate diart
 2) Install `PortAudio` and `soundfile`:
 
 ```shell
-conda install portaudio
-conda install pysoundfile -c conda-forge
+conda install portaudio pysoundfile -c conda-forge
 ```
 
 3) Install diart:
