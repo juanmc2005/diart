@@ -269,7 +269,20 @@ torch.Size([1, 3, 512])
 
 Diart is also compatible with the WebSocket protocol to serve pipelines on the web.
 
-In the following example we build a minimal server that receives audio chunks and sends back predictions in RTTM format:
+### From the command line
+
+```commandline
+diart.serve --host 0.0.0.0 --port 7007
+diart.client microphone --host <server-address> --port 7007
+```
+
+**Note:** please make sure that the client uses the same `step` and `sample_rate` than the server with `--step` and `-sr`.
+
+See `-h` for more options.
+
+### From python
+
+For customized solutions, a server can also be created in python using the `WebSocketAudioSource`:
 
 ```python
 from diart import OnlineSpeakerDiarization
