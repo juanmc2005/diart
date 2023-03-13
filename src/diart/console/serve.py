@@ -10,7 +10,7 @@ from diart.sinks import RTTMWriter
 
 def run():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="127.0.0.1", type=str, help="Server host")
+    parser.add_argument("--host", default="0.0.0.0", type=str, help="Server host")
     parser.add_argument("--port", default=7007, type=int, help="Server port")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
@@ -43,7 +43,7 @@ def run():
         pipeline,
         audio_source,
         batch_size=1,
-        do_profile=True,
+        do_profile=False,
         do_plot=False,
         show_progress=True,
     )

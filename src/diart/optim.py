@@ -9,8 +9,8 @@ from optuna.trial import Trial, FrozenTrial
 from tqdm import trange, tqdm
 
 from .audio import FilePath
-from .benchmark import Benchmark
 from .blocks import BasePipelineConfig, PipelineConfig, OnlineSpeakerDiarization
+from .inference import Benchmark
 
 
 @dataclass
