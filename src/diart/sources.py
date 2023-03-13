@@ -1,17 +1,15 @@
-import asyncio
 import base64
 from pathlib import Path
 from queue import SimpleQueue
-from typing import Text, Optional, AnyStr
+from typing import Text, Optional, AnyStr, Dict, Any
 
 import numpy as np
 import sounddevice as sd
 import torch
-import websockets
 from einops import rearrange
 from rx.subject import Subject
 from torchaudio.io import StreamReader
-import signal
+from websocket_server import WebsocketServer
 
 from .audio import FilePath, AudioLoader
 
@@ -171,44 +169,28 @@ class WebSocketAudioSource(AudioSource):
         # FIXME sample_rate is not being used, this can be confusing and lead to incompatibilities.
         #  I would prefer the client to send a JSON with data and sample rate, then resample if needed
         super().__init__(uri, sample_rate)
-        self.host = host
-        self.port = port
-        self.websocket = None
-        self.stop = None
+        self.client: Optional[Dict[Text, Any]] = None
+        self.server = WebsocketServer(host, port=port)
+        self.server.set_fn_message_received(self._on_message_received)
 
-    async def _ws_handler(self, websocket):
-        self.websocket = websocket
-        try:
-            async for message in websocket:
-                # Decode chunk encoded in base64
-                byte_samples = base64.decodebytes(message.encode("utf-8"))
-                # Recover array from bytes
-                samples = np.frombuffer(byte_samples, dtype=np.float32)
-                # Reshape and send through
-                self.stream.on_next(samples.reshape(1, -1))
-            self.stream.on_completed()
-            self.close()
-        except websockets.ConnectionClosedError as e:
-            self.stream.on_error(e)
-
-    async def _async_read(self):
-        loop = asyncio.get_running_loop()
-        self.stop = loop.create_future()
-        loop.add_signal_handler(signal.SIGTERM, self.stop.set_result, None)
-        async with websockets.serve(self._ws_handler, self.host, self.port):
-            await self.stop
-
-    async def _async_send(self, message: AnyStr):
-        await self.websocket.send(message)
+    def _on_message_received(self, client: Dict[Text, Any], server: WebsocketServer, message: AnyStr):
+        if self.client is None:
+            self.client = client
+        # Decode chunk encoded in base64
+        byte_samples = base64.decodebytes(message.encode("utf-8"))
+        # Recover array from bytes
+        samples = np.frombuffer(byte_samples, dtype=np.float32)
+        # Reshape and send through
+        self.stream.on_next(samples.reshape(1, -1))
 
     def read(self):
         """Starts running the websocket server and listening for audio chunks"""
-        asyncio.run(self._async_read())
+        self.server.run_forever()
 
     def close(self):
-        if self.websocket is not None:
-            # The value could be anything
-            self.stop.set_result(True)
+        if self.server is not None:
+            self.stream.on_completed()
+            self.server.shutdown_gracefully()
 
     def send(self, message: AnyStr):
         """Send a message through the current websocket.
@@ -218,20 +200,8 @@ class WebSocketAudioSource(AudioSource):
         message: AnyStr
             Bytes or string to send.
         """
-        # A running loop must exist in order to send back a message
-        ws_closed = "Websocket isn't open, try calling `read()` first"
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            raise RuntimeError(ws_closed)
-
-        if not loop.is_running():
-            raise RuntimeError(ws_closed)
-
-        # TODO support broadcasting to many clients
-        # Schedule a coroutine to send back the message
-        if message:
-            asyncio.run_coroutine_threadsafe(self._async_send(message), loop=loop)
+        if len(message) > 0:
+            self.server.send_message(self.client, message)
 
 
 class TorchStreamAudioSource(AudioSource):
