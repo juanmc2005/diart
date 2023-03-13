@@ -1,9 +1,8 @@
 import logging
-import time
 from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List, Dict, Hashable
+from typing import Union, Text, Optional, Callable, Tuple, List
 
 import diart.operators as dops
 import diart.sources as src

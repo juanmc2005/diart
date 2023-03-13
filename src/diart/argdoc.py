@@ -13,3 +13,4 @@ BATCH_SIZE = "For segmentation and embedding pre-calculation. If BATCH_SIZE < 2,
 NUM_WORKERS = "Number of parallel workers"
 OUTPUT = "Directory to store the system's output in RTTM format"
 HF_TOKEN = "Huggingface authentication token for hosted models ('true' | 'false' | <token>). If 'true', it will use the token from huggingface-cli login"
+SAMPLE_RATE = "Sample rate of the audio stream"

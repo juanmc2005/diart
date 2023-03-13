@@ -1,4 +1,3 @@
-import base64
 from pathlib import Path
 from queue import SimpleQueue
 from typing import Text, Optional, AnyStr, Dict, Any, Union
@@ -6,6 +5,7 @@ from typing import Text, Optional, AnyStr, Dict, Any, Union
 import numpy as np
 import sounddevice as sd
 import torch
+from diart import utils
 from einops import rearrange
 from rx.subject import Subject
 from torchaudio.io import StreamReader
@@ -195,12 +195,8 @@ class WebSocketAudioSource(AudioSource):
         # Only one client at a time is allowed
         if self.client is None or self.client["id"] != client["id"]:
             self.client = client
-        # Decode chunk encoded in base64
-        byte_samples = base64.decodebytes(message.encode("utf-8"))
-        # Recover array from bytes
-        samples = np.frombuffer(byte_samples, dtype=np.float32)
-        # Reshape and send through
-        self.stream.on_next(samples.reshape(1, -1))
+        # Send decoded audio to pipeline
+        self.stream.on_next(utils.decode_audio(message))
 
     def read(self):
         """Starts running the websocket server and listening for audio chunks"""
