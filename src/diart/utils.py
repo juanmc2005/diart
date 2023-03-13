@@ -1,3 +1,4 @@
+import base64
 import time
 from typing import Optional, Text, Union, Any, Dict
 
@@ -52,6 +53,19 @@ def parse_hf_token_arg(hf_token: Union[bool, Text]) -> Union[bool, Text]:
 
 def get(data: Dict[Text, Any], key: Text, default: Any) -> Any:
     return data[key] if key in data else default
+
+
+def encode_audio(waveform: np.ndarray) -> Text:
+    data = waveform.astype(np.float32).tobytes()
+    return base64.b64encode(data).decode("utf-8")
+
+
+def decode_audio(data: Text) -> np.ndarray:
+    # Decode chunk encoded in base64
+    byte_samples = base64.decodebytes(data.encode("utf-8"))
+    # Recover array from bytes
+    samples = np.frombuffer(byte_samples, dtype=np.float32)
+    return samples.reshape(1, -1)
 
 
 def visualize_feature(duration: Optional[float] = None):

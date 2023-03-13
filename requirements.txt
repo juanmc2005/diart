@@ -14,4 +14,5 @@ pyannote.database>=4.1.1
 pyannote.metrics>=3.2
 optuna>=2.10
 websocket-server>=0.6.4
+websocket-client>=0.58.0
 rich>=12.5.1
