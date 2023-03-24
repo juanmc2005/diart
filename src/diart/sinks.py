@@ -33,6 +33,8 @@ class RTTMWriter(Observer):
 
     def patch(self):
         """Stitch same-speaker turns that are close to each other"""
+        if not self.path.exists():
+            return
         annotations = list(load_rttm(self.path).values())
         if annotations:
             annotation = annotations[0]

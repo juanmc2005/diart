@@ -1,6 +1,6 @@
 from pathlib import Path
 from queue import SimpleQueue
-from typing import Text, Optional, AnyStr, Dict, Any, Union
+from typing import Text, Optional, AnyStr, Dict, Any, Union, Tuple
 
 import numpy as np
 import sounddevice as sd
@@ -52,12 +52,18 @@ class FileAudioSource(AudioSource):
         Path to the file to stream.
     sample_rate: int
         Sample rate of the chunks emitted.
+    padding: (float, float)
+        Left and right padding to add to the file (in seconds).
+        Defaults to (0, 0).
+    block_size: int
+        Number of samples per chunk emitted.
+        Defaults to 1000.
     """
     def __init__(
         self,
         file: FilePath,
         sample_rate: int,
-        padding_end: float = 0,
+        padding: Tuple[float, float] = (0, 0),
         block_size: int = 1000,
     ):
         super().__init__(Path(file).stem, sample_rate)
@@ -66,17 +72,23 @@ class FileAudioSource(AudioSource):
         self.file = file
         self.resolution = 1 / self.sample_rate
         self.block_size = block_size
-        self.padding_end = padding_end
+        self.padding_start, self.padding_end = padding
         self.is_closed = False
 
     @property
     def duration(self) -> Optional[float]:
         # The duration of a file is known
-        return self._duration + self.padding_end
+        return self.padding_start + self._duration + self.padding_end
 
     def read(self):
         """Send each chunk of samples through the stream"""
         waveform = self.loader.load(self.file)
+
+        # Add zero padding at the beginning if required
+        if self.padding_start > 0:
+            num_pad_samples = int(np.rint(self.padding_start * self.sample_rate))
+            zero_padding = torch.zeros(waveform.shape[0], num_pad_samples)
+            waveform = torch.cat([zero_padding, waveform], dim=1)
 
         # Add zero padding at the end if required
         if self.padding_end > 0:

@@ -1,10 +1,12 @@
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Tuple
 
+import numpy as np
 import torch
 from typing_extensions import Literal
 
 from .. import models as m
 from .. import utils
+from ..audio import FilePath, AudioLoader
 
 
 class BasePipelineConfig:
@@ -27,6 +29,15 @@ class BasePipelineConfig:
     @staticmethod
     def from_dict(data: Any) -> 'BasePipelineConfig':
         raise NotImplementedError
+
+    def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
+        file_duration = AudioLoader(self.sample_rate, mono=True).get_duration(filepath)
+        right = utils.get_padding_right(self.latency, self.step)
+        left = utils.get_padding_left(file_duration + right, self.duration)
+        return left, right
+
+    def optimal_block_size(self) -> int:
+        return int(np.rint(self.step * self.sample_rate))
 
 
 class PipelineConfig(BasePipelineConfig):
