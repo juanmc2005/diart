@@ -68,6 +68,16 @@ def decode_audio(data: Text) -> np.ndarray:
     return samples.reshape(1, -1)
 
 
+def get_padding_left(stream_duration: float, chunk_duration: float) -> float:
+    if stream_duration < chunk_duration:
+        return chunk_duration - stream_duration
+    return 0
+
+
+def get_padding_right(latency: float, step: float) -> float:
+    return latency - step
+
+
 def visualize_feature(duration: Optional[float] = None):
     def apply(feature: SlidingWindowFeature):
         if duration is None:

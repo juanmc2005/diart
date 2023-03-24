@@ -11,10 +11,10 @@ import pandas as pd
 import rx
 import rx.operators as ops
 import torch
+from diart import utils
 from diart.blocks import BasePipeline, Resample, BasePipelineConfig
 from diart.progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
-from diart.utils import Chronometer
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
@@ -92,7 +92,7 @@ class RealTimeInference:
             )
 
         # Initialize chronometer for profiling
-        self._chrono = Chronometer(self.unit, self._pbar)
+        self._chrono = utils.Chronometer(self.unit, self._pbar)
 
         self.stream = self.source.stream
 
@@ -310,9 +310,12 @@ class Benchmark:
         prediction: Annotation
             Pipeline prediction for the given file.
         """
-        stream_padding = pipeline.config.latency - pipeline.config.step
-        block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
-        source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
+        source = src.FileAudioSource(
+            filepath,
+            pipeline.config.sample_rate,
+            pipeline.config.get_file_padding(filepath),
+            pipeline.config.optimal_block_size(),
+        )
         inference = RealTimeInference(
             pipeline,
             source,

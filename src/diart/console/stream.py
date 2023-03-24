@@ -38,12 +38,12 @@ def run():
     pipeline = OnlineSpeakerDiarization(config)
 
     # Manage audio source
-    block_size = int(np.rint(config.step * config.sample_rate))
+    block_size = config.optimal_block_size()
     if args.source != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
-        stream_padding = config.latency - config.step
-        audio_source = src.FileAudioSource(args.source, config.sample_rate, stream_padding, block_size)
+        padding = config.get_file_padding(args.source)
+        audio_source = src.FileAudioSource(args.source, config.sample_rate, padding, block_size)
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
         audio_source = src.MicrophoneAudioSource(config.sample_rate, block_size)
