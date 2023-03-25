@@ -1,7 +1,7 @@
 <br/>
 
 <p align="center">
-<img src="/logo.png" title="Logo" />
+<img width="40%" src="/logo.jpg" title="Logo" />
 </p>
 
 <p align="center">
