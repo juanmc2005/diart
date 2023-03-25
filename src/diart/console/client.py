@@ -14,10 +14,12 @@ from websocket import WebSocket
 def send_audio(ws: WebSocket, source: Text, step: float, sample_rate: int):
     # Create audio source
     block_size = int(np.rint(step * sample_rate))
-    if source != "microphone":
+    source_components = source.split(":")
+    if source_components[0] != "microphone":
         audio_source = src.FileAudioSource(source, sample_rate)
     else:
-        audio_source = src.MicrophoneAudioSource(sample_rate, block_size)
+        device = int(source_components[1]) if len(source_components) > 1 else None
+        audio_source = src.MicrophoneAudioSource(sample_rate, block_size, device)
 
     # Encode audio, then send through websocket
     audio_source.stream.pipe(
@@ -39,7 +41,7 @@ def receive_audio(ws: WebSocket, output: Optional[Path]):
 
 def run():
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=str, help="Path to an audio file | 'microphone'")
+    parser.add_argument("source", type=str, help="Path to an audio file | 'microphone' | 'microphone:<DEVICE_ID>'")
     parser.add_argument("--host", required=True, type=str, help="Server host")
     parser.add_argument("--port", required=True, type=int, help="Server port")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
