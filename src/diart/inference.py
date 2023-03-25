@@ -310,12 +310,14 @@ class Benchmark:
         prediction: Annotation
             Pipeline prediction for the given file.
         """
+        padding = pipeline.config.get_file_padding(filepath)
         source = src.FileAudioSource(
             filepath,
             pipeline.config.sample_rate,
-            pipeline.config.get_file_padding(filepath),
+            padding,
             pipeline.config.optimal_block_size(),
         )
+        pipeline.set_timestamp_shift(-padding[0])
         inference = RealTimeInference(
             pipeline,
             source,

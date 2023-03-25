@@ -2,7 +2,7 @@ from typing import Optional, Tuple, Sequence
 
 import numpy as np
 import torch
-from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow
+from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow, Segment
 
 from .aggregation import DelayedAggregation
 from .clustering import OnlineSpeakerClustering
@@ -22,6 +22,9 @@ class BasePipeline:
         raise NotImplementedError
 
     def reset(self):
+        raise NotImplementedError
+
+    def set_timestamp_shift(self, shift: float):
         raise NotImplementedError
 
     def __call__(
@@ -57,6 +60,7 @@ class OnlineSpeakerDiarization(BasePipeline):
         self.binarize = Binarize(self._config.tau_active)
 
         # Internal state, handle with care
+        self.timestamp_shift = 0
         self.clustering = None
         self.chunk_buffer, self.pred_buffer = [], []
         self.reset()
@@ -69,7 +73,11 @@ class OnlineSpeakerDiarization(BasePipeline):
     def config(self) -> PipelineConfig:
         return self._config
 
+    def set_timestamp_shift(self, shift: float):
+        self.timestamp_shift = shift
+
     def reset(self):
+        self.set_timestamp_shift(0)
         self.clustering = OnlineSpeakerClustering(
             self.config.tau_active,
             self.config.rho_update,
@@ -120,7 +128,20 @@ class OnlineSpeakerDiarization(BasePipeline):
             # Aggregate buffer outputs for this time step
             agg_waveform = self.audio_aggregation(self.chunk_buffer)
             agg_prediction = self.pred_aggregation(self.pred_buffer)
-            outputs.append((self.binarize(agg_prediction), agg_waveform))
+            agg_prediction = self.binarize(agg_prediction)
+
+            # Shift prediction timestamps if required
+            if self.timestamp_shift != 0:
+                shifted_agg_prediction = Annotation(agg_prediction.uri)
+                for segment, track, speaker in agg_prediction.itertracks(yield_label=True):
+                    new_segment = Segment(
+                        segment.start + self.timestamp_shift,
+                        segment.end + self.timestamp_shift,
+                    )
+                    shifted_agg_prediction[new_segment, track] = speaker
+                agg_prediction = shifted_agg_prediction
+
+            outputs.append((agg_prediction, agg_waveform))
 
             # Make place for new chunks in buffer if required
             if len(self.chunk_buffer) == self.pred_aggregation.num_overlapping_windows:
