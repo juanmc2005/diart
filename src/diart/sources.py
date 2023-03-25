@@ -127,9 +127,27 @@ class FileAudioSource(AudioSource):
 
 
 class MicrophoneAudioSource(AudioSource):
-    """Represents an audio source tied to the default microphone available"""
+    """Audio source tied to a local microphone.
 
-    def __init__(self, sample_rate: int, block_size: int = 1000):
+    Parameters
+    ----------
+    sample_rate: int
+        Sample rate for the emitted audio chunks.
+    block_size: int
+        Number of samples per chunk emitted.
+        Defaults to 1000.
+    device: int | str | (int, str) | None
+        Device identifier compatible for the sounddevice stream.
+        If None, use the default device.
+        Defaults to None.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int,
+        block_size: int = 1000,
+        device: Optional[Union[int, Text, Tuple[int, Text]]] = None,
+    ):
         super().__init__("live_recording", sample_rate)
         self.block_size = block_size
         self._mic_stream = sd.InputStream(
@@ -137,7 +155,8 @@ class MicrophoneAudioSource(AudioSource):
             samplerate=sample_rate,
             latency=0,
             blocksize=self.block_size,
-            callback=self._read_callback
+            callback=self._read_callback,
+            device=device,
         )
         self._queue = SimpleQueue()
 
