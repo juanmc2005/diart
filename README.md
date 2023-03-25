@@ -166,7 +166,10 @@ class MyEmbeddingModel(EmbeddingModel):
         return self.model(waveform, weights)
 
     
-config = PipelineConfig(embedding=MyEmbeddingModel())
+config = PipelineConfig(
+    segmentation=MySegmentationModel(),
+    embedding=MyEmbeddingModel()
+)
 pipeline = OnlineSpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
 inference = RealTimeInference(pipeline, mic)
