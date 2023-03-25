@@ -3,7 +3,6 @@ from pathlib import Path
 
 import diart.argdoc as argdoc
 import diart.sources as src
-import numpy as np
 from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
 from diart.inference import RealTimeInference
 from diart.sinks import RTTMWriter
@@ -11,7 +10,7 @@ from diart.sinks import RTTMWriter
 
 def run():
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=str, help="Path to an audio file | 'microphone'")
+    parser.add_argument("source", type=str, help="Path to an audio file | 'microphone' | 'microphone:<DEVICE_ID>'")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
@@ -39,14 +38,16 @@ def run():
 
     # Manage audio source
     block_size = config.optimal_block_size()
-    if args.source != "microphone":
+    source_components = args.source.split(":")
+    if source_components[0] != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
         padding = config.get_file_padding(args.source)
         audio_source = src.FileAudioSource(args.source, config.sample_rate, padding, block_size)
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
-        audio_source = src.MicrophoneAudioSource(config.sample_rate, block_size)
+        device = int(source_components[1]) if len(source_components) > 1 else None
+        audio_source = src.MicrophoneAudioSource(config.sample_rate, block_size, device)
 
     # Run online inference
     inference = RealTimeInference(
