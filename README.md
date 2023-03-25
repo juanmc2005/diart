@@ -101,6 +101,8 @@ diart.stream /path/to/audio.wav
 A live conversation:
 
 ```shell
+# Use "microphone:ID" to select a non-default device
+# See `python -m sounddevice` for available devices
 diart.stream microphone
 ```
 
