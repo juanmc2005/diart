@@ -44,6 +44,7 @@ def run():
         args.output = args.source.parent if args.output is None else Path(args.output)
         padding = config.get_file_padding(args.source)
         audio_source = src.FileAudioSource(args.source, config.sample_rate, padding, block_size)
+        pipeline.set_timestamp_shift(-padding[0])
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
         device = int(source_components[1]) if len(source_components) > 1 else None
