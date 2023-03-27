@@ -67,7 +67,7 @@ conda create -n diart python=3.8
 conda activate diart
 ```
 
-2) Install `PortAudio` and `soundfile`:
+2) Install audio libraries:
 
 ```shell
 conda install portaudio pysoundfile ffmpeg -c conda-forge
