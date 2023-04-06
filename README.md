@@ -1,7 +1,7 @@
 <br/>
 
 <p align="center">
-<img src="/logo.png" title="Logo" />
+<img width="40%" src="/logo.jpg" title="Logo" />
 </p>
 
 <p align="center">
@@ -67,11 +67,10 @@ conda create -n diart python=3.8
 conda activate diart
 ```
 
-2) Install `PortAudio` and `soundfile`:
+2) Install audio libraries:
 
 ```shell
-conda install portaudio
-conda install pysoundfile -c conda-forge
+conda install portaudio pysoundfile ffmpeg -c conda-forge
 ```
 
 3) Install diart:
@@ -101,6 +100,8 @@ diart.stream /path/to/audio.wav
 A live conversation:
 
 ```shell
+# Use "microphone:ID" to select a non-default device
+# See `python -m sounddevice` for available devices
 diart.stream microphone
 ```
 
@@ -127,29 +128,49 @@ For inference and evaluation on a dataset we recommend to use `Benchmark` (see n
 
 ## Custom models
 
-Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel`:
+Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel` (which are PyTorch `Module` subclasses):
 
 ```python
-import torch
-from typing import Optional
 from diart import OnlineSpeakerDiarization, PipelineConfig
-from diart.models import EmbeddingModel
+from diart.models import EmbeddingModel, SegmentationModel
 from diart.sources import MicrophoneAudioSource
 from diart.inference import RealTimeInference
 
+
+def model_loader():
+    return load_pretrained_model("my_model.ckpt")
+
+
+class MySegmentationModel(SegmentationModel):
+    def __init__(self):
+        super().__init__(model_loader)
+    
+    @property
+    def sample_rate(self) -> int:
+        return 16000
+    
+    @property
+    def duration(self) -> float:
+        return 2  # seconds
+    
+    def forward(self, waveform):
+        # self.model is created lazily
+        return self.model(waveform)
+
+    
 class MyEmbeddingModel(EmbeddingModel):
     def __init__(self):
-        super().__init__()
-        self.my_pretrained_model = load("my_model.ckpt")
+        super().__init__(model_loader)
     
-    def __call__(
-        self,
-        waveform: torch.Tensor,
-        weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        return self.my_pretrained_model(waveform, weights)
+    def forward(self, waveform, weights):
+        # self.model is created lazily
+        return self.model(waveform, weights)
 
-config = PipelineConfig(embedding=MyEmbeddingModel())
+    
+config = PipelineConfig(
+    segmentation=MySegmentationModel(),
+    embedding=MyEmbeddingModel()
+)
 pipeline = OnlineSpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
 inference = RealTimeInference(pipeline, mic)
@@ -225,7 +246,7 @@ from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 
 segmentation = SpeakerSegmentation.from_pyannote("pyannote/segmentation")
 embedding = OverlapAwareSpeakerEmbedding.from_pyannote("pyannote/embedding")
-sample_rate = segmentation.model.get_sample_rate()
+sample_rate = segmentation.model.sample_rate
 mic = MicrophoneAudioSource(sample_rate)
 
 stream = mic.stream.pipe(
@@ -252,7 +273,20 @@ torch.Size([1, 3, 512])
 
 Diart is also compatible with the WebSocket protocol to serve pipelines on the web.
 
-In the following example we build a minimal server that receives audio chunks and sends back predictions in RTTM format:
+### From the command line
+
+```commandline
+diart.serve --host 0.0.0.0 --port 7007
+diart.client microphone --host <server-address> --port 7007
+```
+
+**Note:** please make sure that the client uses the same `step` and `sample_rate` than the server with `--step` and `-sr`.
+
+See `-h` for more options.
+
+### From python
+
+For customized solutions, a server can also be created in python using the `WebSocketAudioSource`:
 
 ```python
 from diart import OnlineSpeakerDiarization
@@ -261,7 +295,7 @@ from diart.inference import RealTimeInference
 
 pipeline = OnlineSpeakerDiarization()
 source = WebSocketAudioSource(pipeline.config.sample_rate, "localhost", 7007)
-inference = RealTimeInference(pipeline, source, do_plot=True)
+inference = RealTimeInference(pipeline, source)
 inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
 prediction = inference()
 ```
@@ -318,22 +352,29 @@ diart.benchmark /wav/dir --reference /rttm/dir --tau=0.555 --rho=0.422 --delta=1
 or using the inference API:
 
 ```python
-from diart.inference import Benchmark
+from diart.inference import Benchmark, Parallelize
 from diart import OnlineSpeakerDiarization, PipelineConfig
 from diart.models import SegmentationModel
 
+benchmark = Benchmark("/wav/dir", "/rttm/dir")
+
+name = "pyannote/segmentation@Interspeech2021"
+segmentation = SegmentationModel.from_pyannote(name)
 config = PipelineConfig(
     # Set the model used in the paper
-    segmentation=SegmentationModel.from_pyannote("pyannote/segmentation@Interspeech2021"),
+    segmentation=segmentation,
     step=0.5,
     latency=0.5,
     tau_active=0.555,
     rho_update=0.422,
     delta_new=1.517
 )
-pipeline = OnlineSpeakerDiarization(config)
-benchmark = Benchmark("/wav/dir", "/rttm/dir")
-benchmark(pipeline)
+benchmark(OnlineSpeakerDiarization, config)
+
+# Run the same benchmark in parallel
+p_benchmark = Parallelize(benchmark, num_workers=4)
+if __name__ == "__main__":  # Needed for multiprocessing
+    p_benchmark(OnlineSpeakerDiarization, config)
 ```
 
 This pre-calculates model outputs in batches, so it runs a lot faster.

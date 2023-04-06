@@ -13,5 +13,6 @@ from .embedding import (
     OverlapAwareSpeakerEmbedding,
 )
 from .segmentation import SpeakerSegmentation
-from .diarization import OnlineSpeakerDiarization, PipelineConfig
+from .diarization import OnlineSpeakerDiarization, BasePipeline
+from .config import BasePipelineConfig, PipelineConfig
 from .utils import Binarize, Resample, AdjustVolume

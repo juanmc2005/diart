@@ -1,20 +1,52 @@
-from typing import Optional, Text, Union
+from typing import Optional, Text, Union, Callable
 
 import torch
 import torch.nn as nn
 
 try:
-    import pyannote.audio.pipelines.utils as pyannote
+    import pyannote.audio.pipelines.utils as pyannote_loader
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
 
 
-class SegmentationModel(nn.Module):
+class PyannoteLoader:
+    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
+        super().__init__()
+        self.model_info = model_info
+        self.hf_token = hf_token
+
+    def __call__(self) -> nn.Module:
+        return pyannote_loader.get_model(self.model_info, self.hf_token)
+
+
+class LazyModel(nn.Module):
+    def __init__(self, loader: Callable[[], nn.Module]):
+        super().__init__()
+        self.get_model = loader
+        self.model: Optional[nn.Module] = None
+
+    def is_in_memory(self) -> bool:
+        """Return whether the model has been loaded into memory"""
+        return self.model is not None
+
+    def load(self):
+        if not self.is_in_memory():
+            self.model = self.get_model()
+
+    def to(self, *args, **kwargs) -> nn.Module:
+        self.load()
+        return super().to(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        self.load()
+        return super().__call__(*args, **kwargs)
+
+
+class SegmentationModel(LazyModel):
     """
     Minimal interface for a segmentation model.
     """
-
     @staticmethod
     def from_pyannote(model, use_hf_token: Union[Text, bool, None] = True) -> 'SegmentationModel':
         """
@@ -34,34 +66,19 @@ class SegmentationModel(nn.Module):
         wrapper: SegmentationModel
         """
         assert _has_pyannote, "No pyannote.audio installation found"
-
-        class PyannoteSegmentationModel(SegmentationModel):
-            def __init__(self, pyannote_model, token: Union[Text, bool, None] = True):
-                super().__init__()
-                self.model = pyannote.get_model(pyannote_model, token)
-
-            def get_sample_rate(self) -> int:
-                return self.model.audio.sample_rate
-
-            def get_duration(self) -> float:
-                return self.model.specifications.duration
-
-            def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
-                return self.model(waveform)
-
         return PyannoteSegmentationModel(model, use_hf_token)
 
-    def get_sample_rate(self) -> int:
-        """Return the sample rate expected for model inputs"""
+    @property
+    def sample_rate(self) -> int:
         raise NotImplementedError
 
-    def get_duration(self) -> float:
-        """Return the input duration by default (usually the one used during training)"""
+    @property
+    def duration(self) -> float:
         raise NotImplementedError
 
-    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of a segmentation model.
+        Forward pass of the segmentation model.
 
         Parameters
         ----------
@@ -74,9 +91,26 @@ class SegmentationModel(nn.Module):
         raise NotImplementedError
 
 
-class EmbeddingModel(nn.Module):
-    """Minimal interface for an embedding model."""
+class PyannoteSegmentationModel(SegmentationModel):
+    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
+        super().__init__(PyannoteLoader(model_info, hf_token))
 
+    @property
+    def sample_rate(self) -> int:
+        self.load()
+        return self.model.audio.sample_rate
+
+    @property
+    def duration(self) -> float:
+        self.load()
+        return self.model.specifications.duration
+
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+        return self.model(waveform)
+
+
+class EmbeddingModel(LazyModel):
+    """Minimal interface for an embedding model."""
     @staticmethod
     def from_pyannote(model, use_hf_token: Union[Text, bool, None] = True) -> 'EmbeddingModel':
         """
@@ -96,22 +130,9 @@ class EmbeddingModel(nn.Module):
         wrapper: EmbeddingModel
         """
         assert _has_pyannote, "No pyannote.audio installation found"
-
-        class PyannoteEmbeddingModel(EmbeddingModel):
-            def __init__(self, pyannote_model, token: Union[Text, bool, None] = True):
-                super().__init__()
-                self.model = pyannote.get_model(pyannote_model, token)
-
-            def __call__(
-                self,
-                waveform: torch.Tensor,
-                weights: Optional[torch.Tensor] = None,
-            ) -> torch.Tensor:
-                return self.model(waveform, weights=weights)
-
         return PyannoteEmbeddingModel(model, use_hf_token)
 
-    def __call__(
+    def forward(
         self,
         waveform: torch.Tensor,
         weights: Optional[torch.Tensor] = None
@@ -130,3 +151,15 @@ class EmbeddingModel(nn.Module):
         speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
         """
         raise NotImplementedError
+
+
+class PyannoteEmbeddingModel(EmbeddingModel):
+    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
+        super().__init__(PyannoteLoader(model_info, hf_token))
+
+    def forward(
+        self,
+        waveform: torch.Tensor,
+        weights: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        return self.model(waveform, weights=weights)

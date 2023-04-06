@@ -1,4 +1,5 @@
 import logging
+from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
 from typing import Union, Text, Optional, Callable, Tuple, List
@@ -9,9 +10,11 @@ import numpy as np
 import pandas as pd
 import rx
 import rx.operators as ops
-from diart.blocks import OnlineSpeakerDiarization, Resample
-from diart.sinks import DiarizationPredictionAccumulator, RTTMWriter, RealTimePlot, WindowClosedException
-from diart.utils import Chronometer
+import torch
+from diart import utils
+from diart.blocks import BasePipeline, Resample, BasePipelineConfig
+from diart.progress import ProgressBar, RichProgressBar, TQDMProgressBar
+from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
@@ -20,14 +23,13 @@ from tqdm import tqdm
 
 
 class RealTimeInference:
-    """
-    Performs inference in real time given a pipeline and an audio source.
+    """Performs inference in real time given a pipeline and an audio source.
     Streams an audio source to an online speaker diarization pipeline.
     It allows users to attach a chain of operations in the form of hooks.
 
     Parameters
     ----------
-    pipeline: OnlineSpeakerDiarization
+    pipeline: BasePipeline
         Configured speaker diarization pipeline.
     source: AudioSource
         Audio source to be read and streamed.
@@ -43,31 +45,29 @@ class RealTimeInference:
     show_progress: bool
         If True, show a progress bar.
         Defaults to True.
-    progress_desc: Optional[Text]
-        Message to show in the progress bar.
-        Defaults to 'Streaming <source uri>'.
-    leave_progress_bar: bool
-        If True, leaves the progress bar on the screen after the stream has finished.
-        Defaults to False.
+    progress_bar: Optional[diart.progress.ProgressBar]
+        Progress bar.
+        If description is not provided, set to 'Streaming <source uri>'.
+        Defaults to RichProgressBar().
     """
     def __init__(
         self,
-        pipeline: OnlineSpeakerDiarization,
+        pipeline: BasePipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
         do_plot: bool = False,
         show_progress: bool = True,
-        progress_desc: Optional[Text] = None,
-        leave_progress_bar: bool = False,
+        progress_bar: Optional[ProgressBar] = None,
     ):
         self.pipeline = pipeline
         self.source = source
         self.batch_size = batch_size
         self.do_profile = do_profile
         self.do_plot = do_plot
-        self.accumulator = DiarizationPredictionAccumulator(source.uri)
-        self._chrono = Chronometer("chunk" if self.batch_size == 1 else "batch")
+        self.show_progress = show_progress
+        self.accumulator = DiarizationPredictionAccumulator(self.source.uri)
+        self.unit = "chunk" if self.batch_size == 1 else "batch"
         self._observers = []
 
         chunk_duration = self.pipeline.config.duration
@@ -76,19 +76,33 @@ class RealTimeInference:
 
         # Estimate the total number of chunks that the source will emit
         self.num_chunks = None
-        if source.duration is not None:
-            numerator = source.duration - chunk_duration + step_duration
+        if self.source.duration is not None:
+            numerator = self.source.duration - chunk_duration + step_duration
             self.num_chunks = int(np.ceil(numerator / step_duration))
+
+        # Show progress if required
+        self._pbar = progress_bar
+        if self.show_progress:
+            if self._pbar is None:
+                self._pbar = RichProgressBar()
+            self._pbar.create(
+                total=self.num_chunks,
+                description=f"Streaming {self.source.uri}",
+                unit=self.unit
+            )
+
+        # Initialize chronometer for profiling
+        self._chrono = utils.Chronometer(self.unit, self._pbar)
 
         self.stream = self.source.stream
 
         # Dynamic resampling if the audio source isn't compatible
-        if sample_rate != source.sample_rate:
-            msg = f"Audio source has sample rate {source.sample_rate}, " \
+        if sample_rate != self.source.sample_rate:
+            msg = f"Audio source has sample rate {self.source.sample_rate}, " \
                   f"but pipeline's is {sample_rate}. Will resample."
             logging.warning(msg)
             self.stream = self.stream.pipe(
-                ops.map(Resample(source.sample_rate, sample_rate))
+                ops.map(Resample(self.source.sample_rate, sample_rate))
             )
 
         # Add rx operators to manage the inputs and outputs of the pipeline
@@ -100,22 +114,18 @@ class RealTimeInference:
         if self.do_profile:
             self.stream = self.stream.pipe(
                 ops.do_action(on_next=lambda _: self._chrono.start()),
-                ops.map(pipeline),
+                ops.map(self.pipeline),
                 ops.do_action(on_next=lambda _: self._chrono.stop()),
             )
         else:
-            self.stream = self.stream.pipe(ops.map(pipeline))
+            self.stream = self.stream.pipe(ops.map(self.pipeline))
 
         self.stream = self.stream.pipe(
             ops.flat_map(lambda results: rx.from_iterable(results)),
             ops.do(self.accumulator),
         )
 
-        # Show progress if required
-        self._pbar = None
         if show_progress:
-            desc = f"Streaming {source.uri}" if progress_desc is None else progress_desc
-            self._pbar = tqdm(desc=desc, total=self.num_chunks, unit="chunk", leave=leave_progress_bar)
             self.stream = self.stream.pipe(
                 ops.do_action(on_next=lambda _: self._pbar.update())
             )
@@ -162,12 +172,12 @@ class RealTimeInference:
         interrupted = isinstance(error, KeyboardInterrupt)
         if not window_closed and not interrupted:
             print_exc()
-        # Close progress and chronometer states
+        # Close internal states
         self._close_pbar()
         self._close_chronometer()
 
     def _handle_completion(self):
-        # Close progress and chronometer states
+        # Close internal states
         self._close_pbar()
         self._close_chronometer()
 
@@ -179,6 +189,8 @@ class RealTimeInference:
         predictions: Annotation
             Speaker diarization pipeline predictions
         """
+        if self.show_progress:
+            self._pbar.start()
         config = self.pipeline.config
         observable = self.stream
         if self.do_plot:
@@ -204,9 +216,9 @@ class RealTimeInference:
 class Benchmark:
     """
     Run an online speaker diarization pipeline on a set of audio files in batches.
-    It writes predictions to a given output directory.
+    Write predictions to a given output directory.
 
-    If the reference is given, it calculates the average diarization error rate.
+    If the reference is given, calculate the average diarization error rate.
 
     Parameters
     ----------
@@ -264,14 +276,110 @@ class Benchmark:
         self.show_report = show_report
         self.batch_size = batch_size
 
-    def __call__(self, pipeline: OnlineSpeakerDiarization) -> Union[pd.DataFrame, List[Annotation]]:
+    def get_file_paths(self) -> List[Path]:
+        """Return the path for each file in the benchmark.
+
+        Returns
+        -------
+        paths: List[Path]
+            List of audio file paths.
+        """
+        return list(self.speech_path.iterdir())
+
+    def run_single(
+        self,
+        pipeline: BasePipeline,
+        filepath: Path,
+        progress_bar: ProgressBar,
+    ) -> Annotation:
+        """Run a given pipeline on a given file.
+        Note that this method does NOT reset the
+        state of the pipeline before execution.
+
+        Parameters
+        ----------
+        pipeline: BasePipeline
+            Speaker diarization pipeline to run.
+        filepath: Path
+            Path to the target file.
+        progress_bar: diart.progress.ProgressBar
+            An object to manage the progress of this run.
+
+        Returns
+        -------
+        prediction: Annotation
+            Pipeline prediction for the given file.
+        """
+        padding = pipeline.config.get_file_padding(filepath)
+        source = src.FileAudioSource(
+            filepath,
+            pipeline.config.sample_rate,
+            padding,
+            pipeline.config.optimal_block_size(),
+        )
+        pipeline.set_timestamp_shift(-padding[0])
+        inference = RealTimeInference(
+            pipeline,
+            source,
+            self.batch_size,
+            do_profile=False,
+            do_plot=False,
+            show_progress=self.show_progress,
+            progress_bar=progress_bar,
+        )
+
+        pred = inference()
+        pred.uri = source.uri
+
+        if self.output_path is not None:
+            with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
+                pred.write_rttm(out_file)
+
+        return pred
+
+    def evaluate(self, predictions: List[Annotation]) -> Union[pd.DataFrame, List[Annotation]]:
+        """If a reference path was provided,
+        compute the diarization error rate of a list of predictions.
+
+        Parameters
+        ----------
+        predictions: List[Annotation]
+            Predictions to evaluate.
+
+        Returns
+        -------
+        report_or_predictions: Union[pd.DataFrame, List[Annotation]]
+            A performance report as a pandas `DataFrame` if a
+            reference path was given. Otherwise return the same predictions.
+        """
+        if self.reference_path is not None:
+            metric = DiarizationErrorRate(collar=0, skip_overlap=False)
+            progress_bar = TQDMProgressBar("Computing DER", leave=False)
+            progress_bar.create(total=len(predictions), unit="file")
+            progress_bar.start()
+            for hyp in predictions:
+                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
+                metric(ref, hyp)
+                progress_bar.update()
+            progress_bar.close()
+            return metric.report(display=self.show_report)
+        return predictions
+
+    def __call__(
+        self,
+        pipeline_class: type,
+        config: BasePipelineConfig,
+    ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
         Notice that the internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
-        pipeline: OnlineSpeakerDiarization
-            Configured speaker diarization pipeline.
+        pipeline_class: class
+            Class from the BasePipeline hierarchy.
+            A pipeline from this class will be instantiated by each worker.
+        config: BasePipelineConfig
+            Diarization pipeline configuration.
 
         Returns
         -------
@@ -281,43 +389,127 @@ class Benchmark:
 
             If no reference annotations, a list of predictions.
         """
-        # Reset pipeline to initial state in case it was modified before
-        pipeline.reset()
-        audio_file_paths = list(self.speech_path.iterdir())
+        audio_file_paths = self.get_file_paths()
         num_audio_files = len(audio_file_paths)
+        pipeline = pipeline_class(config)
+
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
-            stream_padding = pipeline.config.latency - pipeline.config.step
-            block_size = int(np.rint(pipeline.config.step * pipeline.config.sample_rate))
-            source = src.FileAudioSource(filepath, pipeline.config.sample_rate, stream_padding, block_size)
-            inference = RealTimeInference(
-                pipeline,
-                source,
-                self.batch_size,
-                do_profile=False,
-                do_plot=False,
-                show_progress=self.show_progress,
-                progress_desc=f"Streaming {source.uri} ({i + 1}/{num_audio_files})",
-                leave_progress_bar=False,
-            )
-            pred = inference()
-            pred.uri = source.uri
-            predictions.append(pred)
-
-            if self.output_path is not None:
-                with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
-                    pred.write_rttm(out_file)
-
-            # Reset internal state for the next file
             pipeline.reset()
+            desc = f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})"
+            progress = TQDMProgressBar(desc, leave=False, do_close=True)
+            predictions.append(self.run_single(pipeline, filepath, progress))
 
-        # Run evaluation
-        if self.reference_path is not None:
-            metric = DiarizationErrorRate(collar=0, skip_overlap=False)
-            for hyp in predictions:
-                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
-                metric(ref, hyp)
+        return self.evaluate(predictions)
 
-            return metric.report(display=self.show_report)
 
-        return predictions
+class Parallelize:
+    """Wrapper to parallelize the execution of a `Benchmark` instance.
+    Note that models will be copied in each worker instead of being reused.
+
+    Parameters
+    ----------
+    benchmark: Benchmark
+        Benchmark instance to execute in parallel.
+    num_workers: int
+        Number of parallel workers.
+        Defaults to 0 (no parallelism).
+    """
+    def __init__(
+        self,
+        benchmark: Benchmark,
+        num_workers: int = 4,
+    ):
+        self.benchmark = benchmark
+        self.num_workers = num_workers
+
+    def run_single_job(
+        self,
+        pipeline_class: type,
+        config: BasePipelineConfig,
+        filepath: Path,
+        description: Text,
+    ):
+        """Build and run a pipeline on a single file.
+        Configure execution to show progress alongside parallel runs.
+
+        Parameters
+        ----------
+        pipeline_class: class
+            Class from the BasePipeline hierarchy.
+            A pipeline from this class will be instantiated.
+        config: BasePipelineConfig
+            Diarization pipeline configuration.
+        filepath: Path
+            Path to the target file.
+        description: Text
+            Description to show in the parallel progress bar.
+
+        Returns
+        -------
+        prediction: Annotation
+            Pipeline prediction for the given file.
+        """
+        # The process ID inside the pool determines the position of the progress bar
+        idx_process = int(current_process().name.split('-')[1]) - 1
+        # TODO share models across processes
+        # Instantiate a pipeline with the config
+        pipeline = pipeline_class(config)
+        # Create the progress bar for this job
+        progress = TQDMProgressBar(description, leave=False, position=idx_process, do_close=True)
+        # Run the pipeline
+        return self.benchmark.run_single(pipeline, filepath, progress)
+
+    def __call__(
+        self,
+        pipeline_class: type,
+        config: BasePipelineConfig,
+    ) -> Union[pd.DataFrame, List[Annotation]]:
+        """Run a given pipeline on a set of audio files in parallel.
+        Each worker will build and run the pipeline on a different file.
+
+        Parameters
+        ----------
+        pipeline_class: class
+            Class from the BasePipeline hierarchy.
+            A pipeline from this class will be instantiated by each worker.
+        config: BasePipelineConfig
+            Diarization pipeline configuration.
+
+        Returns
+        -------
+        performance: pandas.DataFrame or List[Annotation]
+            If reference annotations are given, a DataFrame with detailed
+            performance on each file as well as average performance.
+
+            If no reference annotations, a list of predictions.
+        """
+        audio_file_paths = self.benchmark.get_file_paths()
+        num_audio_files = len(audio_file_paths)
+
+        # Workaround for multiprocessing with GPU
+        torch.multiprocessing.set_start_method('spawn')
+        # For Windows support
+        freeze_support()
+
+        # Create the pool of workers using a lock for parallel tqdm usage
+        pool = Pool(processes=self.num_workers, initargs=(RLock(),), initializer=tqdm.set_lock)
+        # Determine the arguments for each job
+        arg_list = [
+            (
+                pipeline_class,
+                config,
+                filepath,
+                f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+            )
+            for i, filepath in enumerate(audio_file_paths)
+        ]
+        # Submit all jobs
+        jobs = [pool.apply_async(self.run_single_job, args=args) for args in arg_list]
+
+        # Wait and collect results
+        pool.close()
+        predictions = [job.get() for job in jobs]
+
+        # Evaluate results
+        return self.benchmark.evaluate(predictions)

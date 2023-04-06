@@ -1,17 +1,15 @@
-import asyncio
-import base64
 from pathlib import Path
 from queue import SimpleQueue
-from typing import Text, Optional, AnyStr
+from typing import Text, Optional, AnyStr, Dict, Any, Union, Tuple
 
 import numpy as np
 import sounddevice as sd
 import torch
-import websockets
+from diart import utils
 from einops import rearrange
 from rx.subject import Subject
 from torchaudio.io import StreamReader
-import signal
+from websocket_server import WebsocketServer
 
 from .audio import FilePath, AudioLoader
 
@@ -54,12 +52,18 @@ class FileAudioSource(AudioSource):
         Path to the file to stream.
     sample_rate: int
         Sample rate of the chunks emitted.
+    padding: (float, float)
+        Left and right padding to add to the file (in seconds).
+        Defaults to (0, 0).
+    block_size: int
+        Number of samples per chunk emitted.
+        Defaults to 1000.
     """
     def __init__(
         self,
         file: FilePath,
         sample_rate: int,
-        padding_end: float = 0,
+        padding: Tuple[float, float] = (0, 0),
         block_size: int = 1000,
     ):
         super().__init__(Path(file).stem, sample_rate)
@@ -68,17 +72,23 @@ class FileAudioSource(AudioSource):
         self.file = file
         self.resolution = 1 / self.sample_rate
         self.block_size = block_size
-        self.padding_end = padding_end
+        self.padding_start, self.padding_end = padding
         self.is_closed = False
 
     @property
     def duration(self) -> Optional[float]:
         # The duration of a file is known
-        return self._duration + self.padding_end
+        return self.padding_start + self._duration + self.padding_end
 
     def read(self):
         """Send each chunk of samples through the stream"""
         waveform = self.loader.load(self.file)
+
+        # Add zero padding at the beginning if required
+        if self.padding_start > 0:
+            num_pad_samples = int(np.rint(self.padding_start * self.sample_rate))
+            zero_padding = torch.zeros(waveform.shape[0], num_pad_samples)
+            waveform = torch.cat([zero_padding, waveform], dim=1)
 
         # Add zero padding at the end if required
         if self.padding_end > 0:
@@ -117,9 +127,27 @@ class FileAudioSource(AudioSource):
 
 
 class MicrophoneAudioSource(AudioSource):
-    """Represents an audio source tied to the default microphone available"""
+    """Audio source tied to a local microphone.
 
-    def __init__(self, sample_rate: int, block_size: int = 1000):
+    Parameters
+    ----------
+    sample_rate: int
+        Sample rate for the emitted audio chunks.
+    block_size: int
+        Number of samples per chunk emitted.
+        Defaults to 1000.
+    device: int | str | (int, str) | None
+        Device identifier compatible for the sounddevice stream.
+        If None, use the default device.
+        Defaults to None.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int,
+        block_size: int = 1000,
+        device: Optional[Union[int, Text, Tuple[int, Text]]] = None,
+    ):
         super().__init__("live_recording", sample_rate)
         self.block_size = block_size
         self._mic_stream = sd.InputStream(
@@ -127,7 +155,8 @@ class MicrophoneAudioSource(AudioSource):
             samplerate=sample_rate,
             latency=0,
             blocksize=self.block_size,
-            callback=self._read_callback
+            callback=self._read_callback,
+            device=device,
         )
         self._queue = SimpleQueue()
 
@@ -160,55 +189,55 @@ class WebSocketAudioSource(AudioSource):
     ----------
     sample_rate: int
         Sample rate of the chunks emitted.
-    host: Text | None
-        The host to run the websocket server. Defaults to ``None`` (all interfaces).
+    host: Text
+        The host to run the websocket server.
+        Defaults to 127.0.0.1.
     port: int
-        The port to run the websocket server. Defaults to 7007.
+        The port to run the websocket server.
+        Defaults to 7007.
+    key: Text | Path | None
+        Path to a key if using SSL.
+        Defaults to no key.
+    certificate: Text | Path | None
+        Path to a certificate if using SSL.
+        Defaults to no certificate.
     """
-    def __init__(self, sample_rate: int, host: Optional[Text] = None, port: int = 7007):
-        name = host if host is not None and host else "localhost"
-        uri = f"{name}:{port}"
+    def __init__(
+        self,
+        sample_rate: int,
+        host: Text = "127.0.0.1",
+        port: int = 7007,
+        key: Optional[Union[Text, Path]] = None,
+        certificate: Optional[Union[Text, Path]] = None
+    ):
         # FIXME sample_rate is not being used, this can be confusing and lead to incompatibilities.
         #  I would prefer the client to send a JSON with data and sample rate, then resample if needed
-        super().__init__(uri, sample_rate)
-        self.host = host
-        self.port = port
-        self.websocket = None
-        self.stop = None
+        super().__init__(f"{host}:{port}", sample_rate)
+        self.client: Optional[Dict[Text, Any]] = None
+        self.server = WebsocketServer(host, port, key=key, cert=certificate)
+        self.server.set_fn_message_received(self._on_message_received)
 
-    async def _ws_handler(self, websocket):
-        self.websocket = websocket
-        try:
-            async for message in websocket:
-                # Decode chunk encoded in base64
-                byte_samples = base64.decodebytes(message.encode("utf-8"))
-                # Recover array from bytes
-                samples = np.frombuffer(byte_samples, dtype=np.float32)
-                # Reshape and send through
-                self.stream.on_next(samples.reshape(1, -1))
-            self.stream.on_completed()
-            self.close()
-        except websockets.ConnectionClosedError as e:
-            self.stream.on_error(e)
-
-    async def _async_read(self):
-        loop = asyncio.get_running_loop()
-        self.stop = loop.create_future()
-        loop.add_signal_handler(signal.SIGTERM, self.stop.set_result, None)
-        async with websockets.serve(self._ws_handler, self.host, self.port):
-            await self.stop
-
-    async def _async_send(self, message: AnyStr):
-        await self.websocket.send(message)
+    def _on_message_received(
+        self,
+        client: Dict[Text, Any],
+        server: WebsocketServer,
+        message: AnyStr,
+    ):
+        # Only one client at a time is allowed
+        if self.client is None or self.client["id"] != client["id"]:
+            self.client = client
+        # Send decoded audio to pipeline
+        self.stream.on_next(utils.decode_audio(message))
 
     def read(self):
         """Starts running the websocket server and listening for audio chunks"""
-        asyncio.run(self._async_read())
+        self.server.run_forever()
 
     def close(self):
-        if self.websocket is not None:
-            # The value could be anything
-            self.stop.set_result(True)
+        """Close the websocket server"""
+        if self.server is not None:
+            self.stream.on_completed()
+            self.server.shutdown_gracefully()
 
     def send(self, message: AnyStr):
         """Send a message through the current websocket.
@@ -218,20 +247,8 @@ class WebSocketAudioSource(AudioSource):
         message: AnyStr
             Bytes or string to send.
         """
-        # A running loop must exist in order to send back a message
-        ws_closed = "Websocket isn't open, try calling `read()` first"
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            raise RuntimeError(ws_closed)
-
-        if not loop.is_running():
-            raise RuntimeError(ws_closed)
-
-        # TODO support broadcasting to many clients
-        # Schedule a coroutine to send back the message
-        if message:
-            asyncio.run_coroutine_threadsafe(self._async_send(message), loop=loop)
+        if len(message) > 0:
+            self.server.send_message(self.client, message)
 
 
 class TorchStreamAudioSource(AudioSource):
