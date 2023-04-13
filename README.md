@@ -10,6 +10,7 @@
 <img alt="Top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
 <img alt="Code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
 <img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
+<a href="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996"><img src="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996/status.svg"></a>
 </p>
 
 <div align="center">
