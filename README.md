@@ -1,7 +1,7 @@
 <br/>
 
 <p align="center">
-<img width="40%" src="/logo.jpg" title="Logo" />
+<img width="50%" src="/logo.jpg" title="Logo" />
 </p>
 
 <p align="center">
@@ -15,40 +15,40 @@
 
 <div align="center">
   <h4>
-    <a href="#installation">
-      Installation
+    <a href="#-installation">
+      💾 Installation
     </a>
     <span> | </span>
-    <a href="#stream-audio">
-      Stream audio
+    <a href="#%EF%B8%8F-stream-audio">
+      🎙️ Stream audio
     </a>
     <span> | </span>
-    <a href="#custom-models">
-      Custom models
+    <a href="#-custom-models">
+      🤖 Custom models
     </a>
     <span> | </span>
-    <a href="#tune-hyper-parameters">
-      Tune hyper-parameters
+    <a href="#-tune-hyper-parameters">
+      📈 Tune hyper-parameters
+    </a>
+    <br />
+    <a href="#--build-pipelines">
+      🧠🔗 Build pipelines
     </a>
     <span> | </span>
-    <a href="#build-pipelines">
-      Build pipelines
-    </a>
-    <br/>
-    <a href="#websockets">
-      WebSockets
+    <a href="#-websockets">
+      🌐 WebSockets
     </a>
     <span> | </span>
-    <a href="#powered-by-research">
-      Research
+    <a href="#-powered-by-research">
+      🔬 Research
     </a>
     <span> | </span>
-    <a href="#citation">
-      Citation
+    <a href="#-citation">
+      📗 Citation
     </a>
     <span> | </span>
-    <a href="#reproducibility">
-      Reproducibility
+    <a href="#-reproducibility">
+      👨‍💻 Reproducibility
     </a>
   </h4>
 </div>
@@ -59,7 +59,7 @@
 <img width="100%" src="/demo.gif" title="Real-time diarization example" />
 </p>
 
-## Installation
+## 💾 Installation
 
 1) Create environment:
 
@@ -79,7 +79,7 @@ conda install portaudio pysoundfile ffmpeg -c conda-forge
 pip install diart
 ```
 
-### Get access to pyannote models
+### Get access to 🎹 pyannote models
 
 By default, diart is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) models stored in the [huggingface](https://huggingface.co/) hub.
 To allow diart to use them, you need to follow these steps:
@@ -88,7 +88,7 @@ To allow diart to use them, you need to follow these steps:
 2) [Accept user conditions](https://huggingface.co/pyannote/embedding) for the `pyannote/embedding` model
 3) Install [huggingface-cli](https://huggingface.co/docs/huggingface_hub/quick-start#install-the-hub-library) and [log in](https://huggingface.co/docs/huggingface_hub/quick-start#login) with your user access token (or provide it manually in diart CLI or API).
 
-## Stream audio
+## 🎙️ Stream audio
 
 ### From the command line
 
@@ -127,7 +127,7 @@ prediction = inference()
 
 For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#reproducibility)).
 
-## Custom models
+## 🤖 Custom models
 
 Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel` (which are PyTorch `Module` subclasses):
 
@@ -178,7 +178,7 @@ inference = RealTimeInference(pipeline, mic)
 prediction = inference()
 ```
 
-## Tune hyper-parameters
+## 📈 Tune hyper-parameters
 
 Diart implements a hyper-parameter optimizer based on [optuna](https://optuna.readthedocs.io/en/stable/index.html) that allows you to tune any pipeline to any dataset.
 
@@ -230,7 +230,7 @@ optimizer = Optimizer("/wav/dir", "/rttm/dir", study)
 optimizer(num_iter=100)
 ```
 
-## Build pipelines
+## 🧠 🔗 Build pipelines
 
 For a more advanced usage, diart also provides building blocks that can be combined to create your own pipeline.
 Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
@@ -270,7 +270,7 @@ torch.Size([1, 3, 512])
 ...
 ```
 
-## WebSockets
+## 🌐 WebSockets
 
 Diart is also compatible with the WebSocket protocol to serve pipelines on the web.
 
@@ -301,7 +301,7 @@ inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
 prediction = inference()
 ```
 
-## Powered by research
+## 🔬 Powered by research
 
 Diart is the official implementation of the paper *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)* by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
 
@@ -312,7 +312,7 @@ Diart is the official implementation of the paper *[Overlap-aware low-latency on
 <img height="400" src="/figure1.png" title="Visual explanation of the system" width="325" />
 </p>
 
-## Citation
+## 📗 Citation
 
 If you found diart useful, please make sure to cite our paper:
 
@@ -327,7 +327,7 @@ If you found diart useful, please make sure to cite our paper:
 }
 ```
 
-##  Reproducibility
+## 👨‍💻 Reproducibility
 
 ![Results table](/table1.png)
 
@@ -385,7 +385,7 @@ For convenience and to facilitate future comparisons, we also provide the [expec
 
 ![Figure 5](/figure5.png)
 
-##  License
+## 📑 License
 
 ```
 MIT License
