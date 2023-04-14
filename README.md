@@ -31,7 +31,7 @@
       📈 Tune hyper-parameters
     </a>
     <br />
-    <a href="#--build-pipelines">
+    <a href="#-build-pipelines">
       🧠🔗 Build pipelines
     </a>
     <span> | </span>
@@ -230,7 +230,7 @@ optimizer = Optimizer("/wav/dir", "/rttm/dir", study)
 optimizer(num_iter=100)
 ```
 
-## 🧠 🔗 Build pipelines
+## 🧠🔗 Build pipelines
 
 For a more advanced usage, diart also provides building blocks that can be combined to create your own pipeline.
 Streaming is powered by [RxPY](https://github.com/ReactiveX/RxPY), but the `blocks` module is completely independent and can be used separately.
