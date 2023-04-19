@@ -1,10 +1,11 @@
 import argparse
 from pathlib import Path
 
-import diart.argdoc as argdoc
 import optuna
-from diart.blocks import PipelineConfig, OnlineSpeakerDiarization
-from diart.optim import Optimizer, HyperParameter
+from diart import argdoc
+from diart import utils
+from diart.blocks.base import HyperParameter
+from diart.optim import Optimizer
 from optuna.samplers import TPESampler
 
 
@@ -13,6 +14,8 @@ def run():
     parser.add_argument("root", type=str, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
     parser.add_argument("--reference", required=True, type=str,
                         help="Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
+    parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
+                        help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
@@ -38,17 +41,28 @@ def run():
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
 
+    # Retrieve pipeline class
+    pipeline_class = utils.get_pipeline_class(args.pipeline)
+
     # Create the base configuration for each trial
-    base_config = PipelineConfig.from_dict(vars(args))
+    base_config = pipeline_class.get_config_class().from_dict(vars(args))
 
     # Create hyper-parameters to optimize
+    possible_hparams = pipeline_class.hyper_parameters()
     hparams = [HyperParameter.from_name(name) for name in args.hparams]
+    hparams = [hp for hp in hparams if hp in possible_hparams]
+    if not hparams:
+        print(
+            f"No hyper-parameters to optimize. "
+            f"Make sure to select one of: {', '.join([hp.name for hp in possible_hparams])}"
+        )
+        exit(1)
 
     # Use a custom storage if given
     if args.output is not None:
         msg = "Both `output` and `storage` were set, but only one was expected"
         assert args.storage is None, msg
-        args.output = Path(args.output)
+        args.output = Path(args.output).expanduser()
         args.output.mkdir(parents=True, exist_ok=True)
         study_or_path = args.output
     elif args.storage is not None:
@@ -60,11 +74,11 @@ def run():
 
     # Run optimization
     Optimizer(
+        pipeline_class=pipeline_class,
         speech_path=args.root,
         reference_path=args.reference,
         study_or_path=study_or_path,
         batch_size=args.batch_size,
-        pipeline_class=OnlineSpeakerDiarization,
         hparams=hparams,
         base_config=base_config,
     )(num_iter=args.num_iter, show_progress=True)
