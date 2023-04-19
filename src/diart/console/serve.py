@@ -1,10 +1,10 @@
 import argparse
 from pathlib import Path
 
-import diart.argdoc as argdoc
-import diart.sources as src
-from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
-from diart.inference import RealTimeInference
+from diart import argdoc
+from diart import sources as src
+from diart import utils
+from diart.inference import StreamingInference
 from diart.sinks import RTTMWriter
 
 
@@ -12,6 +12,8 @@ def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="0.0.0.0", type=str, help="Server host")
     parser.add_argument("--port", default=7007, type=int, help="Server port")
+    parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
+                        help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
@@ -31,15 +33,16 @@ def run():
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
 
-    # Define online speaker diarization pipeline
-    config = PipelineConfig.from_dict(vars(args))
-    pipeline = OnlineSpeakerDiarization(config)
+    # Resolve pipeline
+    pipeline_class = utils.get_pipeline_class(args.pipeline)
+    config = pipeline_class.get_config_class().from_dict(vars(args))
+    pipeline = pipeline_class(config)
 
     # Create websocket audio source
     audio_source = src.WebSocketAudioSource(config.sample_rate, args.host, args.port)
 
     # Run online inference
-    inference = RealTimeInference(
+    inference = StreamingInference(
         pipeline,
         audio_source,
         batch_size=1,

@@ -5,12 +5,12 @@ from typing import Text, Optional, AnyStr, Dict, Any, Union, Tuple
 import numpy as np
 import sounddevice as sd
 import torch
-from diart import utils
 from einops import rearrange
 from rx.subject import Subject
 from torchaudio.io import StreamReader
 from websocket_server import WebsocketServer
 
+from . import utils
 from .audio import FilePath, AudioLoader
 
 

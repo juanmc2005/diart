@@ -4,32 +4,33 @@ from pathlib import Path
 from traceback import print_exc
 from typing import Union, Text, Optional, Callable, Tuple, List
 
-import diart.operators as dops
-import diart.sources as src
 import numpy as np
 import pandas as pd
 import rx
 import rx.operators as ops
 import torch
-from diart import utils
-from diart.blocks import BasePipeline, Resample, BasePipelineConfig
-from diart.progress import ProgressBar, RichProgressBar, TQDMProgressBar
-from diart.sinks import DiarizationPredictionAccumulator, RealTimePlot, WindowClosedException
 from pyannote.core import Annotation, SlidingWindowFeature
 from pyannote.database.util import load_rttm
-from pyannote.metrics.diarization import DiarizationErrorRate
+from pyannote.metrics.base import BaseMetric
 from rx.core import Observer
 from tqdm import tqdm
 
+from . import blocks
+from . import operators as dops
+from . import sources as src
+from . import utils
+from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
+from .sinks import PredictionAccumulator, StreamingPlot, WindowClosedException
 
-class RealTimeInference:
+
+class StreamingInference:
     """Performs inference in real time given a pipeline and an audio source.
     Streams an audio source to an online speaker diarization pipeline.
     It allows users to attach a chain of operations in the form of hooks.
 
     Parameters
     ----------
-    pipeline: BasePipeline
+    pipeline: StreamingPipeline
         Configured speaker diarization pipeline.
     source: AudioSource
         Audio source to be read and streamed.
@@ -52,7 +53,7 @@ class RealTimeInference:
     """
     def __init__(
         self,
-        pipeline: BasePipeline,
+        pipeline: blocks.StreamingPipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
@@ -66,7 +67,7 @@ class RealTimeInference:
         self.do_profile = do_profile
         self.do_plot = do_plot
         self.show_progress = show_progress
-        self.accumulator = DiarizationPredictionAccumulator(self.source.uri)
+        self.accumulator = PredictionAccumulator(self.source.uri)
         self.unit = "chunk" if self.batch_size == 1 else "batch"
         self._observers = []
 
@@ -102,7 +103,7 @@ class RealTimeInference:
                   f"but pipeline's is {sample_rate}. Will resample."
             logging.warning(msg)
             self.stream = self.stream.pipe(
-                ops.map(Resample(self.source.sample_rate, sample_rate))
+                ops.map(blocks.Resample(self.source.sample_rate, sample_rate))
             )
 
         # Add rx operators to manage the inputs and outputs of the pipeline
@@ -202,7 +203,7 @@ class RealTimeInference:
                     latency=config.latency,
                     sample_rate=config.sample_rate,
                 ),
-                ops.do(RealTimePlot(config.duration, config.latency)),
+                ops.do(StreamingPlot(config.duration, config.latency)),
             )
         observable.subscribe(
             on_error=self._handle_error,
@@ -288,7 +289,7 @@ class Benchmark:
 
     def run_single(
         self,
-        pipeline: BasePipeline,
+        pipeline: blocks.StreamingPipeline,
         filepath: Path,
         progress_bar: ProgressBar,
     ) -> Annotation:
@@ -298,7 +299,7 @@ class Benchmark:
 
         Parameters
         ----------
-        pipeline: BasePipeline
+        pipeline: StreamingPipeline
             Speaker diarization pipeline to run.
         filepath: Path
             Path to the target file.
@@ -318,7 +319,7 @@ class Benchmark:
             pipeline.config.optimal_block_size(),
         )
         pipeline.set_timestamp_shift(-padding[0])
-        inference = RealTimeInference(
+        inference = StreamingInference(
             pipeline,
             source,
             self.batch_size,
@@ -337,7 +338,11 @@ class Benchmark:
 
         return pred
 
-    def evaluate(self, predictions: List[Annotation]) -> Union[pd.DataFrame, List[Annotation]]:
+    def evaluate(
+        self,
+        predictions: List[Annotation],
+        metric: BaseMetric,
+    ) -> Union[pd.DataFrame, List[Annotation]]:
         """If a reference path was provided,
         compute the diarization error rate of a list of predictions.
 
@@ -345,6 +350,8 @@ class Benchmark:
         ----------
         predictions: List[Annotation]
             Predictions to evaluate.
+        metric: BaseMetric
+            Evaluation metric from pyannote.metrics.
 
         Returns
         -------
@@ -353,8 +360,7 @@ class Benchmark:
             reference path was given. Otherwise return the same predictions.
         """
         if self.reference_path is not None:
-            metric = DiarizationErrorRate(collar=0, skip_overlap=False)
-            progress_bar = TQDMProgressBar("Computing DER", leave=False)
+            progress_bar = TQDMProgressBar(f"Computing {metric.name}", leave=False)
             progress_bar.create(total=len(predictions), unit="file")
             progress_bar.start()
             for hyp in predictions:
@@ -368,18 +374,22 @@ class Benchmark:
     def __call__(
         self,
         pipeline_class: type,
-        config: BasePipelineConfig,
+        config: blocks.StreamingConfig,
+        metric: Optional[BaseMetric] = None,
     ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
-        Notice that the internal state of the pipeline is reset before benchmarking.
+        The internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
         pipeline_class: class
-            Class from the BasePipeline hierarchy.
+            Class from the StreamingPipeline hierarchy.
             A pipeline from this class will be instantiated by each worker.
-        config: BasePipelineConfig
-            Diarization pipeline configuration.
+        config: StreamingConfig
+            Streaming pipeline configuration.
+        metric: Optional[BaseMetric]
+            Evaluation metric from pyannote.metrics.
+            Defaults to the pipeline's suggested metric (see `StreamingPipeline.suggest_metric()`)
 
         Returns
         -------
@@ -400,7 +410,8 @@ class Benchmark:
             progress = TQDMProgressBar(desc, leave=False, do_close=True)
             predictions.append(self.run_single(pipeline, filepath, progress))
 
-        return self.evaluate(predictions)
+        metric = pipeline.suggest_metric() if metric is None else metric
+        return self.evaluate(predictions, metric)
 
 
 class Parallelize:
@@ -426,20 +437,20 @@ class Parallelize:
     def run_single_job(
         self,
         pipeline_class: type,
-        config: BasePipelineConfig,
+        config: blocks.StreamingConfig,
         filepath: Path,
         description: Text,
-    ):
+    ) -> Annotation:
         """Build and run a pipeline on a single file.
         Configure execution to show progress alongside parallel runs.
 
         Parameters
         ----------
         pipeline_class: class
-            Class from the BasePipeline hierarchy.
+            Class from the StreamingPipeline hierarchy.
             A pipeline from this class will be instantiated.
-        config: BasePipelineConfig
-            Diarization pipeline configuration.
+        config: StreamingConfig
+            Streaming pipeline configuration.
         filepath: Path
             Path to the target file.
         description: Text
@@ -463,7 +474,8 @@ class Parallelize:
     def __call__(
         self,
         pipeline_class: type,
-        config: BasePipelineConfig,
+        config: blocks.StreamingConfig,
+        metric: Optional[BaseMetric] = None,
     ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files in parallel.
         Each worker will build and run the pipeline on a different file.
@@ -471,10 +483,13 @@ class Parallelize:
         Parameters
         ----------
         pipeline_class: class
-            Class from the BasePipeline hierarchy.
+            Class from the StreamingPipeline hierarchy.
             A pipeline from this class will be instantiated by each worker.
-        config: BasePipelineConfig
-            Diarization pipeline configuration.
+        config: StreamingConfig
+            Streaming pipeline configuration.
+        metric: Optional[BaseMetric]
+            Evaluation metric from pyannote.metrics.
+            Defaults to the pipeline's suggested metric (see `StreamingPipeline.suggest_metric()`)
 
         Returns
         -------
@@ -512,4 +527,5 @@ class Parallelize:
         predictions = [job.get() for job in jobs]
 
         # Evaluate results
-        return self.benchmark.evaluate(predictions)
+        metric = pipeline_class.suggest_metric() if metric is None else metric
+        return self.benchmark.evaluate(predictions, metric)

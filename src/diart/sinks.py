@@ -8,12 +8,14 @@ from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
 
+from . import utils
+
 
 class WindowClosedException(Exception):
     pass
 
 
-def _extract_annotation(value: Union[Tuple, Annotation]) -> Annotation:
+def _extract_prediction(value: Union[Tuple, Annotation]) -> Annotation:
     if isinstance(value, tuple):
         return value[0]
     if isinstance(value, Annotation):
@@ -43,10 +45,11 @@ class RTTMWriter(Observer):
                 annotation.support(self.patch_collar).write_rttm(file)
 
     def on_next(self, value: Union[Tuple, Annotation]):
-        annotation = _extract_annotation(value)
-        annotation.uri = self.uri
+        prediction = _extract_prediction(value)
+        # Write prediction in RTTM format
+        prediction.uri = self.uri
         with open(self.path, 'a') as file:
-            annotation.write_rttm(file)
+            prediction.write_rttm(file)
 
     def on_error(self, error: Exception):
         self.patch()
@@ -55,30 +58,30 @@ class RTTMWriter(Observer):
         self.patch()
 
 
-class DiarizationPredictionAccumulator(Observer):
+class PredictionAccumulator(Observer):
     def __init__(self, uri: Optional[Text] = None, patch_collar: float = 0.05):
         super().__init__()
         self.uri = uri
         self.patch_collar = patch_collar
-        self._annotation = None
+        self._prediction: Optional[Annotation] = None
 
     def patch(self):
         """Stitch same-speaker turns that are close to each other"""
-        if self._annotation is not None:
-            self._annotation = self._annotation.support(self.patch_collar)
+        if self._prediction is not None:
+            self._prediction = self._prediction.support(self.patch_collar)
 
     def get_prediction(self) -> Annotation:
         # Patch again in case this is called before on_completed
         self.patch()
-        return self._annotation
+        return self._prediction
 
     def on_next(self, value: Union[Tuple, Annotation]):
-        annotation = _extract_annotation(value)
-        annotation.uri = self.uri
-        if self._annotation is None:
-            self._annotation = annotation
+        prediction = _extract_prediction(value)
+        prediction.uri = self.uri
+        if self._prediction is None:
+            self._prediction = prediction
         else:
-            self._annotation.update(annotation)
+            self._prediction.update(prediction)
 
     def on_error(self, error: Exception):
         self.patch()
@@ -87,7 +90,7 @@ class DiarizationPredictionAccumulator(Observer):
         self.patch()
 
 
-class RealTimePlot(Observer):
+class StreamingPlot(Observer):
     def __init__(
         self,
         duration: float,
@@ -134,11 +137,15 @@ class RealTimePlot(Observer):
             start_time = max(0., end_time - self.window_duration)
         return Segment(start_time, end_time)
 
-    def on_next(self, values: Tuple[Annotation, SlidingWindowFeature, float]):
+    def on_next(
+        self,
+        values: Tuple[Annotation, SlidingWindowFeature, float]
+    ):
         if self.window_closed:
             raise WindowClosedException
 
         prediction, waveform, real_time = values
+
         # Initialize figure if first call
         if self.figure is None:
             self._init_figure()
@@ -147,15 +154,21 @@ class RealTimePlot(Observer):
         # Set plot bounds
         notebook.crop = self.get_plot_bounds(real_time)
 
-        # Plot current values
+        # Align prediction and reference if possible
         if self.reference is not None:
             metric = DiarizationErrorRate()
             mapping = metric.optimal_mapping(self.reference, prediction)
             prediction.rename_labels(mapping=mapping, copy=False)
+
+        # Plot prediction
         notebook.plot_annotation(prediction, self.axs[0])
         self.axs[0].set_title("Output")
+
+        # Plot waveform
         notebook.plot_feature(waveform, self.axs[1])
         self.axs[1].set_title("Audio")
+
+        # Plot reference if available
         if self.num_axs == 3:
             notebook.plot_annotation(self.reference, self.axs[2])
             self.axs[2].set_title("Reference")

@@ -3,11 +3,11 @@ from pathlib import Path
 from threading import Thread
 from typing import Text, Optional
 
-import diart.argdoc as argdoc
-import diart.sources as src
-import diart.utils as utils
 import numpy as np
 import rx.operators as ops
+from diart import argdoc
+from diart import sources as src
+from diart import utils
 from websocket import WebSocket
 
 

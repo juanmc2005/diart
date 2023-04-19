@@ -1,15 +1,17 @@
 import argparse
 from pathlib import Path
 
-import diart.argdoc as argdoc
 import pandas as pd
-from diart.blocks import OnlineSpeakerDiarization, PipelineConfig
+from diart import argdoc
+from diart import utils
 from diart.inference import Benchmark, Parallelize
 
 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("root", type=Path, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
+    parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
+                        help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
@@ -34,6 +36,8 @@ def run():
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
 
+    pipeline_class = utils.get_pipeline_class(args.pipeline)
+
     benchmark = Benchmark(
         args.root,
         args.reference,
@@ -43,11 +47,11 @@ def run():
         batch_size=args.batch_size,
     )
 
-    config = PipelineConfig.from_dict(vars(args))
+    config = pipeline_class.get_config_class().from_dict(vars(args))
     if args.num_workers > 0:
         benchmark = Parallelize(benchmark, args.num_workers)
 
-    report = benchmark(OnlineSpeakerDiarization, config)
+    report = benchmark(pipeline_class, config)
 
     if args.output is not None and isinstance(report, pd.DataFrame):
         report.to_csv(args.output / "benchmark_report.csv")
