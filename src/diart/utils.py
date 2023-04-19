@@ -4,8 +4,10 @@ from typing import Optional, Text, Union, Any, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
-from diart.progress import ProgressBar
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
+
+from .progress import ProgressBar
+from . import blocks
 
 
 class Chronometer:
@@ -72,6 +74,18 @@ def get_padding_left(stream_duration: float, chunk_duration: float) -> float:
     if stream_duration < chunk_duration:
         return chunk_duration - stream_duration
     return 0
+
+
+def repeat_label(label: Text):
+    while True:
+        yield label
+
+
+def get_pipeline_class(class_name: Text) -> type:
+    pipeline_class = getattr(blocks, class_name, None)
+    msg = f"Pipeline '{class_name}' doesn't exist"
+    assert pipeline_class is not None, msg
+    return pipeline_class
 
 
 def get_padding_right(latency: float, step: float) -> float:

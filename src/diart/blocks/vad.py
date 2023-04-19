@@ -1,36 +1,28 @@
-from typing import Optional, Tuple, Sequence, Union, Any
+from typing import Any, Optional, Union, Sequence, Tuple
 
 import numpy as np
 import torch
-from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow, Segment
+from pyannote.core import Annotation, Timeline, SlidingWindowFeature, SlidingWindow, Segment
 from pyannote.metrics.base import BaseMetric
-from pyannote.metrics.diarization import DiarizationErrorRate
+from pyannote.metrics.detection import DetectionErrorRate
 from typing_extensions import Literal
 
 from .aggregation import DelayedAggregation
 from . import base
-from .clustering import OnlineSpeakerClustering
-from .embedding import OverlapAwareSpeakerEmbedding
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
 from .. import utils
 
 
-class SpeakerDiarizationConfig(base.StreamingConfig):
+class VoiceActivityDetectionConfig(base.StreamingConfig):
     def __init__(
         self,
         segmentation: Optional[m.SegmentationModel] = None,
-        embedding: Optional[m.EmbeddingModel] = None,
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[Union[float, Literal["max", "min"]]] = None,
         tau_active: float = 0.6,
-        rho_update: float = 0.3,
-        delta_new: float = 1,
-        gamma: float = 3,
-        beta: float = 10,
-        max_speakers: int = 20,
         device: Optional[torch.device] = None,
         **kwargs,
     ):
@@ -40,15 +32,10 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
             self.segmentation = m.SegmentationModel.from_pyannote("pyannote/segmentation")
 
         self._duration = duration
+        self._step = step
         self._sample_rate: Optional[int] = None
 
-        # Default embedding model is pyannote/embedding
-        self.embedding = embedding
-        if self.embedding is None:
-            self.embedding = m.EmbeddingModel.from_pyannote("pyannote/embedding")
-
         # Latency defaults to the step duration
-        self._step = step
         self._latency = latency
         if self._latency is None or self._latency == "min":
             self._latency = self._step
@@ -56,55 +43,9 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
             self._latency = self._duration
 
         self.tau_active = tau_active
-        self.rho_update = rho_update
-        self.delta_new = delta_new
-        self.gamma = gamma
-        self.beta = beta
-        self.max_speakers = max_speakers
-
         self.device = device
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    @staticmethod
-    def from_dict(data: Any) -> 'SpeakerDiarizationConfig':
-        # Check for explicit device, otherwise check for 'cpu' bool, otherwise pass None
-        device = utils.get(data, "device", None)
-        if device is None:
-            device = torch.device("cpu") if utils.get(data, "cpu", False) else None
-
-        # Instantiate models
-        hf_token = utils.parse_hf_token_arg(utils.get(data, "hf_token", True))
-        segmentation = utils.get(data, "segmentation", "pyannote/segmentation")
-        segmentation = m.SegmentationModel.from_pyannote(segmentation, hf_token)
-        embedding = utils.get(data, "embedding", "pyannote/embedding")
-        embedding = m.EmbeddingModel.from_pyannote(embedding, hf_token)
-
-        # Hyper-parameters and their aliases
-        tau = utils.get(data, "tau_active", None)
-        if tau is None:
-            tau = utils.get(data, "tau", 0.6)
-        rho = utils.get(data, "rho_update", None)
-        if rho is None:
-            rho = utils.get(data, "rho", 0.3)
-        delta = utils.get(data, "delta_new", None)
-        if delta is None:
-            delta = utils.get(data, "delta", 1)
-
-        return SpeakerDiarizationConfig(
-            segmentation=segmentation,
-            embedding=embedding,
-            duration=utils.get(data, "duration", None),
-            step=utils.get(data, "step", 0.5),
-            latency=utils.get(data, "latency", None),
-            tau_active=tau,
-            rho_update=rho,
-            delta_new=delta,
-            gamma=utils.get(data, "gamma", 3),
-            beta=utils.get(data, "beta", 10),
-            max_speakers=utils.get(data, "max_speakers", 20),
-            device=device,
-        )
 
     @property
     def duration(self) -> float:
@@ -128,18 +69,41 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
             self._sample_rate = self.segmentation.sample_rate
         return self._sample_rate
 
+    @staticmethod
+    def from_dict(data: Any) -> 'VoiceActivityDetectionConfig':
+        # Check for explicit device, otherwise check for 'cpu' bool, otherwise pass None
+        device = utils.get(data, "device", None)
+        if device is None:
+            device = torch.device("cpu") if utils.get(data, "cpu", False) else None
 
-class SpeakerDiarization(base.StreamingPipeline):
-    def __init__(self, config: Optional[SpeakerDiarizationConfig] = None):
-        self._config = SpeakerDiarizationConfig() if config is None else config
+        # Instantiate segmentation model
+        hf_token = utils.parse_hf_token_arg(utils.get(data, "hf_token", True))
+        segmentation = utils.get(data, "segmentation", "pyannote/segmentation")
+        segmentation = m.SegmentationModel.from_pyannote(segmentation, hf_token)
+
+        # Tau active and its alias
+        tau = utils.get(data, "tau_active", None)
+        if tau is None:
+            tau = utils.get(data, "tau", 0.6)
+
+        return VoiceActivityDetectionConfig(
+            segmentation=segmentation,
+            duration=utils.get(data, "duration", None),
+            step=utils.get(data, "step", 0.5),
+            latency=utils.get(data, "latency", None),
+            tau_active=tau,
+            device=device,
+        )
+
+
+class VoiceActivityDetection(base.StreamingPipeline):
+    def __init__(self, config: Optional[VoiceActivityDetectionConfig] = None):
+        self._config = VoiceActivityDetectionConfig() if config is None else config
 
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
         assert self._config.step <= self._config.latency <= self._config.duration, msg
 
         self.segmentation = SpeakerSegmentation(self._config.segmentation, self._config.device)
-        self.embedding = OverlapAwareSpeakerEmbedding(
-            self._config.embedding, self._config.gamma, self._config.beta, norm=1, device=self._config.device
-        )
         self.pred_aggregation = DelayedAggregation(
             self._config.step,
             self._config.latency,
@@ -156,43 +120,34 @@ class SpeakerDiarization(base.StreamingPipeline):
 
         # Internal state, handle with care
         self.timestamp_shift = 0
-        self.clustering = None
         self.chunk_buffer, self.pred_buffer = [], []
-        self.reset()
 
     @staticmethod
     def get_config_class() -> type:
-        return SpeakerDiarizationConfig
+        return VoiceActivityDetectionConfig
 
     @staticmethod
     def suggest_metric() -> BaseMetric:
-        return DiarizationErrorRate(collar=0, skip_overlap=False)
+        return DetectionErrorRate(collar=0, skip_overlap=False)
 
     @staticmethod
     def hyper_parameters() -> Sequence[base.HyperParameter]:
-        return [base.TauActive, base.RhoUpdate, base.DeltaNew]
+        return [base.TauActive]
 
     @property
-    def config(self) -> SpeakerDiarizationConfig:
+    def config(self) -> base.StreamingConfig:
         return self._config
+
+    def reset(self):
+        self.set_timestamp_shift(0)
+        self.chunk_buffer, self.pred_buffer = [], []
 
     def set_timestamp_shift(self, shift: float):
         self.timestamp_shift = shift
 
-    def reset(self):
-        self.set_timestamp_shift(0)
-        self.clustering = OnlineSpeakerClustering(
-            self.config.tau_active,
-            self.config.rho_update,
-            self.config.delta_new,
-            "cosine",
-            self.config.max_speakers,
-        )
-        self.chunk_buffer, self.pred_buffer = [], []
-
     def __call__(
         self,
-        waveforms: Sequence[SlidingWindowFeature]
+        waveforms: Sequence[SlidingWindowFeature],
     ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
@@ -205,45 +160,44 @@ class SpeakerDiarization(base.StreamingPipeline):
         msg = f"Expected {expected_num_samples} samples per chunk, but got {batch.shape[1]}"
         assert batch.shape[1] == expected_num_samples, msg
 
-        # Extract segmentation and embeddings
+        # Extract segmentation
         segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
-        embeddings = self.embedding(batch, segmentations)  # shape (batch, speakers, emb_dim)
+        voice_detection = torch.max(segmentations, dim=-1, keepdim=True)[0]  # shape (batch, frames, 1)
 
         seg_resolution = waveforms[0].extent.duration / segmentations.shape[1]
 
         outputs = []
-        for wav, seg, emb in zip(waveforms, segmentations, embeddings):
+        for wav, vad in zip(waveforms, voice_detection):
             # Add timestamps to segmentation
             sw = SlidingWindow(
                 start=wav.extent.start,
                 duration=seg_resolution,
                 step=seg_resolution,
             )
-            seg = SlidingWindowFeature(seg.cpu().numpy(), sw)
-
-            # Update clustering state and permute segmentation
-            permuted_seg = self.clustering(seg, emb)
+            vad = SlidingWindowFeature(vad.cpu().numpy(), sw)
 
             # Update sliding buffer
             self.chunk_buffer.append(wav)
-            self.pred_buffer.append(permuted_seg)
+            self.pred_buffer.append(vad)
 
             # Aggregate buffer outputs for this time step
             agg_waveform = self.audio_aggregation(self.chunk_buffer)
             agg_prediction = self.pred_aggregation(self.pred_buffer)
-            agg_prediction = self.binarize(agg_prediction)
+            agg_prediction = self.binarize(agg_prediction).get_timeline(copy=False)
 
             # Shift prediction timestamps if required
             if self.timestamp_shift != 0:
-                shifted_agg_prediction = Annotation(agg_prediction.uri)
-                for segment, track, speaker in agg_prediction.itertracks(yield_label=True):
+                shifted_agg_prediction = Timeline(uri=agg_prediction.uri)
+                for segment in agg_prediction:
                     new_segment = Segment(
                         segment.start + self.timestamp_shift,
                         segment.end + self.timestamp_shift,
                     )
-                    shifted_agg_prediction[new_segment, track] = speaker
+                    shifted_agg_prediction.add(new_segment)
                 agg_prediction = shifted_agg_prediction
 
+            # Convert timeline into annotation with single speaker "speech"
+            agg_prediction = agg_prediction.to_annotation(utils.repeat_label("speech"))
             outputs.append((agg_prediction, agg_waveform))
 
             # Make place for new chunks in buffer if required

@@ -1,51 +1,32 @@
 from collections import OrderedDict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence, Text, Optional, Union
 
 from optuna import TrialPruned, Study, create_study
 from optuna.samplers import TPESampler
 from optuna.trial import Trial, FrozenTrial
+from pyannote.metrics.base import BaseMetric
 from tqdm import trange, tqdm
+from typing_extensions import Literal
 
+from . import blocks
 from .audio import FilePath
-from .blocks import BasePipelineConfig, PipelineConfig, OnlineSpeakerDiarization
 from .inference import Benchmark
-
-
-@dataclass
-class HyperParameter:
-    name: Text
-    low: float
-    high: float
-
-    @staticmethod
-    def from_name(name: Text) -> 'HyperParameter':
-        if name == "tau_active":
-            return TauActive
-        if name == "rho_update":
-            return RhoUpdate
-        if name == "delta_new":
-            return DeltaNew
-        raise ValueError(f"Hyper-parameter '{name}' not recognized")
-
-
-TauActive = HyperParameter("tau_active", low=0, high=1)
-RhoUpdate = HyperParameter("rho_update", low=0, high=1)
-DeltaNew = HyperParameter("delta_new", low=0, high=2)
 
 
 class Optimizer:
     def __init__(
         self,
+        pipeline_class: type,
         speech_path: Union[Text, Path],
         reference_path: Union[Text, Path],
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
-        pipeline_class: type = OnlineSpeakerDiarization,
-        hparams: Optional[Sequence[HyperParameter]] = None,
-        base_config: Optional[BasePipelineConfig] = None,
+        hparams: Optional[Sequence[blocks.base.HyperParameter]] = None,
+        base_config: Optional[blocks.StreamingConfig] = None,
         do_kickstart_hparams: bool = True,
+        metric: Optional[BaseMetric] = None,
+        direction: Literal["minimize", "maximize"] = "minimize",
     ):
         self.pipeline_class = pipeline_class
         # FIXME can we run this benchmark in parallel?
@@ -58,15 +39,17 @@ class Optimizer:
             batch_size=batch_size,
         )
 
+        self.metric = metric
+        self.direction = direction
         self.base_config = base_config
         self.do_kickstart_hparams = do_kickstart_hparams
         if self.base_config is None:
-            self.base_config = PipelineConfig()
+            self.base_config = self.pipeline_class.get_config_class()()
             self.do_kickstart_hparams = False
 
         self.hparams = hparams
         if self.hparams is None:
-            self.hparams = [TauActive, RhoUpdate, DeltaNew]
+            self.hparams = self.pipeline_class.hyper_parameters()
 
         # Make sure hyper-parameters exist in the configuration class given
         possible_hparams = vars(self.base_config)
@@ -85,7 +68,7 @@ class Optimizer:
                 storage="sqlite:///" + str(study_or_path / f"{study_or_path.stem}.db"),
                 sampler=TPESampler(),
                 study_name=study_or_path.stem,
-                direction="minimize",
+                direction=self.direction,
                 load_if_exists=True,
             )
         else:
@@ -105,7 +88,7 @@ class Optimizer:
             return
         self._progress.update(1)
         self._progress.set_description(f"Trial {trial.number + 1}")
-        values = {"best_der": study.best_value}
+        values = {"best_perf": study.best_value}
         for name, value in study.best_params.items():
             values[f"best_{name}"] = value
         self._progress.set_postfix(OrderedDict(values))
@@ -125,11 +108,16 @@ class Optimizer:
         # Instantiate the new configuration for the trial
         config = self.base_config.__class__(**trial_config)
 
-        # Run pipeline over the dataset
-        report = self.benchmark(self.pipeline_class, config)
+        # Determine the evaluation metric
+        metric = self.metric
+        if metric is None:
+            metric = self.pipeline_class.suggest_metric()
 
-        # Extract DER from report
-        return report.loc["TOTAL", "diarization error rate"]["%"]
+        # Run pipeline over the dataset
+        report = self.benchmark(self.pipeline_class, config, metric)
+
+        # Extract target metric from report
+        return report.loc["TOTAL", metric.name]["%"]
 
     def __call__(self, num_iter: int, show_progress: bool = True):
         self._progress = None
