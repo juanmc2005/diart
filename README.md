@@ -24,7 +24,7 @@
     </a>
     <span> | </span>
     <a href="#-custom-models">
-      🤖 Custom models
+      🤖 Add your model
     </a>
     <span> | </span>
     <a href="#-tune-hyper-parameters">
@@ -127,7 +127,7 @@ prediction = inference()
 
 For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#reproducibility)).
 
-## 🤖 Custom models
+## 🤖 Add your model
 
 Third-party models can be integrated by subclassing `SegmentationModel` and `EmbeddingModel` (both PyTorch `nn.Module`):
 
