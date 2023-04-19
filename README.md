@@ -110,17 +110,17 @@ See `diart.stream -h` for more options.
 
 ### From python
 
-Use `RealTimeInference` to easily run a pipeline on an audio source and write the results to disk:
+Use `StreamingInference` to run a pipeline on an audio source and write the results to disk:
 
 ```python
-from diart import OnlineSpeakerDiarization
+from diart import SpeakerDiarization
 from diart.sources import MicrophoneAudioSource
-from diart.inference import RealTimeInference
+from diart.inference import StreamingInference
 from diart.sinks import RTTMWriter
 
-pipeline = OnlineSpeakerDiarization()
+pipeline = SpeakerDiarization()
 mic = MicrophoneAudioSource(pipeline.config.sample_rate)
-inference = RealTimeInference(pipeline, mic, do_plot=True)
+inference = StreamingInference(pipeline, mic, do_plot=True)
 inference.attach_observers(RTTMWriter(mic.uri, "/output/file.rttm"))
 prediction = inference()
 ```
@@ -129,13 +129,13 @@ For inference and evaluation on a dataset we recommend to use `Benchmark` (see n
 
 ## 🤖 Custom models
 
-Third-party models can be integrated seamlessly by subclassing `SegmentationModel` and `EmbeddingModel` (which are PyTorch `Module` subclasses):
+Third-party models can be integrated by subclassing `SegmentationModel` and `EmbeddingModel` (both PyTorch `nn.Module`):
 
 ```python
-from diart import OnlineSpeakerDiarization, PipelineConfig
+from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from diart.models import EmbeddingModel, SegmentationModel
 from diart.sources import MicrophoneAudioSource
-from diart.inference import RealTimeInference
+from diart.inference import StreamingInference
 
 
 def model_loader():
@@ -168,19 +168,19 @@ class MyEmbeddingModel(EmbeddingModel):
         return self.model(waveform, weights)
 
     
-config = PipelineConfig(
+config = SpeakerDiarizationConfig(
     segmentation=MySegmentationModel(),
     embedding=MyEmbeddingModel()
 )
-pipeline = OnlineSpeakerDiarization(config)
+pipeline = SpeakerDiarization(config)
 mic = MicrophoneAudioSource(config.sample_rate)
-inference = RealTimeInference(pipeline, mic)
+inference = StreamingInference(pipeline, mic)
 prediction = inference()
 ```
 
 ## 📈 Tune hyper-parameters
 
-Diart implements a hyper-parameter optimizer based on [optuna](https://optuna.readthedocs.io/en/stable/index.html) that allows you to tune any pipeline to any dataset.
+Diart implements an optimizer based on [optuna](https://optuna.readthedocs.io/en/stable/index.html) that allows you to tune pipeline hyper-parameters to your needs.
 
 ### From the command line
 
@@ -281,7 +281,7 @@ diart.serve --host 0.0.0.0 --port 7007
 diart.client microphone --host <server-address> --port 7007
 ```
 
-**Note:** please make sure that the client uses the same `step` and `sample_rate` than the server with `--step` and `-sr`.
+**Note:** make sure that the client uses the same `step` and `sample_rate` than the server with `--step` and `-sr`.
 
 See `-h` for more options.
 
@@ -290,13 +290,13 @@ See `-h` for more options.
 For customized solutions, a server can also be created in python using the `WebSocketAudioSource`:
 
 ```python
-from diart import OnlineSpeakerDiarization
+from diart import SpeakerDiarization
 from diart.sources import WebSocketAudioSource
-from diart.inference import RealTimeInference
+from diart.inference import StreamingInference
 
-pipeline = OnlineSpeakerDiarization()
+pipeline = SpeakerDiarization()
 source = WebSocketAudioSource(pipeline.config.sample_rate, "localhost", 7007)
-inference = RealTimeInference(pipeline, source)
+inference = StreamingInference(pipeline, source)
 inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
 prediction = inference()
 ```
@@ -354,14 +354,14 @@ or using the inference API:
 
 ```python
 from diart.inference import Benchmark, Parallelize
-from diart import OnlineSpeakerDiarization, PipelineConfig
+from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from diart.models import SegmentationModel
 
 benchmark = Benchmark("/wav/dir", "/rttm/dir")
 
 name = "pyannote/segmentation@Interspeech2021"
 segmentation = SegmentationModel.from_pyannote(name)
-config = PipelineConfig(
+config = SpeakerDiarizationConfig(
     # Set the model used in the paper
     segmentation=segmentation,
     step=0.5,
@@ -370,12 +370,12 @@ config = PipelineConfig(
     rho_update=0.422,
     delta_new=1.517
 )
-benchmark(OnlineSpeakerDiarization, config)
+benchmark(SpeakerDiarization, config)
 
 # Run the same benchmark in parallel
 p_benchmark = Parallelize(benchmark, num_workers=4)
 if __name__ == "__main__":  # Needed for multiprocessing
-    p_benchmark(OnlineSpeakerDiarization, config)
+    p_benchmark(SpeakerDiarization, config)
 ```
 
 This pre-calculates model outputs in batches, so it runs a lot faster.
