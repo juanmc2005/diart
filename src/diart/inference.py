@@ -2,7 +2,7 @@ import logging
 from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List, Any
+from typing import Union, Text, Optional, Callable, Tuple, List, Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -10,8 +10,6 @@ import rx
 import rx.operators as ops
 import torch
 from pyannote.core import Annotation, SlidingWindowFeature
-from pyannote.database.util import load_rttm
-from pyannote.metrics.base import BaseMetric
 from rx.core import Observer
 from tqdm import tqdm
 
@@ -19,8 +17,9 @@ from . import blocks
 from . import operators as dops
 from . import sources as src
 from . import utils
+from .metrics import Metric
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
-from .sinks import DiarizationAccumulator, StreamingPlot, WindowClosedException
+from .sinks import StreamingPlot, WindowClosedException
 
 
 class StreamingInference:
@@ -292,7 +291,7 @@ class Benchmark:
         pipeline: blocks.StreamingPipeline,
         filepath: Path,
         progress_bar: ProgressBar,
-    ) -> Annotation:
+    ) -> Tuple[Text, Any]:
         """Run a given pipeline on a given file.
         Note that this method does NOT reset the
         state of the pipeline before execution.
@@ -329,36 +328,29 @@ class Benchmark:
             progress_bar=progress_bar,
         )
 
-        # Accumulate predictions in memory
-        pred_accumulator = DiarizationAccumulator(source.uri)
-        inference.attach_observers(pred_accumulator)
+        # Run the pipeline and concatenate predictions
+        pred = pipeline.join_predictions(inference())
 
-        # Run the pipeline on this file
-        inference()
-
-        # Extract prediction
-        pred = pred_accumulator.get_prediction()
-
+        # Write prediction to disk if required
         if self.output_path is not None:
-            with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
-                pred.write_rttm(out_file)
+            pipeline.write_prediction(source.uri, pred, self.output_path)
 
-        return pred
+        return source.uri, pred
 
     def evaluate(
         self,
-        predictions: List[Annotation],
-        metric: BaseMetric,
-    ) -> Union[pd.DataFrame, List[Annotation]]:
+        predictions: Dict[Text, Any],
+        metric: Metric,
+    ) -> Union[pd.DataFrame, Dict[Text, Any]]:
         """If a reference path was provided,
         compute the diarization error rate of a list of predictions.
 
         Parameters
         ----------
-        predictions: List[Annotation]
+        predictions: List[Any]
             Predictions to evaluate.
-        metric: BaseMetric
-            Evaluation metric from pyannote.metrics.
+        metric: Metric
+            Evaluation metric.
 
         Returns
         -------
@@ -367,23 +359,37 @@ class Benchmark:
             reference path was given. Otherwise return the same predictions.
         """
         if self.reference_path is not None:
+            # Initialize progress bar
             progress_bar = TQDMProgressBar(f"Computing {metric.name}", leave=False)
             progress_bar.create(total=len(predictions), unit="file")
             progress_bar.start()
-            for hyp in predictions:
-                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
-                metric(ref, hyp)
+
+            # Evaluate each prediction
+            uris = []
+            for uri, pred in predictions.items():
+                ref_file = list(self.reference_path.glob(f"{uri}.*"))
+                if ref_file:
+                    ref = metric.load_reference(ref_file[0])
+                    metric(ref, pred)
+                    uris.append(uri)
+                else:
+                    msg = f"Reference file for {uri} not found. Skipping evaluation."
+                    logging.warning(msg)
                 progress_bar.update()
+
+            # Close progress bar safely
             progress_bar.close()
-            return metric.report(display=self.show_report)
+            # Return performance report
+            return metric.report(uris, self.show_report)
+
         return predictions
 
     def __call__(
         self,
         pipeline_class: type,
         config: blocks.StreamingConfig,
-        metric: Optional[BaseMetric] = None,
-    ) -> Union[pd.DataFrame, List[Annotation]]:
+        metric: Optional[Metric] = None,
+    ) -> Union[pd.DataFrame, Dict[Text, Any]]:
         """Run a given pipeline on a set of audio files.
         The internal state of the pipeline is reset before benchmarking.
 
@@ -394,8 +400,8 @@ class Benchmark:
             A pipeline from this class will be instantiated by each worker.
         config: StreamingConfig
             Streaming pipeline configuration.
-        metric: Optional[BaseMetric]
-            Evaluation metric from pyannote.metrics.
+        metric: Optional[Metric]
+            Evaluation metric.
             Defaults to the pipeline's suggested metric (see `StreamingPipeline.suggest_metric()`)
 
         Returns
@@ -410,12 +416,13 @@ class Benchmark:
         num_audio_files = len(audio_file_paths)
         pipeline = pipeline_class(config)
 
-        predictions = []
+        predictions = {}
         for i, filepath in enumerate(audio_file_paths):
             pipeline.reset()
             desc = f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})"
             progress = TQDMProgressBar(desc, leave=False, do_close=True)
-            predictions.append(self.run_single(pipeline, filepath, progress))
+            uri, pred = self.run_single(pipeline, filepath, progress)
+            predictions[uri] = pred
 
         metric = pipeline.suggest_metric() if metric is None else metric
         return self.evaluate(predictions, metric)
@@ -447,7 +454,7 @@ class Parallelize:
         config: blocks.StreamingConfig,
         filepath: Path,
         description: Text,
-    ) -> Annotation:
+    ) -> Tuple[Text, Any]:
         """Build and run a pipeline on a single file.
         Configure execution to show progress alongside parallel runs.
 
@@ -482,8 +489,8 @@ class Parallelize:
         self,
         pipeline_class: type,
         config: blocks.StreamingConfig,
-        metric: Optional[BaseMetric] = None,
-    ) -> Union[pd.DataFrame, List[Annotation]]:
+        metric: Optional[Metric] = None,
+    ) -> Union[pd.DataFrame, Dict[Text, Any]]:
         """Run a given pipeline on a set of audio files in parallel.
         Each worker will build and run the pipeline on a different file.
 
@@ -494,8 +501,8 @@ class Parallelize:
             A pipeline from this class will be instantiated by each worker.
         config: StreamingConfig
             Streaming pipeline configuration.
-        metric: Optional[BaseMetric]
-            Evaluation metric from pyannote.metrics.
+        metric: Optional[Metric]
+            Evaluation metric.
             Defaults to the pipeline's suggested metric (see `StreamingPipeline.suggest_metric()`)
 
         Returns
@@ -529,9 +536,14 @@ class Parallelize:
         # Submit all jobs
         jobs = [pool.apply_async(self.run_single_job, args=args) for args in arg_list]
 
-        # Wait and collect results
+        # Wait for all jobs to finish
         pool.close()
-        predictions = [job.get() for job in jobs]
+
+        # Collect results
+        predictions = {}
+        for job in jobs:
+            uri, pred = job.get()
+            predictions[uri] = pred
 
         # Evaluate results
         metric = pipeline_class.suggest_metric() if metric is None else metric

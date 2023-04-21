@@ -1,12 +1,13 @@
-from typing import Any, Tuple, Sequence, Text
 from dataclasses import dataclass
+from typing import Any, Tuple, Sequence, Text, List, Union
+from pathlib import Path
 
 import numpy as np
 from pyannote.core import SlidingWindowFeature
-from pyannote.metrics.base import BaseMetric
 
 from .. import utils
 from ..audio import FilePath, AudioLoader
+from ..metrics import Metric
 
 
 @dataclass
@@ -68,7 +69,7 @@ class StreamingPipeline:
         raise NotImplementedError
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
+    def suggest_metric() -> Metric:
         raise NotImplementedError
 
     @staticmethod
@@ -83,6 +84,12 @@ class StreamingPipeline:
         raise NotImplementedError
 
     def set_timestamp_shift(self, shift: float):
+        raise NotImplementedError
+
+    def join_predictions(self, predictions: List[Any]) -> Any:
+        raise NotImplementedError
+
+    def write_prediction(self, uri: Text, prediction: Any, dir_path: Union[Text, Path]):
         raise NotImplementedError
 
     def __call__(

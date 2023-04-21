@@ -1,20 +1,20 @@
-from typing import Optional, Tuple, Sequence, Union, Any
+from pathlib import Path
+from typing import Optional, Tuple, Sequence, Union, Any, Text, List
 
 import numpy as np
 import torch
 from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow, Segment
-from pyannote.metrics.base import BaseMetric
-from pyannote.metrics.diarization import DiarizationErrorRate
 from typing_extensions import Literal
 
-from .aggregation import DelayedAggregation
 from . import base
+from .aggregation import DelayedAggregation
 from .clustering import OnlineSpeakerClustering
 from .embedding import OverlapAwareSpeakerEmbedding
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
 from .. import utils
+from ..metrics import Metric, DiarizationErrorRate
 
 
 class SpeakerDiarizationConfig(base.StreamingConfig):
@@ -31,6 +31,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
         gamma: float = 3,
         beta: float = 10,
         max_speakers: int = 20,
+        merge_collar: float = 0.05,
         device: Optional[torch.device] = None,
         **kwargs,
     ):
@@ -61,6 +62,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
         self.gamma = gamma
         self.beta = beta
         self.max_speakers = max_speakers
+        self.merge_collar = merge_collar
 
         self.device = device
         if self.device is None:
@@ -103,6 +105,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
             gamma=utils.get(data, "gamma", 3),
             beta=utils.get(data, "beta", 10),
             max_speakers=utils.get(data, "max_speakers", 20),
+            merge_collar=utils.get(data, "merge_collar", 0.05),
             device=device,
         )
 
@@ -165,7 +168,7 @@ class SpeakerDiarization(base.StreamingPipeline):
         return SpeakerDiarizationConfig
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
+    def suggest_metric() -> Metric:
         return DiarizationErrorRate(collar=0, skip_overlap=False)
 
     @staticmethod
@@ -178,6 +181,16 @@ class SpeakerDiarization(base.StreamingPipeline):
 
     def set_timestamp_shift(self, shift: float):
         self.timestamp_shift = shift
+
+    def join_predictions(self, predictions: List[Annotation]) -> Annotation:
+        result = Annotation(uri=predictions[0].uri)
+        for pred in predictions:
+            result.update(pred)
+        return result.support(self.config.merge_collar)
+
+    def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
+        with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
+            prediction.write_rttm(out_file)
 
     def reset(self):
         self.set_timestamp_shift(0)

@@ -51,12 +51,9 @@ def run():
     possible_hparams = pipeline_class.hyper_parameters()
     hparams = [HyperParameter.from_name(name) for name in args.hparams]
     hparams = [hp for hp in hparams if hp in possible_hparams]
-    if not hparams:
-        print(
-            f"No hyper-parameters to optimize. "
-            f"Make sure to select one of: {', '.join([hp.name for hp in possible_hparams])}"
-        )
-        exit(1)
+    msg = f"No hyper-parameters to optimize. " \
+          f"Make sure to select one of: {', '.join([hp.name for hp in possible_hparams])}"
+    assert hparams, msg
 
     # Use a custom storage if given
     if args.output is not None:

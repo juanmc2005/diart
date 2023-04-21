@@ -1,18 +1,18 @@
-from typing import Any, Optional, Union, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Optional, Union, Sequence, Tuple, Text, List
 
 import numpy as np
 import torch
 from pyannote.core import Annotation, Timeline, SlidingWindowFeature, SlidingWindow, Segment
-from pyannote.metrics.base import BaseMetric
-from pyannote.metrics.detection import DetectionErrorRate
 from typing_extensions import Literal
 
-from .aggregation import DelayedAggregation
 from . import base
+from .aggregation import DelayedAggregation
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
 from .. import utils
+from ..metrics import Metric, DetectionErrorRate
 
 
 class VoiceActivityDetectionConfig(base.StreamingConfig):
@@ -23,6 +23,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
         step: float = 0.5,
         latency: Optional[Union[float, Literal["max", "min"]]] = None,
         tau_active: float = 0.6,
+        merge_collar: float = 0.05,
         device: Optional[torch.device] = None,
         **kwargs,
     ):
@@ -43,6 +44,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
             self._latency = self._duration
 
         self.tau_active = tau_active
+        self.merge_collar = merge_collar
         self.device = device
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -92,6 +94,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
             step=utils.get(data, "step", 0.5),
             latency=utils.get(data, "latency", None),
             tau_active=tau,
+            merge_collar=utils.get(data, "merge_collar", 0.05),
             device=device,
         )
 
@@ -127,7 +130,7 @@ class VoiceActivityDetection(base.StreamingPipeline):
         return VoiceActivityDetectionConfig
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
+    def suggest_metric() -> Metric:
         return DetectionErrorRate(collar=0, skip_overlap=False)
 
     @staticmethod
@@ -135,7 +138,7 @@ class VoiceActivityDetection(base.StreamingPipeline):
         return [base.TauActive]
 
     @property
-    def config(self) -> base.StreamingConfig:
+    def config(self) -> VoiceActivityDetectionConfig:
         return self._config
 
     def reset(self):
@@ -145,9 +148,20 @@ class VoiceActivityDetection(base.StreamingPipeline):
     def set_timestamp_shift(self, shift: float):
         self.timestamp_shift = shift
 
+    def join_predictions(self, predictions: List[Annotation]) -> Annotation:
+        result = Annotation(uri=predictions[0].uri)
+        for pred in predictions:
+            result.update(pred)
+        return result.support(self.config.merge_collar)
+
+    def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
+        with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
+            prediction.write_rttm(out_file)
+
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature],
+        **kwargs,
     ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"

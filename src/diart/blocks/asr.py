@@ -1,19 +1,17 @@
-import math
 from pathlib import Path
-from typing import Sequence, Optional, Any, Union, List, Text, Tuple, Dict, Hashable
+from typing import Sequence, Optional, Any, Union, List, Text, Tuple
 
 import numpy as np
 import torch
 from einops import rearrange
 from pyannote.core import SlidingWindowFeature, Annotation, Segment
-from pyannote.metrics.base import BaseMetric
 
 from . import base
 from .. import models as m
 from .. import utils
 from ..blocks.base import HyperParameter
 from ..features import TemporalFeatureFormatter, TemporalFeatures
-
+from ..metrics import Metric, WordErrorRate
 
 BeamSize = HyperParameter("beam_size", low=1, high=20)
 
@@ -141,9 +139,8 @@ class Transcription(base.StreamingPipeline):
         return TranscriptionConfig
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
-        # TODO word error rate
-        raise NotImplementedError
+    def suggest_metric() -> Metric:
+        return WordErrorRate()
 
     @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
@@ -161,6 +158,13 @@ class Transcription(base.StreamingPipeline):
         # No timestamped output. Nothing to do
         pass
 
+    def join_predictions(self, predictions: List[Text]) -> Text:
+        return "\n".join(predictions)
+
+    def write_prediction(self, uri: Text, prediction: Text, dir_path: Union[Text, Path]):
+        with open(Path(dir_path) / f"{uri}.txt", "w") as out_file:
+            out_file.write(prediction)
+
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature],
@@ -168,11 +172,9 @@ class Transcription(base.StreamingPipeline):
         **kwargs
     ) -> Sequence[Tuple[Text, SlidingWindowFeature]]:
         # TODO implement batched inference
-        too_many_dia = diarization is not None and len(diarization) > 1
+        only_one_dia = diarization is None or len(diarization) == 1
         msg = "Batched inference is not yet supported for 'Transcription'. Please set batch size to 1"
-        if len(waveforms) > 1 or too_many_dia:
-            print(msg)
-            exit(1)
+        assert len(waveforms) == 1 and only_one_dia, msg
 
         waveform = waveforms[0]
 
@@ -188,7 +190,7 @@ class Transcription(base.StreamingPipeline):
         output = self.asr(batch)[0]
 
         if diarization is None:
-            return [(output.text, waveform)]
+            return [(output.text.strip(), waveform)]
 
         diarization = diarization[0]
 
@@ -215,4 +217,4 @@ class Transcription(base.StreamingPipeline):
                 max_spk = np.argmax([dia.label_duration(spk) for spk in speakers])
                 full_transcription.append(f"[{speakers[max_spk]}]{text}")
 
-        return [(" ".join(full_transcription), waveform)]
+        return [(" ".join(full_transcription).strip(), waveform)]
