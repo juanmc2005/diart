@@ -275,7 +275,8 @@ class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
     def forward(self, waveform_batch: torch.Tensor) -> List[Transcription]:
         results = []
         for waveform in waveform_batch:
-            audio = whisper.pad_or_trim(waveform.type(torch.float32).reshape(-1))
+            dtype = torch.float16 if self.fp16 else torch.float32
+            audio = whisper.pad_or_trim(waveform.type(dtype).reshape(-1))
             transcription = whisper.transcribe(
                 self.model,
                 audio,
