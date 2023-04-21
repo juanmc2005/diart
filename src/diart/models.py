@@ -1,13 +1,22 @@
-from typing import Optional, Text, Union, Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Text, Union, Callable, List, Tuple, Dict
 
 import torch
 import torch.nn as nn
+from pyannote.core import Segment
 
 try:
     import pyannote.audio.pipelines.utils as pyannote_loader
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
+
+try:
+    import whisper
+    _has_whisper = True
+except ImportError:
+    _has_whisper = False
 
 
 class PyannoteLoader:
@@ -18,6 +27,25 @@ class PyannoteLoader:
 
     def __call__(self) -> nn.Module:
         return pyannote_loader.get_model(self.model_info, self.hf_token)
+
+
+class WhisperLoader:
+    def __init__(
+        self,
+        name: Text,
+        download_path: Optional[Union[Text, Path]] = None,
+        in_memory: bool = False,
+    ):
+        self.name = name
+        self.download_path = download_path
+        self.in_memory = in_memory
+
+    def __call__(self) -> nn.Module:
+        return whisper.load_model(
+            name=self.name,
+            download_root=self.download_path,
+            in_memory=self.in_memory,
+        )
 
 
 class LazyModel(nn.Module):
@@ -163,3 +191,109 @@ class PyannoteEmbeddingModel(EmbeddingModel):
         weights: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         return self.model(waveform, weights=weights)
+
+
+@dataclass(frozen=True)
+class Transcription:
+    text: Text
+    chunks: List[Text]
+    timestamps: List[Segment]
+
+
+class SpeechRecognitionModel(LazyModel):
+    @staticmethod
+    def from_whisper(
+        name: Text,
+        download_path: Optional[Union[Text, Path]] = None,
+        in_memory: bool = False,
+        remember_transcriptions: bool = True,
+    ) -> 'SpeechRecognitionModel':
+        msg = "No whisper-transcribed installation found. " \
+              "Visit https://github.com/linto-ai/whisper-timestamped#installation to install"
+        assert _has_whisper, msg
+        return WhisperSpeechRecognitionModel(
+            name, download_path, in_memory, remember_transcriptions
+        )
+
+    @property
+    def duration(self) -> float:
+        raise NotImplementedError
+
+    @property
+    def sample_rate(self) -> int:
+        raise NotImplementedError
+
+    def set_language(self, language: Optional[Text] = None):
+        raise NotImplementedError
+
+    def forward(self, waveform: torch.Tensor) -> List[Transcription]:
+        """
+        Forward pass of the speech recognition model.
+
+        Parameters
+        ----------
+        waveform: torch.Tensor, shape (batch, channels, samples)
+            Batch of audio chunks to transcribe
+
+        Returns
+        -------
+        transcriptions: List[Transcription]
+            A list of timestamped transcriptions
+        """
+        raise NotImplementedError
+
+
+class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
+    def __init__(
+        self,
+        name: Text,
+        download_path: Optional[Union[Text, Path]] = None,
+        in_memory: bool = False,
+        remember_transcriptions: bool = True,
+    ):
+        super().__init__(WhisperLoader(name, download_path, in_memory))
+        self.remember_transcriptions = remember_transcriptions
+        self.language = None
+        self._cache = None
+
+    @property
+    def duration(self) -> float:
+        # Whisper's maximum duration per input is 30s
+        return whisper.audio.CHUNK_LENGTH
+
+    @property
+    def sample_rate(self) -> int:
+        return whisper.audio.SAMPLE_RATE
+
+    def set_language(self, language: Optional[Text] = None):
+        self.language = language
+
+    def forward(self, waveform_batch: torch.Tensor) -> List[Transcription]:
+        results = []
+        for waveform in waveform_batch:
+            audio = whisper.pad_or_trim(waveform.type(torch.float32).reshape(-1))
+            transcription = whisper.transcribe(
+                self.model,
+                audio,
+                initial_prompt=self._cache,
+                verbose=None,
+                task="transcribe",
+                language=self.language,
+            )
+
+            # Extract chunks and timestamps
+            chunks, timestamps = [], []
+            for chunk in transcription["segments"]:
+                chunks.append(chunk["text"])
+                timestamps.append(Segment(chunk["start"], chunk["end"]))
+
+            # Create transcription object
+            transcription = Transcription(transcription["text"], chunks, timestamps)
+            results.append(transcription)
+
+            # Update transcription buffer
+            if self.remember_transcriptions:
+                # TODO handle overlapping transcriptions
+                self._cache = transcription.text
+
+        return results

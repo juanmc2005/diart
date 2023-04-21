@@ -8,8 +8,6 @@ from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
 
-from . import utils
-
 
 class WindowClosedException(Exception):
     pass
@@ -58,7 +56,7 @@ class RTTMWriter(Observer):
         self.patch()
 
 
-class PredictionAccumulator(Observer):
+class DiarizationAccumulator(Observer):
     def __init__(self, uri: Optional[Text] = None, patch_collar: float = 0.05):
         super().__init__()
         self.uri = uri

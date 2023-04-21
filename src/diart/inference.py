@@ -2,7 +2,7 @@ import logging
 from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List
+from typing import Union, Text, Optional, Callable, Tuple, List, Any
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ from . import operators as dops
 from . import sources as src
 from . import utils
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
-from .sinks import PredictionAccumulator, StreamingPlot, WindowClosedException
+from .sinks import DiarizationAccumulator, StreamingPlot, WindowClosedException
 
 
 class StreamingInference:
@@ -67,9 +67,9 @@ class StreamingInference:
         self.do_profile = do_profile
         self.do_plot = do_plot
         self.show_progress = show_progress
-        self.accumulator = PredictionAccumulator(self.source.uri)
         self.unit = "chunk" if self.batch_size == 1 else "batch"
         self._observers = []
+        self._predictions = []
 
         chunk_duration = self.pipeline.config.duration
         step_duration = self.pipeline.config.step
@@ -123,7 +123,7 @@ class StreamingInference:
 
         self.stream = self.stream.pipe(
             ops.flat_map(lambda results: rx.from_iterable(results)),
-            ops.do(self.accumulator),
+            ops.do_action(lambda pred_wav: self._predictions.append(pred_wav[0])),
         )
 
         if show_progress:
@@ -141,13 +141,13 @@ class StreamingInference:
                 self._chrono.stop(do_count=False)
             self._chrono.report()
 
-    def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
+    def attach_hooks(self, *hooks: Callable[[Tuple[Any, SlidingWindowFeature]], None]):
         """Attach hooks to the pipeline.
 
         Parameters
         ----------
-        *hooks: (Tuple[Annotation, SlidingWindowFeature]) -> None
-            Hook functions to consume emitted annotations and audio.
+        *hooks: (Tuple[Any, SlidingWindowFeature]) -> None
+            Hook functions to consume emitted predictions and audio.
         """
         self.stream = self.stream.pipe(*[ops.do_action(hook) for hook in hooks])
 
@@ -157,7 +157,7 @@ class StreamingInference:
         Parameters
         ----------
         *observers: Observer
-            Observers to consume emitted annotations and audio.
+            Observers to consume emitted predictions and audio.
         """
         self.stream = self.stream.pipe(*[ops.do(sink) for sink in observers])
         self._observers.extend(observers)
@@ -182,13 +182,13 @@ class StreamingInference:
         self._close_pbar()
         self._close_chronometer()
 
-    def __call__(self) -> Annotation:
-        """Stream audio chunks from `source` to `pipeline`.
+    def __call__(self) -> List[Any]:
+        """Stream audio chunks from a source to a pipeline.
 
         Returns
         -------
-        predictions: Annotation
-            Speaker diarization pipeline predictions
+        predictions: List[Any]
+            Streaming pipeline predictions
         """
         if self.show_progress:
             self._pbar.start()
@@ -209,9 +209,9 @@ class StreamingInference:
             on_error=self._handle_error,
             on_completed=self._handle_completion,
         )
-        # FIXME if read() isn't blocking, the prediction returned is empty
+        # FIXME if read() isn't blocking, predictions are empty
         self.source.read()
-        return self.accumulator.get_prediction()
+        return self._predictions
 
 
 class Benchmark:
@@ -329,8 +329,15 @@ class Benchmark:
             progress_bar=progress_bar,
         )
 
-        pred = inference()
-        pred.uri = source.uri
+        # Accumulate predictions in memory
+        pred_accumulator = DiarizationAccumulator(source.uri)
+        inference.attach_observers(pred_accumulator)
+
+        # Run the pipeline on this file
+        inference()
+
+        # Extract prediction
+        pred = pred_accumulator.get_prediction()
 
         if self.output_path is not None:
             with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
