@@ -13,6 +13,7 @@ from ..blocks.base import HyperParameter
 from ..features import TemporalFeatureFormatter, TemporalFeatures
 from ..metrics import Metric, WordErrorRate
 
+
 BeamSize = HyperParameter("beam_size", low=1, high=20)
 
 
@@ -32,10 +33,11 @@ class SpeechRecognition:
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
         remember_transcriptions: bool = True,
+        fp16: bool = False,
         device: Optional[Union[Text, torch.device]] = None,
     ) -> 'SpeechRecognition':
         asr_model = m.SpeechRecognitionModel.from_whisper(
-            name, download_path, in_memory, remember_transcriptions
+            name, download_path, in_memory, remember_transcriptions, fp16
         )
         return SpeechRecognition(asr_model, device)
 

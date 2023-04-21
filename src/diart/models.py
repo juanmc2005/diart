@@ -43,6 +43,7 @@ class WhisperLoader:
     def __call__(self) -> nn.Module:
         return whisper.load_model(
             name=self.name,
+            device="cpu",
             download_root=self.download_path,
             in_memory=self.in_memory,
         )
@@ -207,12 +208,13 @@ class SpeechRecognitionModel(LazyModel):
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
         remember_transcriptions: bool = True,
+        fp16: bool = False,
     ) -> 'SpeechRecognitionModel':
         msg = "No whisper-transcribed installation found. " \
               "Visit https://github.com/linto-ai/whisper-timestamped#installation to install"
         assert _has_whisper, msg
         return WhisperSpeechRecognitionModel(
-            name, download_path, in_memory, remember_transcriptions
+            name, download_path, in_memory, remember_transcriptions, fp16
         )
 
     @property
@@ -250,9 +252,11 @@ class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
         remember_transcriptions: bool = True,
+        fp16: bool = False,
     ):
         super().__init__(WhisperLoader(name, download_path, in_memory))
         self.remember_transcriptions = remember_transcriptions
+        self.fp16 = fp16
         self.language = None
         self._cache = None
 
@@ -279,6 +283,7 @@ class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
                 verbose=None,
                 task="transcribe",
                 language=self.language,
+                fp16=self.fp16,
             )
 
             # Extract chunks and timestamps
