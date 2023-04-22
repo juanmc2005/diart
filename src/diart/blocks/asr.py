@@ -32,12 +32,11 @@ class SpeechRecognition:
         name: Text,
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
-        remember_transcriptions: bool = True,
         fp16: bool = False,
         device: Optional[Union[Text, torch.device]] = None,
     ) -> 'SpeechRecognition':
         asr_model = m.SpeechRecognitionModel.from_whisper(
-            name, download_path, in_memory, remember_transcriptions, fp16
+            name, download_path, in_memory, fp16
         )
         return SpeechRecognition(asr_model, device)
 
@@ -173,15 +172,12 @@ class Transcription(base.StreamingPipeline):
         diarization: Optional[Sequence[Annotation]] = None,
         **kwargs
     ) -> Sequence[Tuple[Text, SlidingWindowFeature]]:
-        # TODO implement batched inference
-        only_one_dia = diarization is None or len(diarization) == 1
-        msg = "Batched inference is not yet supported for 'Transcription'. Please set batch size to 1"
-        assert len(waveforms) == 1 and only_one_dia, msg
+        batch_size = len(waveforms)
+        msg = "Pipeline expected at least 1 input"
+        assert batch_size >= 1, msg
 
-        waveform = waveforms[0]
-
-        # Add fake batch dimension, shape (1, samples, channels)
-        batch = torch.from_numpy(waveform.data).unsqueeze(0)
+        # Create batch from chunk sequence, shape (batch, samples, channels)
+        batch = torch.stack([torch.from_numpy(w.data) for w in waveforms])
 
         expected_num_samples = int(np.rint(self.config.duration * self.config.sample_rate))
         msg = f"Expected {expected_num_samples} samples per chunk, but got {batch.shape[1]}"
@@ -189,34 +185,34 @@ class Transcription(base.StreamingPipeline):
 
         # Transcribe batch
         # TODO only transcribe if there's speech
-        output = self.asr(batch)[0]
+        outputs = self.asr(batch)
 
-        if diarization is None:
-            return [(output.text.strip(), waveform)]
+        return [(out.text, wav) for out, wav in zip(outputs, waveforms)]
 
-        diarization = diarization[0]
+        # TODO align text with speakers if diarization is not None
 
-        # Align transcription with diarization to determine speakers
-        full_transcription = []
-        buffer_shift = waveform.sliding_window.start
-        for text, timestamp in zip(output.chunks, output.timestamps):
-            target_region = Segment(
-                buffer_shift + timestamp.start,
-                buffer_shift + timestamp.end
-            )
-            dia = diarization.crop(target_region)
-            speakers = dia.labels()
-            num_speakers = len(speakers)
-            if num_speakers == 0:
-                # Include transcription but don't assign a speaker
-                full_transcription.append(text)
-            elif num_speakers == 1:
-                # Typical case, annotate text with the only speaker
-                full_transcription.append(f"[{speakers[0]}]{text}")
-            else:
-                # Multiple speakers for the same text block, choose the most active one
-                # TODO match at the level of words?
-                max_spk = np.argmax([dia.label_duration(spk) for spk in speakers])
-                full_transcription.append(f"[{speakers[max_spk]}]{text}")
-
-        return [(" ".join(full_transcription).strip(), waveform)]
+        # diarization = diarization[0]
+        #
+        # # Align transcription with diarization to determine speakers
+        # full_transcription = []
+        # buffer_shift = waveform.sliding_window.start
+        # for text, timestamp in zip(outputs.chunks, outputs.timestamps):
+        #     target_region = Segment(
+        #         buffer_shift + timestamp.start,
+        #         buffer_shift + timestamp.end
+        #     )
+        #     dia = diarization.crop(target_region)
+        #     speakers = dia.labels()
+        #     num_speakers = len(speakers)
+        #     if num_speakers == 0:
+        #         # Include transcription but don't assign a speaker
+        #         full_transcription.append(text)
+        #     elif num_speakers == 1:
+        #         # Typical case, annotate text with the only speaker
+        #         full_transcription.append(f"[{speakers[0]}]{text}")
+        #     else:
+        #         # Multiple speakers for the same text block, choose the most active one
+        #         max_spk = np.argmax([dia.label_duration(spk) for spk in speakers])
+        #         full_transcription.append(f"[{speakers[max_spk]}]{text}")
+        #
+        # return [(" ".join(full_transcription).strip(), waveform)]

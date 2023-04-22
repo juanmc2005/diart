@@ -1,7 +1,9 @@
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Text, Union, Callable, List, Tuple, Dict
+from typing import Optional, Text, Union, Callable, List, Any
 
+import numpy as np
 import torch
 import torch.nn as nn
 from pyannote.core import Segment
@@ -14,9 +16,16 @@ except ImportError:
 
 try:
     import whisper
+    from whisper.tokenizer import get_tokenizer
     _has_whisper = True
+    DecodingResult = whisper.DecodingResult
+    DecodingOptions = whisper.DecodingOptions
+    Tokenizer = whisper.tokenizer.Tokenizer
 except ImportError:
     _has_whisper = False
+    DecodingResult = Any
+    DecodingOptions = Any
+    Tokenizer = Any
 
 
 class PyannoteLoader:
@@ -207,15 +216,12 @@ class SpeechRecognitionModel(LazyModel):
         name: Text,
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
-        remember_transcriptions: bool = True,
         fp16: bool = False,
     ) -> 'SpeechRecognitionModel':
         msg = "No whisper-transcribed installation found. " \
               "Visit https://github.com/linto-ai/whisper-timestamped#installation to install"
         assert _has_whisper, msg
-        return WhisperSpeechRecognitionModel(
-            name, download_path, in_memory, remember_transcriptions, fp16
-        )
+        return WhisperSpeechRecognitionModel(name, download_path, in_memory, fp16)
 
     @property
     def duration(self) -> float:
@@ -245,20 +251,141 @@ class SpeechRecognitionModel(LazyModel):
         raise NotImplementedError
 
 
+class WhisperDecoder:
+    def __init__(
+        self,
+        compression_ratio_threshold: Optional[float] = 2.4,
+        logprob_threshold: Optional[float] = -1,
+    ):
+        self.compression_ratio_threshold = compression_ratio_threshold
+        self.logprob_threshold = logprob_threshold
+        self.temperatures = (0, 0.2, 0.4, 0.6, 0.8, 1)
+
+    @staticmethod
+    def get_temperature_options(initial: DecodingOptions, t: float) -> DecodingOptions:
+        t_options = {**vars(initial)}
+        if t > 0:
+            t_options.pop("beam_size", None)
+            t_options.pop("patience", None)
+        else:
+            t_options.pop("best_of", None)
+        t_options["temperature"] = t
+        return DecodingOptions(**t_options)
+
+    @staticmethod
+    def decode(
+        model,
+        batch: torch.Tensor,
+        options: DecodingOptions
+    ) -> DecodingResult:
+        return model.decode(batch, options)
+
+    def check_compression(self) -> bool:
+        return self.compression_ratio_threshold is not None
+
+    def check_logprob(self) -> bool:
+        return self.logprob_threshold is not None
+
+    def needs_fallback(self, output: DecodingResult) -> bool:
+        if self.check_compression and output.compression_ratio > self.compression_ratio_threshold:
+            # Transcription is too repetitive
+            return True
+        if self.check_logprob and output.avg_logprob < self.logprob_threshold:
+            # Average log probability is too low
+            return True
+        return False
+
+    def decode_with_fallback(
+        self,
+        model,
+        batch: torch.Tensor,
+        options: DecodingOptions,
+    ) -> DecodingResult:
+        batch_size = batch.shape[0]
+        results = [None] * batch_size
+        retry_idx = torch.ones(batch_size).type(torch.bool)
+
+        for t in self.temperatures:
+            # Transcribe with the given temperature
+            t_options = self.get_temperature_options(options, t)
+            outputs = model.decode(batch[retry_idx], t_options)
+
+            # Determine which outputs need to be transcribed again
+            #  based on quality estimates
+            output_idx = torch.where(retry_idx)[0]
+            for idx, out in zip(output_idx, outputs):
+                results[idx] = out
+                if not self.needs_fallback(out):
+                    retry_idx[idx] = False
+
+            # No output needs fallback, get out of the loop
+            if torch.sum(retry_idx).item() == 0:
+                break
+
+        return results
+
+    @staticmethod
+    def split_with_timestamps(
+        result: DecodingResult,
+        tokenizer: Tokenizer,
+        chunk_duration: float,
+        token_duration: float,
+    ) -> Transcription:
+        tokens = torch.tensor(result.tokens)
+        chunks, timestamps = [], []
+        ts_tokens = tokens.ge(tokenizer.timestamp_begin)
+        single_ts_ending = ts_tokens[-2:].tolist() == [False, True]
+        consecutive = torch.where(ts_tokens[:-1] & ts_tokens[1:])[0] + 1
+        if len(consecutive) > 0:
+            # Output contains two consecutive timestamp tokens
+            slices = consecutive.tolist()
+            if single_ts_ending:
+                slices.append(len(tokens))
+
+            last_slice = 0
+            for current_slice in slices:
+                sliced_tokens = tokens[last_slice:current_slice]
+                start_pos = sliced_tokens[0].item() - tokenizer.timestamp_begin
+                end_pos = sliced_tokens[-1].item() - tokenizer.timestamp_begin
+                text_tokens = [token for token in sliced_tokens if token < tokenizer.eot]
+                text = tokenizer.decode(text_tokens).strip()
+                timestamp = Segment(start_pos * token_duration, end_pos * token_duration)
+                if text and timestamp.start != timestamp.end:
+                    chunks.append(text)
+                    timestamps.append(timestamp)
+                last_slice = current_slice
+        else:
+            duration = chunk_duration
+            ts = tokens[ts_tokens.nonzero().flatten()]
+            if len(ts) > 0 and ts[-1].item() != tokenizer.timestamp_begin:
+                # Use last timestamp as end time for the unique chunk
+                last_ts_pos = ts[-1].item() - tokenizer.timestamp_begin
+                duration = last_ts_pos * token_duration
+            text_tokens = [token for token in tokens if token < tokenizer.eot]
+            text = tokenizer.decode(text_tokens).strip()
+            if text:
+                chunks.append(text)
+                timestamps.append(Segment(0, duration))
+
+        return Transcription(result.text, chunks, timestamps)
+
+
 class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
     def __init__(
         self,
         name: Text,
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
-        remember_transcriptions: bool = True,
         fp16: bool = False,
+        compression_ratio_threshold: Optional[float] = 2.4,
+        logprob_threshold: Optional[float] = -1,
     ):
         super().__init__(WhisperLoader(name, download_path, in_memory))
-        self.remember_transcriptions = remember_transcriptions
         self.fp16 = fp16
+        self.beam_size = None
         self.language = None
-        self._cache = None
+        self._token_duration: Optional[float] = None
+        self.decoder = WhisperDecoder(compression_ratio_threshold, logprob_threshold)
 
     @property
     def duration(self) -> float:
@@ -269,37 +396,54 @@ class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
     def sample_rate(self) -> int:
         return whisper.audio.SAMPLE_RATE
 
+    @property
+    def token_duration(self) -> float:
+        if self._token_duration is None:
+            # 2 mel frames per output token
+            input_stride = int(np.rint(whisper.audio.N_FRAMES / self.model.dims.n_audio_ctx))
+            # Output token duration is 0.02 seconds
+            self._token_duration = input_stride * whisper.audio.HOP_LENGTH / self.sample_rate
+        return self._token_duration
+
     def set_language(self, language: Optional[Text] = None):
         self.language = language
 
+    def set_beam_size(self, size: int):
+        self.beam_size = size
+
+    def set_fp16(self, value: bool):
+        self.fp16 = value
+
     def forward(self, waveform_batch: torch.Tensor) -> List[Transcription]:
-        results = []
-        for waveform in waveform_batch:
-            dtype = torch.float16 if self.fp16 else torch.float32
-            audio = whisper.pad_or_trim(waveform.type(dtype).reshape(-1))
-            transcription = whisper.transcribe(
-                self.model,
-                audio,
-                initial_prompt=self._cache,
-                verbose=None,
-                task="transcribe",
-                language=self.language,
-                fp16=self.fp16,
+        # Remove channel dimension
+        batch = waveform_batch.squeeze(1)
+        num_chunk_samples = batch.shape[-1]
+        # Compute log mel spectrogram
+        batch = whisper.log_mel_spectrogram(batch)
+        # Add padding
+        dtype = torch.float16 if self.fp16 else torch.float32
+        batch = whisper.pad_or_trim(batch, whisper.audio.N_FRAMES).to(batch.device).type(dtype)
+
+        # Transcribe batch
+        options = whisper.DecodingOptions(
+            task="transcribe",
+            language=self.language,
+            beam_size=self.beam_size,
+            fp16=self.fp16,
+        )
+        results = self.decoder.decode_with_fallback(self.model, batch, options)
+        tokenizer = get_tokenizer(
+            self.model.is_multilingual,
+            language=options.language,
+            task=options.task,
+        )
+
+        chunk_duration = int(np.rint(num_chunk_samples / self.sample_rate))
+        transcriptions = [
+            self.decoder.split_with_timestamps(
+                res, tokenizer, chunk_duration, self.token_duration
             )
+            for res in results
+        ]
 
-            # Extract chunks and timestamps
-            chunks, timestamps = [], []
-            for chunk in transcription["segments"]:
-                chunks.append(chunk["text"])
-                timestamps.append(Segment(chunk["start"], chunk["end"]))
-
-            # Create transcription object
-            transcription = Transcription(transcription["text"], chunks, timestamps)
-            results.append(transcription)
-
-            # Update transcription buffer
-            if self.remember_transcriptions:
-                # TODO handle overlapping transcriptions
-                self._cache = transcription.text
-
-        return results
+        return transcriptions
