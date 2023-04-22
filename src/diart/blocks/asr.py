@@ -4,7 +4,7 @@ from typing import Sequence, Optional, Any, Union, List, Text, Tuple
 import numpy as np
 import torch
 from einops import rearrange
-from pyannote.core import SlidingWindowFeature, Annotation, Segment
+from pyannote.core import SlidingWindowFeature
 
 from . import base
 from .. import models as m
@@ -12,7 +12,6 @@ from .. import utils
 from ..blocks.base import HyperParameter
 from ..features import TemporalFeatureFormatter, TemporalFeatures
 from ..metrics import Metric, WordErrorRate
-
 
 BeamSize = HyperParameter("beam_size", low=1, high=20)
 
@@ -70,7 +69,7 @@ class TranscriptionConfig(base.StreamingConfig):
         asr: Optional[m.SpeechRecognitionModel] = None,
         duration: Optional[float] = None,
         language: Optional[Text] = None,
-        beam_size: int = 5,
+        beam_size: int = None,
         device: Optional[torch.device] = None,
     ):
         self.device = device
@@ -82,11 +81,10 @@ class TranscriptionConfig(base.StreamingConfig):
         if self.asr is None:
             self.asr = m.SpeechRecognitionModel.from_whisper("small")
         self.asr.set_language(language)
+        self.asr.set_beam_size(beam_size)
 
         self._duration = duration
         self._sample_rate: Optional[int] = None
-
-        self.beam_size = beam_size
 
     @property
     def duration(self) -> float:
@@ -122,16 +120,13 @@ class TranscriptionConfig(base.StreamingConfig):
             asr=asr,
             duration=utils.get(data, "duration", None),
             language=utils.get(data, "language", None),
-            beam_size=utils.get(data, "beam_size", 5),
+            beam_size=utils.get(data, "beam_size", None),
             device=device,
         )
 
 
 class Transcription(base.StreamingPipeline):
-    def __init__(
-        self,
-        config: Optional[TranscriptionConfig] = None,
-    ):
+    def __init__(self, config: Optional[TranscriptionConfig] = None):
         self._config = TranscriptionConfig() if config is None else config
         self.asr = SpeechRecognition(self.config.asr, self.config.device)
 
@@ -169,8 +164,6 @@ class Transcription(base.StreamingPipeline):
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature],
-        diarization: Optional[Sequence[Annotation]] = None,
-        **kwargs
     ) -> Sequence[Tuple[Text, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"

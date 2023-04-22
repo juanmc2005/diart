@@ -161,7 +161,6 @@ class VoiceActivityDetection(base.StreamingPipeline):
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature],
-        **kwargs,
     ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"

@@ -95,6 +95,5 @@ class StreamingPipeline:
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature],
-        **kwargs,
     ) -> Sequence[Tuple[Any, SlidingWindowFeature]]:
         raise NotImplementedError

@@ -234,6 +234,9 @@ class SpeechRecognitionModel(LazyModel):
     def set_language(self, language: Optional[Text] = None):
         raise NotImplementedError
 
+    def set_beam_size(self, size: Optional[int] = None):
+        raise NotImplementedError
+
     def forward(self, waveform: torch.Tensor) -> List[Transcription]:
         """
         Forward pass of the speech recognition model.
@@ -408,11 +411,8 @@ class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
     def set_language(self, language: Optional[Text] = None):
         self.language = language
 
-    def set_beam_size(self, size: int):
+    def set_beam_size(self, size: Optional[int] = None):
         self.beam_size = size
-
-    def set_fp16(self, value: bool):
-        self.fp16 = value
 
     def forward(self, waveform_batch: torch.Tensor) -> List[Transcription]:
         # Remove channel dimension
