@@ -9,6 +9,7 @@ from pyannote.core import SlidingWindowFeature
 from . import base
 from .. import models as m
 from .. import utils
+from ..blocks import SpeakerSegmentation
 from ..blocks.base import HyperParameter
 from ..features import TemporalFeatureFormatter, TemporalFeatures
 from ..metrics import Metric, WordErrorRate
@@ -32,14 +33,25 @@ class SpeechRecognition:
         download_path: Optional[Union[Text, Path]] = None,
         in_memory: bool = False,
         fp16: bool = False,
+        no_speech_threshold: float = 0.6,
+        compression_ratio_threshold: Optional[float] = 2.4,
+        logprob_threshold: Optional[float] = -1,
+        decode_with_fallback: bool = False,
         device: Optional[Union[Text, torch.device]] = None,
     ) -> 'SpeechRecognition':
         asr_model = m.SpeechRecognitionModel.from_whisper(
-            name, download_path, in_memory, fp16
+            name,
+            download_path,
+            in_memory,
+            fp16,
+            no_speech_threshold,
+            compression_ratio_threshold,
+            logprob_threshold,
+            decode_with_fallback,
         )
         return SpeechRecognition(asr_model, device)
 
-    def __call__(self, waveform: TemporalFeatures) -> List[m.Transcription]:
+    def __call__(self, waveform: TemporalFeatures) -> List[m.TranscriptionResult]:
         """
         Compute the transcription of input audio.
 
@@ -67,6 +79,8 @@ class TranscriptionConfig(base.StreamingConfig):
     def __init__(
         self,
         asr: Optional[m.SpeechRecognitionModel] = None,
+        vad: Optional[m.SegmentationModel] = None,
+        tau_active: float = 0.5,
         duration: Optional[float] = None,
         language: Optional[Text] = None,
         beam_size: int = None,
@@ -82,6 +96,9 @@ class TranscriptionConfig(base.StreamingConfig):
             self.asr = m.SpeechRecognitionModel.from_whisper("small")
         self.asr.set_language(language)
         self.asr.set_beam_size(beam_size)
+
+        self.vad = vad
+        self.tau_active = tau_active
 
         self._duration = duration
         self._sample_rate: Optional[int] = None
@@ -112,12 +129,10 @@ class TranscriptionConfig(base.StreamingConfig):
         device = utils.get(data, "device", None)
         if device is None:
             device = torch.device("cpu") if utils.get(data, "cpu", False) else None
-
-        name = utils.get(data, "whisper", "small")
-        asr = m.SpeechRecognitionModel.from_whisper(name)
-
         return TranscriptionConfig(
-            asr=asr,
+            asr=utils.get(data, "asr", None),
+            vad=utils.get(data, "vad", None),
+            tau_active=utils.get(data, "tau_active", None),
             duration=utils.get(data, "duration", None),
             language=utils.get(data, "language", None),
             beam_size=utils.get(data, "beam_size", None),
@@ -129,6 +144,9 @@ class Transcription(base.StreamingPipeline):
     def __init__(self, config: Optional[TranscriptionConfig] = None):
         self._config = TranscriptionConfig() if config is None else config
         self.asr = SpeechRecognition(self.config.asr, self.config.device)
+        self.segmentation = None
+        if self.config.vad is not None:
+            self.segmentation = SpeakerSegmentation(self.config.vad, self.config.device)
 
     @staticmethod
     def get_config_class() -> type:
@@ -176,11 +194,28 @@ class Transcription(base.StreamingPipeline):
         msg = f"Expected {expected_num_samples} samples per chunk, but got {batch.shape[1]}"
         assert batch.shape[1] == expected_num_samples, msg
 
-        # Transcribe batch
-        # TODO only transcribe if there's speech
-        outputs = self.asr(batch)
+        # Run voice detection if required
+        if self.segmentation is None:
+            has_voice = torch.arange(0, batch_size)
+        else:
+            segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
+            has_voice = torch.max(segmentations, dim=-1)[0]  # shape (batch, frames)
+            has_voice = torch.any(has_voice >= self.config.tau_active, dim=-1)  # shape (batch,)
+            has_voice = torch.where(has_voice)[0]
 
-        return [(out.text, wav) for out, wav in zip(outputs, waveforms)]
+        # Return empty strings if no speech in the entire batch
+        if len(has_voice) == 0:
+            return [("", wav) for wav in waveforms]
+
+        # Transcribe batch
+        outputs = self.asr(batch[has_voice])
+        mapping = {i_voice.item(): i_output for i_output, i_voice in enumerate(has_voice)}
+
+        # No-speech outputs are empty strings
+        return [
+            (outputs[mapping[i]].text if i in has_voice else "", waveforms[i])
+            for i in range(batch_size)
+        ]
 
         # TODO align text with speakers if diarization is not None
 
