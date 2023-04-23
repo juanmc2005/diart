@@ -18,6 +18,7 @@ from . import operators as dops
 from . import sources as src
 from . import utils
 from .metrics import Metric
+from .pipelines import StreamingPipeline, StreamingConfig
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from .sinks import StreamingPlot, WindowClosedException
 
@@ -52,7 +53,7 @@ class StreamingInference:
     """
     def __init__(
         self,
-        pipeline: blocks.StreamingPipeline,
+        pipeline: StreamingPipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
@@ -288,7 +289,7 @@ class Benchmark:
 
     def run_single(
         self,
-        pipeline: blocks.StreamingPipeline,
+        pipeline: StreamingPipeline,
         filepath: Path,
         progress_bar: ProgressBar,
     ) -> Tuple[Text, Any]:
@@ -387,7 +388,7 @@ class Benchmark:
     def __call__(
         self,
         pipeline_class: type,
-        config: blocks.StreamingConfig,
+        config: StreamingConfig,
         metric: Optional[Metric] = None,
     ) -> Union[pd.DataFrame, Dict[Text, Any]]:
         """Run a given pipeline on a set of audio files.
@@ -451,7 +452,7 @@ class Parallelize:
     def run_single_job(
         self,
         pipeline_class: type,
-        config: blocks.StreamingConfig,
+        config: StreamingConfig,
         filepath: Path,
         description: Text,
     ) -> Tuple[Text, Any]:
@@ -488,7 +489,7 @@ class Parallelize:
     def __call__(
         self,
         pipeline_class: type,
-        config: blocks.StreamingConfig,
+        config: StreamingConfig,
         metric: Optional[Metric] = None,
     ) -> Union[pd.DataFrame, Dict[Text, Any]]:
         """Run a given pipeline on a set of audio files in parallel.

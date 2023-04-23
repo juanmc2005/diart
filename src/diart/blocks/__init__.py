@@ -5,7 +5,7 @@ from .aggregation import (
     FirstOnlyStrategy,
     DelayedAggregation,
 )
-from .clustering import OnlineSpeakerClustering
+from .clustering import IncrementalSpeakerClustering
 from .embedding import (
     SpeakerEmbedding,
     OverlappedSpeechPenalty,
@@ -13,7 +13,5 @@ from .embedding import (
     OverlapAwareSpeakerEmbedding,
 )
 from .segmentation import SpeakerSegmentation
-from .diarization import SpeakerDiarization, SpeakerDiarizationConfig
-from .base import StreamingConfig, StreamingPipeline
 from .utils import Binarize, Resample, AdjustVolume
-from .vad import VoiceActivityDetection, VoiceActivityDetectionConfig
+from .asr import SpeechRecognition

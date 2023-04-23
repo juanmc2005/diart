@@ -4,7 +4,7 @@ from pathlib import Path
 import optuna
 from diart import argdoc
 from diart import utils
-from diart.blocks.base import HyperParameter
+from diart.pipelines.hparams import HyperParameter
 from diart.optim import Optimizer
 from optuna.samplers import TPESampler
 

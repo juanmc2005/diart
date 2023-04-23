@@ -9,9 +9,10 @@ from pyannote.metrics.base import BaseMetric
 from tqdm import trange, tqdm
 from typing_extensions import Literal
 
-from . import blocks
 from .audio import FilePath
 from .inference import Benchmark
+from .pipelines import StreamingConfig
+from .pipelines.hparams import HyperParameter
 
 
 class Optimizer:
@@ -22,8 +23,8 @@ class Optimizer:
         reference_path: Union[Text, Path],
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
-        hparams: Optional[Sequence[blocks.base.HyperParameter]] = None,
-        base_config: Optional[blocks.StreamingConfig] = None,
+        hparams: Optional[Sequence[HyperParameter]] = None,
+        base_config: Optional[StreamingConfig] = None,
         do_kickstart_hparams: bool = True,
         metric: Optional[BaseMetric] = None,
         direction: Literal["minimize", "maximize"] = "minimize",

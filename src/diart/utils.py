@@ -7,7 +7,7 @@ import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
 
 from .progress import ProgressBar
-from . import blocks
+from . import pipelines
 
 
 class Chronometer:
@@ -82,7 +82,7 @@ def repeat_label(label: Text):
 
 
 def get_pipeline_class(class_name: Text) -> type:
-    pipeline_class = getattr(blocks, class_name, None)
+    pipeline_class = getattr(pipelines, class_name, None)
     msg = f"Pipeline '{class_name}' doesn't exist"
     assert pipeline_class is not None, msg
     return pipeline_class

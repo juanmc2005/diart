@@ -1,35 +1,13 @@
-from dataclasses import dataclass
-from typing import Any, Tuple, Sequence, Text, List, Union
 from pathlib import Path
+from typing import Any, Tuple, Sequence, Text, List, Union
 
 import numpy as np
 from pyannote.core import SlidingWindowFeature
 
+from .hparams import HyperParameter
 from .. import utils
 from ..audio import FilePath, AudioLoader
 from ..metrics import Metric
-
-
-@dataclass
-class HyperParameter:
-    name: Text
-    low: float
-    high: float
-
-    @staticmethod
-    def from_name(name: Text) -> 'HyperParameter':
-        if name == "tau_active":
-            return TauActive
-        if name == "rho_update":
-            return RhoUpdate
-        if name == "delta_new":
-            return DeltaNew
-        raise ValueError(f"Hyper-parameter '{name}' not recognized")
-
-
-TauActive = HyperParameter("tau_active", low=0, high=1)
-RhoUpdate = HyperParameter("rho_update", low=0, high=1)
-DeltaNew = HyperParameter("delta_new", low=0, high=2)
 
 
 class StreamingConfig:
