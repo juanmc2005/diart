@@ -4,12 +4,14 @@ from typing import Any, Optional, Union, Sequence, Tuple, Text, List
 import numpy as np
 import torch
 from pyannote.core import Annotation, Timeline, SlidingWindowFeature, SlidingWindow, Segment
+from rx.core import Observer
 from typing_extensions import Literal
 
 from . import base
 from .hparams import HyperParameter, TauActive
 from .. import blocks
 from .. import models as m
+from .. import sinks
 from .. import utils
 from ..metrics import Metric, DetectionErrorRate
 
@@ -21,7 +23,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[Union[float, Literal["max", "min"]]] = None,
-        tau_active: float = 0.6,
+        tau_active: float = 0.5,
         merge_collar: float = 0.05,
         device: Optional[torch.device] = None,
         **kwargs,
@@ -85,7 +87,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
         # Tau active and its alias
         tau = utils.get(data, "tau_active", None)
         if tau is None:
-            tau = utils.get(data, "tau", 0.6)
+            tau = utils.get(data, "tau", 0.5)
 
         return VoiceActivityDetectionConfig(
             segmentation=segmentation,
@@ -131,6 +133,10 @@ class VoiceActivityDetection(base.StreamingPipeline):
     @staticmethod
     def suggest_metric() -> Metric:
         return DetectionErrorRate(collar=0, skip_overlap=False)
+
+    @staticmethod
+    def suggest_writer(uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")
 
     @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:

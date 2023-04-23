@@ -4,12 +4,14 @@ from typing import Optional, Tuple, Sequence, Union, Any, Text, List
 import numpy as np
 import torch
 from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow, Segment
+from rx.core import Observer
 from typing_extensions import Literal
 
 from . import base
 from .hparams import HyperParameter, TauActive, RhoUpdate, DeltaNew
 from .. import blocks
 from .. import models as m
+from .. import sinks
 from .. import utils
 from ..metrics import Metric, DiarizationErrorRate
 
@@ -22,7 +24,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[Union[float, Literal["max", "min"]]] = None,
-        tau_active: float = 0.6,
+        tau_active: float = 0.5,
         rho_update: float = 0.3,
         delta_new: float = 1,
         gamma: float = 3,
@@ -82,7 +84,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
         # Hyper-parameters and their aliases
         tau = utils.get(data, "tau_active", None)
         if tau is None:
-            tau = utils.get(data, "tau", 0.6)
+            tau = utils.get(data, "tau", 0.5)
         rho = utils.get(data, "rho_update", None)
         if rho is None:
             rho = utils.get(data, "rho", 0.3)
@@ -167,6 +169,10 @@ class SpeakerDiarization(base.StreamingPipeline):
     @staticmethod
     def suggest_metric() -> Metric:
         return DiarizationErrorRate(collar=0, skip_overlap=False)
+
+    @staticmethod
+    def suggest_writer(uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")
 
     @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:

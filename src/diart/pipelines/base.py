@@ -3,6 +3,7 @@ from typing import Any, Tuple, Sequence, Text, List, Union
 
 import numpy as np
 from pyannote.core import SlidingWindowFeature
+from rx.core import Observer
 
 from .hparams import HyperParameter
 from .. import utils
@@ -48,6 +49,10 @@ class StreamingPipeline:
 
     @staticmethod
     def suggest_metric() -> Metric:
+        raise NotImplementedError
+
+    @staticmethod
+    def suggest_writer(uri: Text, output_dir: Union[Text, Path]) -> Observer:
         raise NotImplementedError
 
     @staticmethod

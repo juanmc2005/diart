@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Union, Text, Optional, Tuple
+from typing import Union, Text, Optional, Tuple, Any
 
 import matplotlib.pyplot as plt
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
@@ -13,13 +13,10 @@ class WindowClosedException(Exception):
     pass
 
 
-def _extract_prediction(value: Union[Tuple, Annotation]) -> Annotation:
+def _extract_prediction(value: Union[Tuple, Any]) -> Any:
     if isinstance(value, tuple):
         return value[0]
-    if isinstance(value, Annotation):
-        return value
-    msg = f"Expected tuple or Annotation, but got {type(value)}"
-    raise ValueError(msg)
+    return value
 
 
 class RTTMWriter(Observer):
@@ -54,6 +51,20 @@ class RTTMWriter(Observer):
 
     def on_completed(self):
         self.patch()
+
+
+class TextWriter(Observer):
+    def __init__(self, path: Union[Path, Text]):
+        super().__init__()
+        self.path = Path(path).expanduser()
+        if self.path.exists():
+            self.path.unlink()
+
+    def on_next(self, value: Union[Tuple, Text]):
+        # Write transcription to file
+        prediction = _extract_prediction(value)
+        with open(self.path, 'a') as file:
+            file.write(prediction + "\n")
 
 
 class DiarizationAccumulator(Observer):
