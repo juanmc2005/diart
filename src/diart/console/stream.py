@@ -5,7 +5,7 @@ from diart import argdoc
 from diart import sources as src
 from diart import utils
 from diart.inference import StreamingInference
-from diart.sinks import RTTMWriter
+from diart.pipelines import StreamingPipeline, StreamingConfig
 
 
 def run():
@@ -13,6 +13,10 @@ def run():
     parser.add_argument("source", type=str, help="Path to an audio file | 'microphone' | 'microphone:<DEVICE_ID>'")
     parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
                         help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
+    parser.add_argument("--whisper", default="small", type=str,
+                        help=f"Whisper model for transcription pipeline. Defaults to 'small'")
+    parser.add_argument("--language", default="en", type=str,
+                        help=f"Transcribe in this language. Defaults to 'en' (English)")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
@@ -36,8 +40,8 @@ def run():
 
     # Resolve pipeline
     pipeline_class = utils.get_pipeline_class(args.pipeline)
-    config = pipeline_class.get_config_class().from_dict(vars(args))
-    pipeline = pipeline_class(config)
+    config: StreamingConfig = pipeline_class.get_config_class().from_dict(vars(args))
+    pipeline: StreamingPipeline = pipeline_class(config)
 
     # Manage audio source
     block_size = config.optimal_block_size()
@@ -59,10 +63,16 @@ def run():
         audio_source,
         batch_size=1,
         do_profile=True,
-        do_plot=not args.no_plot,
         show_progress=True,
     )
-    inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
+
+    # Attach observers for required side effects
+    observers = [pipeline.suggest_writer(audio_source.uri, args.output)]
+    if not args.no_plot:
+        observers.append(pipeline.suggest_display())
+    inference.attach_observers(*observers)
+
+    # Run pipeline
     inference()
 
 

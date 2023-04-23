@@ -109,14 +109,6 @@ class Transcription(base.StreamingPipeline):
         return TranscriptionConfig
 
     @staticmethod
-    def suggest_metric() -> Metric:
-        return WordErrorRate()
-
-    @staticmethod
-    def suggest_writer(uri: Text, output_dir: Union[Text, Path]) -> Observer:
-        return sinks.TextWriter(Path(output_dir) / f"{uri}.txt")
-
-    @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
         return [TauActive]
 
@@ -138,6 +130,15 @@ class Transcription(base.StreamingPipeline):
     def write_prediction(self, uri: Text, prediction: Text, dir_path: Union[Text, Path]):
         with open(Path(dir_path) / f"{uri}.txt", "w") as out_file:
             out_file.write(prediction)
+
+    def suggest_metric(self) -> Metric:
+        return WordErrorRate()
+
+    def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        return sinks.TextWriter(Path(output_dir) / f"{uri}.txt")
+
+    def suggest_display(self) -> Observer:
+        return sinks.RichScreen()
 
     def __call__(
         self,

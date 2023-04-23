@@ -48,14 +48,6 @@ class StreamingPipeline:
         raise NotImplementedError
 
     @staticmethod
-    def suggest_metric() -> Metric:
-        raise NotImplementedError
-
-    @staticmethod
-    def suggest_writer(uri: Text, output_dir: Union[Text, Path]) -> Observer:
-        raise NotImplementedError
-
-    @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
         raise NotImplementedError
 
@@ -73,6 +65,15 @@ class StreamingPipeline:
         raise NotImplementedError
 
     def write_prediction(self, uri: Text, prediction: Any, dir_path: Union[Text, Path]):
+        raise NotImplementedError
+
+    def suggest_metric(self) -> Metric:
+        raise NotImplementedError
+
+    def suggest_display(self) -> Observer:
+        raise NotImplementedError
+
+    def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
         raise NotImplementedError
 
     def __call__(

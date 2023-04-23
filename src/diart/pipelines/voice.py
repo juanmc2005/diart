@@ -131,14 +131,6 @@ class VoiceActivityDetection(base.StreamingPipeline):
         return VoiceActivityDetectionConfig
 
     @staticmethod
-    def suggest_metric() -> Metric:
-        return DetectionErrorRate(collar=0, skip_overlap=False)
-
-    @staticmethod
-    def suggest_writer(uri: Text, output_dir: Union[Text, Path]) -> Observer:
-        return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")
-
-    @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
         return [TauActive]
 
@@ -162,6 +154,20 @@ class VoiceActivityDetection(base.StreamingPipeline):
     def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
         with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
             prediction.write_rttm(out_file)
+
+    def suggest_metric(self) -> Metric:
+        return DetectionErrorRate(collar=0, skip_overlap=False)
+
+    def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")
+
+    def suggest_display(self) -> Observer:
+        return sinks.StreamingPlot(
+            self.config.duration,
+            self.config.step,
+            self.config.latency,
+            self.config.sample_rate
+        )
 
     def __call__(
         self,

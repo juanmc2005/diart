@@ -20,7 +20,7 @@ from . import utils
 from .metrics import Metric
 from .pipelines import StreamingPipeline, StreamingConfig
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
-from .sinks import StreamingPlot, WindowClosedException
+from .sinks import WindowClosedException
 
 
 class StreamingInference:
@@ -40,9 +40,6 @@ class StreamingInference:
     do_profile: bool
         If True, compute and report the processing time of the pipeline.
         Defaults to True.
-    do_plot: bool
-        If True, draw predictions in a moving plot.
-        Defaults to False.
     show_progress: bool
         If True, show a progress bar.
         Defaults to True.
@@ -57,7 +54,6 @@ class StreamingInference:
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
-        do_plot: bool = False,
         show_progress: bool = True,
         progress_bar: Optional[ProgressBar] = None,
     ):
@@ -65,7 +61,6 @@ class StreamingInference:
         self.source = source
         self.batch_size = batch_size
         self.do_profile = do_profile
-        self.do_plot = do_plot
         self.show_progress = show_progress
         self.unit = "chunk" if self.batch_size == 1 else "batch"
         self._observers = []
@@ -192,20 +187,7 @@ class StreamingInference:
         """
         if self.show_progress:
             self._pbar.start()
-        config = self.pipeline.config
-        observable = self.stream
-        if self.do_plot:
-            # Buffering is needed for the real-time plot, so we do this at the very end
-            observable = self.stream.pipe(
-                dops.buffer_output(
-                    duration=config.duration,
-                    step=config.step,
-                    latency=config.latency,
-                    sample_rate=config.sample_rate,
-                ),
-                ops.do(StreamingPlot(config.duration, config.latency)),
-            )
-        observable.subscribe(
+        self.stream.subscribe(
             on_error=self._handle_error,
             on_completed=self._handle_completion,
         )
@@ -324,7 +306,6 @@ class Benchmark:
             source,
             self.batch_size,
             do_profile=False,
-            do_plot=False,
             show_progress=self.show_progress,
             progress_bar=progress_bar,
         )
