@@ -1,13 +1,30 @@
-from typing import Optional, Text, Union, Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Text, Union, Callable, List, Any
 
+import numpy as np
 import torch
 import torch.nn as nn
+from pyannote.core import Segment
 
 try:
     import pyannote.audio.pipelines.utils as pyannote_loader
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
+
+try:
+    import whisper
+    from whisper.tokenizer import get_tokenizer
+    _has_whisper = True
+    DecodingResult = whisper.DecodingResult
+    DecodingOptions = whisper.DecodingOptions
+    Tokenizer = whisper.tokenizer.Tokenizer
+except ImportError:
+    _has_whisper = False
+    DecodingResult = Any
+    DecodingOptions = Any
+    Tokenizer = Any
 
 
 class PyannoteLoader:
@@ -18,6 +35,26 @@ class PyannoteLoader:
 
     def __call__(self) -> nn.Module:
         return pyannote_loader.get_model(self.model_info, self.hf_token)
+
+
+class WhisperLoader:
+    def __init__(
+        self,
+        name: Text,
+        download_path: Optional[Union[Text, Path]] = None,
+        in_memory: bool = False,
+    ):
+        self.name = name
+        self.download_path = download_path
+        self.in_memory = in_memory
+
+    def __call__(self) -> nn.Module:
+        return whisper.load_model(
+            name=self.name,
+            device="cpu",
+            download_root=self.download_path,
+            in_memory=self.in_memory,
+        )
 
 
 class LazyModel(nn.Module):
@@ -163,3 +200,320 @@ class PyannoteEmbeddingModel(EmbeddingModel):
         weights: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         return self.model(waveform, weights=weights)
+
+
+@dataclass(frozen=True)
+class TranscriptionResult:
+    text: Text
+    chunks: List[Text]
+    timestamps: List[Segment]
+
+
+class SpeechRecognitionModel(LazyModel):
+    @staticmethod
+    def from_whisper(
+        name: Text,
+        download_path: Optional[Union[Text, Path]] = None,
+        in_memory: bool = False,
+        fp16: bool = False,
+        no_speech_threshold: float = 0.6,
+        compression_ratio_threshold: Optional[float] = 2.4,
+        logprob_threshold: Optional[float] = -1,
+        decode_with_fallback: bool = False,
+    ) -> 'SpeechRecognitionModel':
+        msg = "No whisper-transcribed installation found. " \
+              "Visit https://github.com/linto-ai/whisper-timestamped#installation to install"
+        assert _has_whisper, msg
+        return WhisperSpeechRecognitionModel(
+            name,
+            download_path,
+            in_memory,
+            fp16,
+            no_speech_threshold,
+            compression_ratio_threshold,
+            logprob_threshold,
+            decode_with_fallback,
+        )
+
+    @property
+    def duration(self) -> float:
+        raise NotImplementedError
+
+    @property
+    def sample_rate(self) -> int:
+        raise NotImplementedError
+
+    def set_language(self, language: Optional[Text] = None):
+        raise NotImplementedError
+
+    def set_beam_size(self, size: Optional[int] = None):
+        raise NotImplementedError
+
+    def forward(self, waveform: torch.Tensor) -> List[TranscriptionResult]:
+        """
+        Forward pass of the speech recognition model.
+
+        Parameters
+        ----------
+        waveform: torch.Tensor, shape (batch, channels, samples)
+            Batch of audio chunks to transcribe
+
+        Returns
+        -------
+        transcriptions: List[TranscriptionResult]
+            A list of timestamped transcriptions
+        """
+        raise NotImplementedError
+
+
+class WhisperDecoder:
+    def __init__(
+        self,
+        no_speech_threshold: float = 0.6,
+        compression_ratio_threshold: Optional[float] = 2.4,
+        logprob_threshold: Optional[float] = -1,
+    ):
+        self.no_speech_threshold = no_speech_threshold
+        self.compression_ratio_threshold = compression_ratio_threshold
+        self.logprob_threshold = logprob_threshold
+        self.temperatures = (0, 0.2, 0.4, 0.6, 0.8, 1)
+
+    @staticmethod
+    def get_temperature_options(initial: DecodingOptions, t: float) -> DecodingOptions:
+        t_options = {**vars(initial)}
+        if t > 0:
+            t_options.pop("beam_size", None)
+            t_options.pop("patience", None)
+        else:
+            t_options.pop("best_of", None)
+        t_options["temperature"] = t
+        return DecodingOptions(**t_options)
+
+    @staticmethod
+    def decode(
+        model,
+        batch: torch.Tensor,
+        options: DecodingOptions
+    ) -> DecodingResult:
+        return model.decode(batch, options)
+
+    def check_compression(self) -> bool:
+        return self.compression_ratio_threshold is not None
+
+    def check_logprob(self) -> bool:
+        return self.logprob_threshold is not None
+
+    def needs_fallback(self, output: DecodingResult) -> bool:
+        if self.check_compression and output.compression_ratio > self.compression_ratio_threshold:
+            # Transcription is too repetitive
+            return True
+        if self.check_logprob and output.avg_logprob < self.logprob_threshold:
+            # Average log probability is too low
+            return True
+        return False
+
+    def decode_with_fallback(
+        self,
+        model,
+        batch: torch.Tensor,
+        options: DecodingOptions,
+    ) -> List[DecodingResult]:
+        """Transcribe batch and retry with ever-increasing
+        temperatures if the estimated quality of the transcription is not good.
+
+        Parameters
+        ----------
+        model: whisper.Whisper
+            Whisper ASR model (contains 'decode' method).
+        batch: torch.Tensor, shape (batch, channel, samples)
+            Log mel spectrogram batch.
+        options: whisper.DecodingOptions
+            Configuration to decode transcription.
+
+        Returns
+        -------
+        result: List[whisper.DecodingResult]
+            Transcription results for this batch.
+        """
+        batch_size = batch.shape[0]
+        results = [None] * batch_size
+        retry_idx = torch.ones(batch_size).type(torch.bool)
+
+        for t in self.temperatures:
+            # Transcribe with the given temperature
+            t_options = self.get_temperature_options(options, t)
+            outputs = model.decode(batch[retry_idx], t_options)
+
+            # Determine which outputs need to be transcribed again
+            output_idx = torch.where(retry_idx)[0]
+            for idx, out in zip(output_idx, outputs):
+                results[idx] = out
+                if not self.needs_fallback(out):
+                    retry_idx[idx] = False
+
+            # No output needs fallback, get out of the loop early
+            if torch.sum(retry_idx).item() == 0:
+                break
+
+        return results
+
+    def split_with_timestamps(
+        self,
+        result: DecodingResult,
+        tokenizer: Tokenizer,
+        chunk_duration: float,
+        token_duration: float,
+    ) -> TranscriptionResult:
+        """Split a Whisper transcription into segments with their respective timestamps.
+        Replace with empty string if no-speech probability is high.
+
+        Parameters
+        ----------
+        result: whisper.DecodingResult
+            A single transcription output from Whisper.
+        tokenizer: whisper.tokenizer.Tokenizer
+            Tokenizer needed to decode outputs.
+        chunk_duration: float
+            Actual duration of each input chunk.
+        token_duration: float
+            Duration of each output token.
+
+        Returns
+        -------
+        result: TranscriptionResult
+            Transcription with identified segments and timestamps.
+        """
+        # Check if the model detects no speech and do not decode
+        if self.no_speech_threshold is not None:
+            no_speech = result.no_speech_prob > self.no_speech_threshold
+            low_confidence = self.logprob_threshold is None or result.avg_logprob < self.logprob_threshold
+            if no_speech and low_confidence:
+                return TranscriptionResult("", [""], [Segment(0, chunk_duration)])
+
+        tokens = torch.tensor(result.tokens)
+        chunks, timestamps = [], []
+        ts_tokens = tokens.ge(tokenizer.timestamp_begin)
+        single_ts_ending = ts_tokens[-2:].tolist() == [False, True]
+        consecutive = torch.where(ts_tokens[:-1] & ts_tokens[1:])[0] + 1
+        if len(consecutive) > 0:
+            # Output contains two consecutive timestamp tokens
+            slices = consecutive.tolist()
+            if single_ts_ending:
+                slices.append(len(tokens))
+
+            # Split into segments based on timestamp tokens
+            last_slice = 0
+            for current_slice in slices:
+                sliced_tokens = tokens[last_slice:current_slice]
+                start_pos = sliced_tokens[0].item() - tokenizer.timestamp_begin
+                end_pos = sliced_tokens[-1].item() - tokenizer.timestamp_begin
+                text_tokens = [token for token in sliced_tokens if token < tokenizer.eot]
+                text = tokenizer.decode(text_tokens).strip()
+                timestamp = Segment(start_pos * token_duration, end_pos * token_duration)
+                if text and timestamp.start != timestamp.end:
+                    chunks.append(text)
+                    timestamps.append(timestamp)
+                last_slice = current_slice
+        else:
+            # There is a single segment, identify timestamps
+            duration = chunk_duration
+            ts = tokens[ts_tokens.nonzero().flatten()]
+            if len(ts) > 0 and ts[-1].item() != tokenizer.timestamp_begin:
+                # Use last timestamp as end time for the unique chunk
+                last_ts_pos = ts[-1].item() - tokenizer.timestamp_begin
+                duration = last_ts_pos * token_duration
+            text_tokens = [token for token in tokens if token < tokenizer.eot]
+            text = tokenizer.decode(text_tokens).strip()
+            if text:
+                chunks.append(text)
+                timestamps.append(Segment(0, duration))
+
+        return TranscriptionResult(result.text, chunks, timestamps)
+
+
+class WhisperSpeechRecognitionModel(SpeechRecognitionModel):
+    def __init__(
+        self,
+        name: Text,
+        download_path: Optional[Union[Text, Path]] = None,
+        in_memory: bool = False,
+        fp16: bool = False,
+        no_speech_threshold: float = 0.6,
+        compression_ratio_threshold: Optional[float] = 2.4,
+        logprob_threshold: Optional[float] = -1,
+        decode_with_fallback: bool = False,
+    ):
+        super().__init__(WhisperLoader(name, download_path, in_memory))
+        self.fp16 = fp16
+        self.beam_size = None
+        self.language = None
+        self.decode_with_fallback = decode_with_fallback
+        self.decoder = WhisperDecoder(
+            no_speech_threshold, compression_ratio_threshold, logprob_threshold
+        )
+        self._token_duration: Optional[float] = None
+
+    @property
+    def duration(self) -> float:
+        # Whisper's maximum duration per input is 30s
+        return whisper.audio.CHUNK_LENGTH
+
+    @property
+    def sample_rate(self) -> int:
+        return whisper.audio.SAMPLE_RATE
+
+    @property
+    def token_duration(self) -> float:
+        if self._token_duration is None:
+            # 2 mel frames per output token
+            input_stride = int(np.rint(whisper.audio.N_FRAMES / self.model.dims.n_audio_ctx))
+            # Output token duration is 0.02 seconds
+            self._token_duration = input_stride * whisper.audio.HOP_LENGTH / self.sample_rate
+        return self._token_duration
+
+    def set_language(self, language: Optional[Text] = None):
+        self.language = language
+
+    def set_beam_size(self, size: Optional[int] = None):
+        self.beam_size = size
+
+    def forward(self, waveform_batch: torch.Tensor) -> List[TranscriptionResult]:
+        # Remove channel dimension
+        batch = waveform_batch.squeeze(1)
+        num_chunk_samples = batch.shape[-1]
+        # Compute log mel spectrogram
+        batch = whisper.log_mel_spectrogram(batch)
+        # Add padding
+        dtype = torch.float16 if self.fp16 else torch.float32
+        batch = whisper.pad_or_trim(batch, whisper.audio.N_FRAMES).to(batch.device).type(dtype)
+
+        # Configure transcription decoding
+        options = whisper.DecodingOptions(
+            task="transcribe",
+            language=self.language,
+            beam_size=self.beam_size,
+            fp16=self.fp16,
+        )
+
+        # Transcribe batch with fallback if required
+        if self.decode_with_fallback:
+            decode_fn = self.decoder.decode_with_fallback
+        else:
+            decode_fn = self.decoder.decode
+        results = decode_fn(self.model, batch, options)
+
+        # Split into segments and add timestamps
+        tokenizer = get_tokenizer(
+            self.model.is_multilingual,
+            language=options.language,
+            task=options.task,
+        )
+        chunk_duration = int(np.rint(num_chunk_samples / self.sample_rate))
+        transcriptions = [
+            self.decoder.split_with_timestamps(
+                res, tokenizer, chunk_duration, self.token_duration
+            )
+            for res in results
+        ]
+
+        return transcriptions

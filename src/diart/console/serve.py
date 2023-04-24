@@ -5,7 +5,7 @@ from diart import argdoc
 from diart import sources as src
 from diart import utils
 from diart.inference import StreamingInference
-from diart.sinks import RTTMWriter
+from diart.pipelines import Pipeline
 
 
 def run():
@@ -14,10 +14,16 @@ def run():
     parser.add_argument("--port", default=7007, type=int, help="Server port")
     parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
                         help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
+    parser.add_argument("--whisper", default="small", type=str,
+                        help=f"Whisper model for transcription pipeline. Defaults to 'small'")
+    parser.add_argument("--language", default="en", type=str,
+                        help=f"Transcribe in this language. Defaults to 'en' (English)")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
                         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
+    parser.add_argument("--duration", type=float,
+                        help=f"Duration of the sliding window (in seconds). Default value depends on the pipeline")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -36,7 +42,7 @@ def run():
     # Resolve pipeline
     pipeline_class = utils.get_pipeline_class(args.pipeline)
     config = pipeline_class.get_config_class().from_dict(vars(args))
-    pipeline = pipeline_class(config)
+    pipeline: Pipeline = pipeline_class(config)
 
     # Create websocket audio source
     audio_source = src.WebSocketAudioSource(config.sample_rate, args.host, args.port)
@@ -47,16 +53,15 @@ def run():
         audio_source,
         batch_size=1,
         do_profile=False,
-        do_plot=False,
         show_progress=True,
     )
 
     # Write to disk if required
     if args.output is not None:
-        inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
+        inference.attach_observers(pipeline.suggest_writer(audio_source.uri, args.output))
 
-    # Send back responses as RTTM text lines
-    inference.attach_hooks(lambda ann_wav: audio_source.send(ann_wav[0].to_rttm()))
+    # Send back responses as text
+    inference.attach_hooks(lambda pred_wav: audio_source.send(utils.serialize_prediction(pred_wav[0])))
 
     # Run server and pipeline
     inference()

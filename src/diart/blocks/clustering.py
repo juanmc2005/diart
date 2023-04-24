@@ -7,7 +7,7 @@ from pyannote.core import SlidingWindowFeature
 from ..mapping import SpeakerMap, SpeakerMapBuilder
 
 
-class OnlineSpeakerClustering:
+class IncrementalSpeakerClustering:
     """Implements constrained incremental online clustering of speakers and manages cluster centers.
 
     Parameters

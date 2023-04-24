@@ -5,7 +5,7 @@ from diart import argdoc
 from diart import sources as src
 from diart import utils
 from diart.inference import StreamingInference
-from diart.sinks import RTTMWriter
+from diart.pipelines import Pipeline, PipelineConfig
 
 
 def run():
@@ -13,10 +13,16 @@ def run():
     parser.add_argument("source", type=str, help="Path to an audio file | 'microphone' | 'microphone:<DEVICE_ID>'")
     parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
                         help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
+    parser.add_argument("--whisper", default="small", type=str,
+                        help=f"Whisper model for transcription pipeline. Defaults to 'small'")
+    parser.add_argument("--language", default="en", type=str,
+                        help=f"Transcribe in this language. Defaults to 'en' (English)")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
                         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
+    parser.add_argument("--duration", default=5, type=float,
+                        help=f"Duration of the sliding window (in seconds). Default value depends on the pipeline")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -29,15 +35,16 @@ def run():
     parser.add_argument("--cpu", dest="cpu", action="store_true",
                         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=str,
-                        help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
+                        help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' "
+                             f"or parent directory if SOURCE is a file")
     parser.add_argument("--hf-token", default="true", type=str,
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
 
     # Resolve pipeline
     pipeline_class = utils.get_pipeline_class(args.pipeline)
-    config = pipeline_class.get_config_class().from_dict(vars(args))
-    pipeline = pipeline_class(config)
+    config: PipelineConfig = pipeline_class.get_config_class().from_dict(vars(args))
+    pipeline: Pipeline = pipeline_class(config)
 
     # Manage audio source
     block_size = config.optimal_block_size()
@@ -59,10 +66,16 @@ def run():
         audio_source,
         batch_size=1,
         do_profile=True,
-        do_plot=not args.no_plot,
         show_progress=True,
     )
-    inference.attach_observers(RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm"))
+
+    # Attach observers for required side effects
+    observers = [pipeline.suggest_writer(audio_source.uri, args.output)]
+    if not args.no_plot:
+        observers.append(pipeline.suggest_display())
+    inference.attach_observers(*observers)
+
+    # Run pipeline
     inference()
 
 

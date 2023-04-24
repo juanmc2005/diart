@@ -1,8 +1,10 @@
-from .blocks import (
-    SpeakerDiarization,
+from .pipelines import (
     Pipeline,
-    SpeakerDiarizationConfig,
     PipelineConfig,
+    SpeakerDiarization,
+    SpeakerDiarizationConfig,
     VoiceActivityDetection,
     VoiceActivityDetectionConfig,
+    Transcription,
+    TranscriptionConfig,
 )

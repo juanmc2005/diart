@@ -247,8 +247,9 @@ class WebSocketAudioSource(AudioSource):
         message: AnyStr
             Bytes or string to send.
         """
-        if len(message) > 0:
-            self.server.send_message(self.client, message)
+        msg = message.strip()
+        if len(msg) > 0:
+            self.server.send_message(self.client, msg + "\n")
 
 
 class TorchStreamAudioSource(AudioSource):

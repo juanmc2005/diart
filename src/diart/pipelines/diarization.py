@@ -1,20 +1,19 @@
-from typing import Optional, Tuple, Sequence, Union, Any
+from pathlib import Path
+from typing import Optional, Tuple, Sequence, Union, Any, Text, List
 
 import numpy as np
 import torch
 from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow, Segment
-from pyannote.metrics.base import BaseMetric
-from pyannote.metrics.diarization import DiarizationErrorRate
+from rx.core import Observer
 from typing_extensions import Literal
 
-from .aggregation import DelayedAggregation
 from . import base
-from .clustering import OnlineSpeakerClustering
-from .embedding import OverlapAwareSpeakerEmbedding
-from .segmentation import SpeakerSegmentation
-from .utils import Binarize
+from .hparams import HyperParameter, TauActive, RhoUpdate, DeltaNew
+from .. import blocks
 from .. import models as m
+from .. import sinks
 from .. import utils
+from ..metrics import Metric, DiarizationErrorRate
 
 
 class SpeakerDiarizationConfig(base.PipelineConfig):
@@ -25,12 +24,13 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[Union[float, Literal["max", "min"]]] = None,
-        tau_active: float = 0.6,
+        tau_active: float = 0.5,
         rho_update: float = 0.3,
         delta_new: float = 1,
         gamma: float = 3,
         beta: float = 10,
         max_speakers: int = 20,
+        merge_collar: float = 0.05,
         device: Optional[torch.device] = None,
         **kwargs,
     ):
@@ -61,6 +61,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         self.gamma = gamma
         self.beta = beta
         self.max_speakers = max_speakers
+        self.merge_collar = merge_collar
 
         self.device = device
         if self.device is None:
@@ -83,7 +84,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         # Hyper-parameters and their aliases
         tau = utils.get(data, "tau_active", None)
         if tau is None:
-            tau = utils.get(data, "tau", 0.6)
+            tau = utils.get(data, "tau", 0.5)
         rho = utils.get(data, "rho_update", None)
         if rho is None:
             rho = utils.get(data, "rho", 0.3)
@@ -103,6 +104,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
             gamma=utils.get(data, "gamma", 3),
             beta=utils.get(data, "beta", 10),
             max_speakers=utils.get(data, "max_speakers", 20),
+            merge_collar=utils.get(data, "merge_collar", 0.05),
             device=device,
         )
 
@@ -136,23 +138,23 @@ class SpeakerDiarization(base.Pipeline):
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
         assert self._config.step <= self._config.latency <= self._config.duration, msg
 
-        self.segmentation = SpeakerSegmentation(self._config.segmentation, self._config.device)
-        self.embedding = OverlapAwareSpeakerEmbedding(
+        self.segmentation = blocks.SpeakerSegmentation(self._config.segmentation, self._config.device)
+        self.embedding = blocks.OverlapAwareSpeakerEmbedding(
             self._config.embedding, self._config.gamma, self._config.beta, norm=1, device=self._config.device
         )
-        self.pred_aggregation = DelayedAggregation(
+        self.pred_aggregation = blocks.DelayedAggregation(
             self._config.step,
             self._config.latency,
             strategy="hamming",
             cropping_mode="loose",
         )
-        self.audio_aggregation = DelayedAggregation(
+        self.audio_aggregation = blocks.DelayedAggregation(
             self._config.step,
             self._config.latency,
             strategy="first",
             cropping_mode="center",
         )
-        self.binarize = Binarize(self._config.tau_active)
+        self.binarize = blocks.Binarize(self._config.tau_active)
 
         # Internal state, handle with care
         self.timestamp_shift = 0
@@ -165,12 +167,12 @@ class SpeakerDiarization(base.Pipeline):
         return SpeakerDiarizationConfig
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
+    def suggest_metric() -> Metric:
         return DiarizationErrorRate(collar=0, skip_overlap=False)
 
     @staticmethod
-    def hyper_parameters() -> Sequence[base.HyperParameter]:
-        return [base.TauActive, base.RhoUpdate, base.DeltaNew]
+    def hyper_parameters() -> Sequence[HyperParameter]:
+        return [TauActive, RhoUpdate, DeltaNew]
 
     @property
     def config(self) -> SpeakerDiarizationConfig:
@@ -179,9 +181,30 @@ class SpeakerDiarization(base.Pipeline):
     def set_timestamp_shift(self, shift: float):
         self.timestamp_shift = shift
 
+    def join_predictions(self, predictions: List[Annotation]) -> Annotation:
+        result = Annotation(uri=predictions[0].uri)
+        for pred in predictions:
+            result.update(pred)
+        return result.support(self.config.merge_collar)
+
+    def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
+        with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
+            prediction.write_rttm(out_file)
+
+    def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")
+
+    def suggest_display(self) -> Observer:
+        return sinks.StreamingPlot(
+            self.config.duration,
+            self.config.step,
+            self.config.latency,
+            self.config.sample_rate
+        )
+
     def reset(self):
         self.set_timestamp_shift(0)
-        self.clustering = OnlineSpeakerClustering(
+        self.clustering = blocks.IncrementalSpeakerClustering(
             self.config.tau_active,
             self.config.rho_update,
             self.config.delta_new,
@@ -192,7 +215,7 @@ class SpeakerDiarization(base.Pipeline):
 
     def __call__(
         self,
-        waveforms: Sequence[SlidingWindowFeature]
+        waveforms: Sequence[SlidingWindowFeature],
     ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"

@@ -9,9 +9,10 @@ from pyannote.metrics.base import BaseMetric
 from tqdm import trange, tqdm
 from typing_extensions import Literal
 
-from . import blocks
 from .audio import FilePath
 from .inference import Benchmark
+from .pipelines import PipelineConfig
+from .pipelines.hparams import HyperParameter
 
 
 class Optimizer:
@@ -22,8 +23,8 @@ class Optimizer:
         reference_path: Union[Text, Path],
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
-        hparams: Optional[Sequence[blocks.base.HyperParameter]] = None,
-        base_config: Optional[blocks.PipelineConfig] = None,
+        hparams: Optional[Sequence[HyperParameter]] = None,
+        base_config: Optional[PipelineConfig] = None,
         do_kickstart_hparams: bool = True,
         metric: Optional[BaseMetric] = None,
         direction: Literal["minimize", "maximize"] = "minimize",
@@ -96,6 +97,9 @@ class Optimizer:
     def objective(self, trial: Trial) -> float:
         # Set suggested values for optimized hyper-parameters
         trial_config = vars(self.base_config)
+        trial_config["duration"] = self.base_config.duration
+        trial_config["step"] = self.base_config.step
+        trial_config["latency"] = self.base_config.latency
         for hparam in self.hparams:
             trial_config[hparam.name] = trial.suggest_uniform(
                 hparam.name, hparam.low, hparam.high
@@ -117,12 +121,12 @@ class Optimizer:
         report = self.benchmark(self.pipeline_class, config, metric)
 
         # Extract target metric from report
-        return report.loc["TOTAL", metric.name]["%"]
+        return report.loc["TOTAL", metric.name].item()
 
     def __call__(self, num_iter: int, show_progress: bool = True):
         self._progress = None
         if show_progress:
-            self._progress = trange(num_iter)
+            self._progress = trange(num_iter, unit="trial")
             last_trial = -1
             if self.study.trials:
                 last_trial = self.study.trials[-1].number

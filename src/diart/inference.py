@@ -2,7 +2,7 @@ import logging
 from multiprocessing import Pool, freeze_support, RLock, current_process
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List
+from typing import Union, Text, Optional, Callable, Tuple, List, Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -10,8 +10,6 @@ import rx
 import rx.operators as ops
 import torch
 from pyannote.core import Annotation, SlidingWindowFeature
-from pyannote.database.util import load_rttm
-from pyannote.metrics.base import BaseMetric
 from rx.core import Observer
 from tqdm import tqdm
 
@@ -19,30 +17,28 @@ from . import blocks
 from . import operators as dops
 from . import sources as src
 from . import utils
+from .metrics import Metric
+from .pipelines import Pipeline, PipelineConfig
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
-from .sinks import PredictionAccumulator, StreamingPlot, WindowClosedException
+from .sinks import WindowClosedException
 
 
 class StreamingInference:
-    """Performs inference in real time given a pipeline and an audio source.
-    Streams an audio source to an online speaker diarization pipeline.
-    It allows users to attach a chain of operations in the form of hooks.
+    """Performs streaming inference given a pipeline and an audio source.
+    Side-effect hooks and observers can also be attached for customized behavior.
 
     Parameters
     ----------
-    pipeline: StreamingPipeline
-        Configured speaker diarization pipeline.
+    pipeline: Pipeline
+        A pipeline.
     source: AudioSource
-        Audio source to be read and streamed.
+        Audio source to read and stream.
     batch_size: int
         Number of inputs to send to the pipeline at once.
         Defaults to 1.
     do_profile: bool
         If True, compute and report the processing time of the pipeline.
         Defaults to True.
-    do_plot: bool
-        If True, draw predictions in a moving plot.
-        Defaults to False.
     show_progress: bool
         If True, show a progress bar.
         Defaults to True.
@@ -53,11 +49,10 @@ class StreamingInference:
     """
     def __init__(
         self,
-        pipeline: blocks.Pipeline,
+        pipeline: Pipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
-        do_plot: bool = False,
         show_progress: bool = True,
         progress_bar: Optional[ProgressBar] = None,
     ):
@@ -65,11 +60,9 @@ class StreamingInference:
         self.source = source
         self.batch_size = batch_size
         self.do_profile = do_profile
-        self.do_plot = do_plot
         self.show_progress = show_progress
-        self.accumulator = PredictionAccumulator(self.source.uri)
-        self.unit = "chunk" if self.batch_size == 1 else "batch"
         self._observers = []
+        self._predictions = []
 
         chunk_duration = self.pipeline.config.duration
         step_duration = self.pipeline.config.step
@@ -89,11 +82,11 @@ class StreamingInference:
             self._pbar.create(
                 total=self.num_chunks,
                 description=f"Streaming {self.source.uri}",
-                unit=self.unit
+                unit="chunk"
             )
 
         # Initialize chronometer for profiling
-        self._chrono = utils.Chronometer(self.unit, self._pbar)
+        self._chrono = utils.Chronometer("batch", self._pbar)
 
         self.stream = self.source.stream
 
@@ -123,7 +116,7 @@ class StreamingInference:
 
         self.stream = self.stream.pipe(
             ops.flat_map(lambda results: rx.from_iterable(results)),
-            ops.do(self.accumulator),
+            ops.do_action(lambda pred_wav: self._predictions.append(pred_wav[0])),
         )
 
         if show_progress:
@@ -141,13 +134,13 @@ class StreamingInference:
                 self._chrono.stop(do_count=False)
             self._chrono.report()
 
-    def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
+    def attach_hooks(self, *hooks: Callable[[Tuple[Any, SlidingWindowFeature]], None]):
         """Attach hooks to the pipeline.
 
         Parameters
         ----------
-        *hooks: (Tuple[Annotation, SlidingWindowFeature]) -> None
-            Hook functions to consume emitted annotations and audio.
+        *hooks: (Tuple[Any, SlidingWindowFeature]) -> None
+            Hook functions to consume emitted predictions and audio.
         """
         self.stream = self.stream.pipe(*[ops.do_action(hook) for hook in hooks])
 
@@ -157,7 +150,7 @@ class StreamingInference:
         Parameters
         ----------
         *observers: Observer
-            Observers to consume emitted annotations and audio.
+            Observers to consume emitted predictions and audio.
         """
         self.stream = self.stream.pipe(*[ops.do(sink) for sink in observers])
         self._observers.extend(observers)
@@ -182,55 +175,42 @@ class StreamingInference:
         self._close_pbar()
         self._close_chronometer()
 
-    def __call__(self) -> Annotation:
-        """Stream audio chunks from `source` to `pipeline`.
+    def __call__(self) -> List[Any]:
+        """Stream audio chunks from a source to a pipeline.
 
         Returns
         -------
-        predictions: Annotation
-            Speaker diarization pipeline predictions
+        predictions: List[Any]
+            Streaming pipeline predictions
         """
         if self.show_progress:
             self._pbar.start()
-        config = self.pipeline.config
-        observable = self.stream
-        if self.do_plot:
-            # Buffering is needed for the real-time plot, so we do this at the very end
-            observable = self.stream.pipe(
-                dops.buffer_output(
-                    duration=config.duration,
-                    step=config.step,
-                    latency=config.latency,
-                    sample_rate=config.sample_rate,
-                ),
-                ops.do(StreamingPlot(config.duration, config.latency)),
-            )
-        observable.subscribe(
+        self.stream.subscribe(
             on_error=self._handle_error,
             on_completed=self._handle_completion,
         )
-        # FIXME if read() isn't blocking, the prediction returned is empty
+        # FIXME if read() isn't blocking, predictions are empty
         self.source.read()
-        return self.accumulator.get_prediction()
+        return self._predictions
 
 
 class Benchmark:
     """
-    Run an online speaker diarization pipeline on a set of audio files in batches.
+    Run a pipeline on a set of audio files in batches.
     Write predictions to a given output directory.
 
-    If the reference is given, calculate the average diarization error rate.
+    If the reference is given, compute the average performance metric.
 
     Parameters
     ----------
     speech_path: Text or Path
         Directory with audio files.
     reference_path: Text, Path or None
-        Directory with reference RTTM files (same names as audio files).
-        If None, performance will not be calculated.
+        Directory with reference files (same names as audio files with different extension).
+        If None, performance will not be computed.
         Defaults to None.
-    output_path: Text, Path or None
-        Output directory to store predictions in RTTM format.
+    output_path: Optional[Text | Path]
+        Output directory to store predictions.
         If None, predictions will not be written to disk.
         Defaults to None.
     show_progress: bool
@@ -240,12 +220,7 @@ class Benchmark:
         Whether to print a performance report to stdout.
         Defaults to True.
     batch_size: int
-        Inference batch size.
-        If < 2, then it will run in real time.
-        If >= 2, then it will pre-calculate segmentation and
-        embeddings, running the rest in real time.
-        The performance between this two modes does not differ.
-        Defaults to 32.
+        Inference batch size. Defaults to 32.
     """
     def __init__(
         self,
@@ -268,9 +243,9 @@ class Benchmark:
             self.reference_path = Path(self.reference_path).expanduser()
             assert self.reference_path.is_dir(), "Reference path must be a directory"
 
-        self.output_path = output_path
+        self.output_path: Optional[Union[Text, Path]] = output_path
         if self.output_path is not None:
-            self.output_path = Path(output_path).expanduser()
+            self.output_path: Path = Path(output_path).expanduser()
             self.output_path.mkdir(parents=True, exist_ok=True)
 
         self.show_progress = show_progress
@@ -289,27 +264,29 @@ class Benchmark:
 
     def run_single(
         self,
-        pipeline: blocks.Pipeline,
+        pipeline: Pipeline,
         filepath: Path,
         progress_bar: ProgressBar,
-    ) -> Annotation:
+    ) -> Tuple[Text, Any]:
         """Run a given pipeline on a given file.
-        Note that this method does NOT reset the
+        This method does NOT reset the
         state of the pipeline before execution.
 
         Parameters
         ----------
-        pipeline: StreamingPipeline
-            Speaker diarization pipeline to run.
+        pipeline: Pipeline
+            A pipeline.
         filepath: Path
             Path to the target file.
         progress_bar: diart.progress.ProgressBar
-            An object to manage the progress of this run.
+            Object to display the progress of this run.
 
         Returns
         -------
-        prediction: Annotation
-            Pipeline prediction for the given file.
+        uri: Text
+            File URI.
+        prediction: Any
+            Aggregated pipeline prediction for the given file.
         """
         padding = pipeline.config.get_file_padding(filepath)
         source = src.FileAudioSource(
@@ -324,34 +301,33 @@ class Benchmark:
             source,
             self.batch_size,
             do_profile=False,
-            do_plot=False,
             show_progress=self.show_progress,
             progress_bar=progress_bar,
         )
 
-        pred = inference()
-        pred.uri = source.uri
+        # Run the pipeline and concatenate predictions
+        pred = pipeline.join_predictions(inference())
 
+        # Write prediction to disk if required
         if self.output_path is not None:
-            with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
-                pred.write_rttm(out_file)
+            pipeline.write_prediction(source.uri, pred, self.output_path)
 
-        return pred
+        return source.uri, pred
 
     def evaluate(
         self,
-        predictions: List[Annotation],
-        metric: BaseMetric,
-    ) -> Union[pd.DataFrame, List[Annotation]]:
+        predictions: Dict[Text, Any],
+        metric: Metric,
+    ) -> Union[pd.DataFrame, Dict[Text, Any]]:
         """If a reference path was provided,
-        compute the diarization error rate of a list of predictions.
+        compute the performance of a list of predictions.
 
         Parameters
         ----------
-        predictions: List[Annotation]
+        predictions: List[Any]
             Predictions to evaluate.
-        metric: BaseMetric
-            Evaluation metric from pyannote.metrics.
+        metric: Metric
+            Evaluation metric.
 
         Returns
         -------
@@ -360,55 +336,69 @@ class Benchmark:
             reference path was given. Otherwise return the same predictions.
         """
         if self.reference_path is not None:
+            # Initialize progress bar
             progress_bar = TQDMProgressBar(f"Computing {metric.name}", leave=False)
             progress_bar.create(total=len(predictions), unit="file")
             progress_bar.start()
-            for hyp in predictions:
-                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
-                metric(ref, hyp)
+
+            # Evaluate each prediction
+            uris = []
+            for uri, pred in predictions.items():
+                ref_file = list(self.reference_path.glob(f"{uri}.*"))
+                if ref_file:
+                    ref = metric.load_reference(ref_file[0])
+                    metric(ref, pred)
+                    uris.append(uri)
+                else:
+                    msg = f"Reference file for {uri} not found. Skipping evaluation."
+                    logging.warning(msg)
                 progress_bar.update()
+
+            # Close progress bar safely
             progress_bar.close()
-            return metric.report(display=self.show_report)
+            # Return performance report
+            return metric.report(uris, self.show_report)
+
         return predictions
 
     def __call__(
         self,
         pipeline_class: type,
-        config: blocks.PipelineConfig,
-        metric: Optional[BaseMetric] = None,
-    ) -> Union[pd.DataFrame, List[Annotation]]:
-        """Run a given pipeline on a set of audio files.
+        config: PipelineConfig,
+        metric: Optional[Metric] = None,
+    ) -> Union[pd.DataFrame, Dict[Text, Any]]:
+        """Run a pipeline on a set of audio files.
         The internal state of the pipeline is reset before benchmarking.
 
         Parameters
         ----------
         pipeline_class: class
-            Class from the StreamingPipeline hierarchy.
+            Class from the `Pipeline` hierarchy.
             A pipeline from this class will be instantiated by each worker.
-        config: StreamingConfig
-            Streaming pipeline configuration.
-        metric: Optional[BaseMetric]
-            Evaluation metric from pyannote.metrics.
+        config: PipelineConfig
+            Pipeline configuration.
+        metric: Optional[Metric]
+            Evaluation metric.
             Defaults to the pipeline's suggested metric (see `StreamingPipeline.suggest_metric()`)
 
         Returns
         -------
-        performance: pandas.DataFrame or List[Annotation]
+        performance: pandas.DataFrame or Dict[Text, Any]
             If reference annotations are given, a DataFrame with detailed
             performance on each file as well as average performance.
-
-            If no reference annotations, a list of predictions.
+            If no reference annotations, a dict of uris with predictions.
         """
         audio_file_paths = self.get_file_paths()
         num_audio_files = len(audio_file_paths)
         pipeline = pipeline_class(config)
 
-        predictions = []
+        predictions = {}
         for i, filepath in enumerate(audio_file_paths):
             pipeline.reset()
             desc = f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})"
             progress = TQDMProgressBar(desc, leave=False, do_close=True)
-            predictions.append(self.run_single(pipeline, filepath, progress))
+            uri, pred = self.run_single(pipeline, filepath, progress)
+            predictions[uri] = pred
 
         metric = pipeline.suggest_metric() if metric is None else metric
         return self.evaluate(predictions, metric)
@@ -416,15 +406,14 @@ class Benchmark:
 
 class Parallelize:
     """Wrapper to parallelize the execution of a `Benchmark` instance.
-    Note that models will be copied in each worker instead of being reused.
+    Models will be copied in each worker instead of being reused.
 
     Parameters
     ----------
     benchmark: Benchmark
-        Benchmark instance to execute in parallel.
+        Benchmark instance to run in parallel.
     num_workers: int
-        Number of parallel workers.
-        Defaults to 0 (no parallelism).
+        Number of parallel workers. Defaults to 4.
     """
     def __init__(
         self,
@@ -437,20 +426,20 @@ class Parallelize:
     def run_single_job(
         self,
         pipeline_class: type,
-        config: blocks.PipelineConfig,
+        config: PipelineConfig,
         filepath: Path,
         description: Text,
-    ) -> Annotation:
-        """Build and run a pipeline on a single file.
+    ) -> Tuple[Text, Any]:
+        """Instantiate and run a pipeline on a given file.
         Configure execution to show progress alongside parallel runs.
 
         Parameters
         ----------
         pipeline_class: class
-            Class from the StreamingPipeline hierarchy.
+            Class from the `Pipeline` hierarchy.
             A pipeline from this class will be instantiated.
-        config: StreamingConfig
-            Streaming pipeline configuration.
+        config: PipelineConfig
+            Pipeline configuration.
         filepath: Path
             Path to the target file.
         description: Text
@@ -458,8 +447,10 @@ class Parallelize:
 
         Returns
         -------
-        prediction: Annotation
-            Pipeline prediction for the given file.
+        uri: Text
+            File URI.
+        prediction: Any
+            Aggregated pipeline prediction for the given file.
         """
         # The process ID inside the pool determines the position of the progress bar
         idx_process = int(current_process().name.split('-')[1]) - 1
@@ -474,30 +465,29 @@ class Parallelize:
     def __call__(
         self,
         pipeline_class: type,
-        config: blocks.PipelineConfig,
-        metric: Optional[BaseMetric] = None,
-    ) -> Union[pd.DataFrame, List[Annotation]]:
-        """Run a given pipeline on a set of audio files in parallel.
-        Each worker will build and run the pipeline on a different file.
+        config: PipelineConfig,
+        metric: Optional[Metric] = None,
+    ) -> Union[pd.DataFrame, Dict[Text, Any]]:
+        """Run a pipeline on a set of audio files in parallel.
+        Each worker instantiates and runs the pipeline on a different file.
 
         Parameters
         ----------
         pipeline_class: class
-            Class from the StreamingPipeline hierarchy.
+            Class from the Pipeline hierarchy.
             A pipeline from this class will be instantiated by each worker.
-        config: StreamingConfig
-            Streaming pipeline configuration.
-        metric: Optional[BaseMetric]
-            Evaluation metric from pyannote.metrics.
+        config: PipelineConfig
+            Pipeline configuration.
+        metric: Optional[Metric]
+            Evaluation metric.
             Defaults to the pipeline's suggested metric (see `StreamingPipeline.suggest_metric()`)
 
         Returns
         -------
-        performance: pandas.DataFrame or List[Annotation]
+        performance: pandas.DataFrame or Dict[Text, Any]
             If reference annotations are given, a DataFrame with detailed
             performance on each file as well as average performance.
-
-            If no reference annotations, a list of predictions.
+            If no reference annotations, a dict of uris with predictions.
         """
         audio_file_paths = self.benchmark.get_file_paths()
         num_audio_files = len(audio_file_paths)
@@ -522,9 +512,14 @@ class Parallelize:
         # Submit all jobs
         jobs = [pool.apply_async(self.run_single_job, args=args) for args in arg_list]
 
-        # Wait and collect results
+        # Wait for all jobs to finish
         pool.close()
-        predictions = [job.get() for job in jobs]
+
+        # Collect results
+        predictions = {}
+        for job in jobs:
+            uri, pred = job.get()
+            predictions[uri] = pred
 
         # Evaluate results
         metric = pipeline_class.suggest_metric() if metric is None else metric
