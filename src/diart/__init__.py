@@ -1,8 +1,8 @@
 from .blocks import (
     SpeakerDiarization,
-    StreamingPipeline,
+    Pipeline,
     SpeakerDiarizationConfig,
-    StreamingConfig,
+    PipelineConfig,
     VoiceActivityDetection,
     VoiceActivityDetectionConfig,
 )
