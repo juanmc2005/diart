@@ -116,7 +116,7 @@ class StreamingInference:
 
         self.stream = self.stream.pipe(
             ops.flat_map(lambda results: rx.from_iterable(results)),
-            ops.do_action(lambda pred_wav: self._predictions.append(pred_wav[0])),
+            ops.do_action(lambda res: self._predictions.append(res[0] if isinstance(res, tuple) else res)),
         )
 
         if show_progress:

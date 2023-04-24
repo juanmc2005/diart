@@ -182,31 +182,3 @@ class Transcription(base.Pipeline):
             (outputs[mapping[i]].text if i in has_voice else "", waveforms[i])
             for i in range(batch_size)
         ]
-
-        # TODO align text with speakers if diarization is not None
-
-        # diarization = diarization[0]
-        #
-        # # Align transcription with diarization to determine speakers
-        # full_transcription = []
-        # buffer_shift = waveform.sliding_window.start
-        # for text, timestamp in zip(outputs.chunks, outputs.timestamps):
-        #     target_region = Segment(
-        #         buffer_shift + timestamp.start,
-        #         buffer_shift + timestamp.end
-        #     )
-        #     dia = diarization.crop(target_region)
-        #     speakers = dia.labels()
-        #     num_speakers = len(speakers)
-        #     if num_speakers == 0:
-        #         # Include transcription but don't assign a speaker
-        #         full_transcription.append(text)
-        #     elif num_speakers == 1:
-        #         # Typical case, annotate text with the only speaker
-        #         full_transcription.append(f"[{speakers[0]}]{text}")
-        #     else:
-        #         # Multiple speakers for the same text block, choose the most active one
-        #         max_spk = np.argmax([dia.label_duration(spk) for spk in speakers])
-        #         full_transcription.append(f"[{speakers[max_spk]}]{text}")
-        #
-        # return [(" ".join(full_transcription).strip(), waveform)]

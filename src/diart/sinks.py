@@ -62,6 +62,9 @@ class TextWriter(Observer):
         if self.path.exists():
             self.path.unlink()
 
+    def on_error(self, error: Exception):
+        pass
+
     def on_next(self, value: Union[Tuple, Text]):
         # Write transcription to file
         prediction = _extract_prediction(value)
@@ -111,15 +114,25 @@ class RichScreen(Observer):
                 "yellow2", "magenta", "cyan", "bright_magenta", "dodger_blue2"
             ]
         self.num_colors = len(self.colors)
+        self._speaker_to_color = {}
+
+    def on_error(self, error: Exception):
+        pass
 
     def on_next(self, value: Union[Tuple, Text]):
         prediction = _extract_prediction(value)
+        if not prediction.strip():
+            return
         # Extract speakers
         speakers = sorted(re.findall(r'\[.*?]', prediction))
         # Colorize based on speakers
         colorized = prediction
-        for i, speaker in enumerate(speakers):
-            colorized = colorized.replace(speaker, f"[{self.colors[i % self.num_colors]}]")
+        for spk in speakers:
+            name = spk[1:-1]
+            if name not in self._speaker_to_color:
+                next_color_idx = len(self._speaker_to_color) % self.num_colors
+                self._speaker_to_color[name] = self.colors[next_color_idx]
+            colorized = colorized.replace(spk, f"[{self._speaker_to_color[name]}]")
         # Print result
         rich.print(colorized)
 
@@ -179,6 +192,10 @@ class StreamingPlot(Observer):
         end_time = self.real_time - self.latency
         start_time = max(0., end_time - self.window_duration)
         return Segment(start_time, end_time)
+
+    def on_error(self, error: Exception):
+        # Do nothing on error
+        pass
 
     def on_next(
         self,
