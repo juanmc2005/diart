@@ -5,7 +5,7 @@ from diart import argdoc
 from diart import sources as src
 from diart import utils
 from diart.inference import StreamingInference
-from diart.pipelines import StreamingPipeline
+from diart.pipelines import Pipeline
 
 
 def run():
@@ -22,6 +22,8 @@ def run():
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
                         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
+    parser.add_argument("--duration", type=float,
+                        help=f"Duration of the sliding window (in seconds). Default value depends on the pipeline")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -40,7 +42,7 @@ def run():
     # Resolve pipeline
     pipeline_class = utils.get_pipeline_class(args.pipeline)
     config = pipeline_class.get_config_class().from_dict(vars(args))
-    pipeline: StreamingPipeline = pipeline_class(config)
+    pipeline: Pipeline = pipeline_class(config)
 
     # Create websocket audio source
     audio_source = src.WebSocketAudioSource(config.sample_rate, args.host, args.port)

@@ -1,6 +1,6 @@
 from .pipelines import (
-    StreamingPipeline,
-    StreamingConfig,
+    Pipeline,
+    PipelineConfig,
     SpeakerDiarization,
     SpeakerDiarizationConfig,
     VoiceActivityDetection,

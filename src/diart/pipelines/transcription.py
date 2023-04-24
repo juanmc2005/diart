@@ -15,7 +15,7 @@ from .. import utils
 from ..metrics import Metric, WordErrorRate
 
 
-class TranscriptionConfig(base.StreamingConfig):
+class TranscriptionConfig(base.PipelineConfig):
     def __init__(
         self,
         asr: Optional[m.SpeechRecognitionModel] = None,
@@ -25,7 +25,11 @@ class TranscriptionConfig(base.StreamingConfig):
         language: Optional[Text] = None,
         beam_size: int = None,
         device: Optional[torch.device] = None,
+        **kwargs,
     ):
+        self.language = language
+        self.beam_size = beam_size
+
         self.device = device
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -34,8 +38,8 @@ class TranscriptionConfig(base.StreamingConfig):
         self.asr = asr
         if self.asr is None:
             self.asr = m.SpeechRecognitionModel.from_whisper("small")
-        self.asr.set_language(language)
-        self.asr.set_beam_size(beam_size)
+        self.asr.set_language(self.language)
+        self.asr.set_beam_size(self.beam_size)
 
         self.segmentation = segmentation
         self.tau_active = tau_active
@@ -96,7 +100,7 @@ class TranscriptionConfig(base.StreamingConfig):
         )
 
 
-class Transcription(base.StreamingPipeline):
+class Transcription(base.Pipeline):
     def __init__(self, config: Optional[TranscriptionConfig] = None):
         self._config = TranscriptionConfig() if config is None else config
         self.asr = blocks.SpeechRecognition(self.config.asr, self.config.device)
@@ -107,6 +111,10 @@ class Transcription(base.StreamingPipeline):
     @staticmethod
     def get_config_class() -> type:
         return TranscriptionConfig
+
+    @staticmethod
+    def suggest_metric() -> Metric:
+        return WordErrorRate()
 
     @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
@@ -130,9 +138,6 @@ class Transcription(base.StreamingPipeline):
     def write_prediction(self, uri: Text, prediction: Text, dir_path: Union[Text, Path]):
         with open(Path(dir_path) / f"{uri}.txt", "w") as out_file:
             out_file.write(prediction)
-
-    def suggest_metric(self) -> Metric:
-        return WordErrorRate()
 
     def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
         return sinks.TextWriter(Path(output_dir) / f"{uri}.txt")

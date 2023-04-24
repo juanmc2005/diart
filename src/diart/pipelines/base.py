@@ -11,7 +11,7 @@ from ..audio import FilePath, AudioLoader
 from ..metrics import Metric
 
 
-class StreamingConfig:
+class PipelineConfig:
     @property
     def duration(self) -> float:
         raise NotImplementedError
@@ -29,7 +29,7 @@ class StreamingConfig:
         raise NotImplementedError
 
     @staticmethod
-    def from_dict(data: Any) -> 'StreamingConfig':
+    def from_dict(data: Any) -> 'PipelineConfig':
         raise NotImplementedError
 
     def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
@@ -42,9 +42,13 @@ class StreamingConfig:
         return int(np.rint(self.step * self.sample_rate))
 
 
-class StreamingPipeline:
+class Pipeline:
     @staticmethod
     def get_config_class() -> type:
+        raise NotImplementedError
+
+    @staticmethod
+    def suggest_metric() -> Metric:
         raise NotImplementedError
 
     @staticmethod
@@ -52,7 +56,7 @@ class StreamingPipeline:
         raise NotImplementedError
 
     @property
-    def config(self) -> StreamingConfig:
+    def config(self) -> PipelineConfig:
         raise NotImplementedError
 
     def reset(self):
@@ -65,9 +69,6 @@ class StreamingPipeline:
         raise NotImplementedError
 
     def write_prediction(self, uri: Text, prediction: Any, dir_path: Union[Text, Path]):
-        raise NotImplementedError
-
-    def suggest_metric(self) -> Metric:
         raise NotImplementedError
 
     def suggest_display(self) -> Observer:

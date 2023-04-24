@@ -16,7 +16,7 @@ from .. import utils
 from ..metrics import Metric, DetectionErrorRate
 
 
-class VoiceActivityDetectionConfig(base.StreamingConfig):
+class VoiceActivityDetectionConfig(base.PipelineConfig):
     def __init__(
         self,
         segmentation: Optional[m.SegmentationModel] = None,
@@ -100,7 +100,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
         )
 
 
-class VoiceActivityDetection(base.StreamingPipeline):
+class VoiceActivityDetection(base.Pipeline):
     def __init__(self, config: Optional[VoiceActivityDetectionConfig] = None):
         self._config = VoiceActivityDetectionConfig() if config is None else config
 
@@ -131,6 +131,10 @@ class VoiceActivityDetection(base.StreamingPipeline):
         return VoiceActivityDetectionConfig
 
     @staticmethod
+    def suggest_metric() -> Metric:
+        return DetectionErrorRate(collar=0, skip_overlap=False)
+
+    @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
         return [TauActive]
 
@@ -154,9 +158,6 @@ class VoiceActivityDetection(base.StreamingPipeline):
     def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
         with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
             prediction.write_rttm(out_file)
-
-    def suggest_metric(self) -> Metric:
-        return DetectionErrorRate(collar=0, skip_overlap=False)
 
     def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
         return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")

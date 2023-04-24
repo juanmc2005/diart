@@ -16,7 +16,7 @@ from .. import utils
 from ..metrics import Metric, DiarizationErrorRate
 
 
-class SpeakerDiarizationConfig(base.StreamingConfig):
+class SpeakerDiarizationConfig(base.PipelineConfig):
     def __init__(
         self,
         segmentation: Optional[m.SegmentationModel] = None,
@@ -131,7 +131,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
         return self._sample_rate
 
 
-class SpeakerDiarization(base.StreamingPipeline):
+class SpeakerDiarization(base.Pipeline):
     def __init__(self, config: Optional[SpeakerDiarizationConfig] = None):
         self._config = SpeakerDiarizationConfig() if config is None else config
 
@@ -167,6 +167,10 @@ class SpeakerDiarization(base.StreamingPipeline):
         return SpeakerDiarizationConfig
 
     @staticmethod
+    def suggest_metric() -> Metric:
+        return DiarizationErrorRate(collar=0, skip_overlap=False)
+
+    @staticmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
         return [TauActive, RhoUpdate, DeltaNew]
 
@@ -186,9 +190,6 @@ class SpeakerDiarization(base.StreamingPipeline):
     def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
         with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
             prediction.write_rttm(out_file)
-
-    def suggest_metric(self) -> Metric:
-        return DiarizationErrorRate(collar=0, skip_overlap=False)
 
     def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
         return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")

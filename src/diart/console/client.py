@@ -45,7 +45,8 @@ def run():
     parser.add_argument("--host", required=True, type=str, help="Server host")
     parser.add_argument("--port", required=True, type=int, help="Server port")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
-    parser.add_argument("-sr", "--sample-rate", default=16000, type=int, help=f"{argdoc.SAMPLE_RATE}. Defaults to 16000")
+    parser.add_argument("-sr", "--sample-rate", default=16000, type=int,
+                        help=f"{argdoc.SAMPLE_RATE}. Defaults to 16000")
     parser.add_argument("-o", "--output-file", type=Path, help="Output RTTM file. Defaults to no writing")
     args = parser.parse_args()
 

@@ -5,7 +5,7 @@ from diart import argdoc
 from diart import sources as src
 from diart import utils
 from diart.inference import StreamingInference
-from diart.pipelines import StreamingPipeline, StreamingConfig
+from diart.pipelines import Pipeline, PipelineConfig
 
 
 def run():
@@ -21,6 +21,8 @@ def run():
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
                         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
+    parser.add_argument("--duration", default=5, type=float,
+                        help=f"Duration of the sliding window (in seconds). Default value depends on the pipeline")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -33,15 +35,16 @@ def run():
     parser.add_argument("--cpu", dest="cpu", action="store_true",
                         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise")
     parser.add_argument("--output", type=str,
-                        help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' or parent directory if SOURCE is a file")
+                        help=f"{argdoc.OUTPUT}. Defaults to home directory if SOURCE == 'microphone' "
+                             f"or parent directory if SOURCE is a file")
     parser.add_argument("--hf-token", default="true", type=str,
                         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)")
     args = parser.parse_args()
 
     # Resolve pipeline
     pipeline_class = utils.get_pipeline_class(args.pipeline)
-    config: StreamingConfig = pipeline_class.get_config_class().from_dict(vars(args))
-    pipeline: StreamingPipeline = pipeline_class(config)
+    config: PipelineConfig = pipeline_class.get_config_class().from_dict(vars(args))
+    pipeline: Pipeline = pipeline_class(config)
 
     # Manage audio source
     block_size = config.optimal_block_size()
