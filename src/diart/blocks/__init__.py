@@ -14,6 +14,6 @@ from .embedding import (
 )
 from .segmentation import SpeakerSegmentation
 from .diarization import SpeakerDiarization, SpeakerDiarizationConfig
-from .base import StreamingConfig, StreamingPipeline
+from .base import PipelineConfig, Pipeline
 from .utils import Binarize, Resample, AdjustVolume
 from .vad import VoiceActivityDetection, VoiceActivityDetectionConfig

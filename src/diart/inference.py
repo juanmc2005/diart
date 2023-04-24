@@ -53,7 +53,7 @@ class StreamingInference:
     """
     def __init__(
         self,
-        pipeline: blocks.StreamingPipeline,
+        pipeline: blocks.Pipeline,
         source: src.AudioSource,
         batch_size: int = 1,
         do_profile: bool = True,
@@ -289,7 +289,7 @@ class Benchmark:
 
     def run_single(
         self,
-        pipeline: blocks.StreamingPipeline,
+        pipeline: blocks.Pipeline,
         filepath: Path,
         progress_bar: ProgressBar,
     ) -> Annotation:
@@ -374,7 +374,7 @@ class Benchmark:
     def __call__(
         self,
         pipeline_class: type,
-        config: blocks.StreamingConfig,
+        config: blocks.PipelineConfig,
         metric: Optional[BaseMetric] = None,
     ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files.
@@ -437,7 +437,7 @@ class Parallelize:
     def run_single_job(
         self,
         pipeline_class: type,
-        config: blocks.StreamingConfig,
+        config: blocks.PipelineConfig,
         filepath: Path,
         description: Text,
     ) -> Annotation:
@@ -474,7 +474,7 @@ class Parallelize:
     def __call__(
         self,
         pipeline_class: type,
-        config: blocks.StreamingConfig,
+        config: blocks.PipelineConfig,
         metric: Optional[BaseMetric] = None,
     ) -> Union[pd.DataFrame, List[Annotation]]:
         """Run a given pipeline on a set of audio files in parallel.

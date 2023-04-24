@@ -31,7 +31,7 @@ RhoUpdate = HyperParameter("rho_update", low=0, high=1)
 DeltaNew = HyperParameter("delta_new", low=0, high=2)
 
 
-class StreamingConfig:
+class PipelineConfig:
     @property
     def duration(self) -> float:
         raise NotImplementedError
@@ -49,7 +49,7 @@ class StreamingConfig:
         raise NotImplementedError
 
     @staticmethod
-    def from_dict(data: Any) -> 'StreamingConfig':
+    def from_dict(data: Any) -> 'PipelineConfig':
         raise NotImplementedError
 
     def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
@@ -62,7 +62,7 @@ class StreamingConfig:
         return int(np.rint(self.step * self.sample_rate))
 
 
-class StreamingPipeline:
+class Pipeline:
     @staticmethod
     def get_config_class() -> type:
         raise NotImplementedError
@@ -76,7 +76,7 @@ class StreamingPipeline:
         raise NotImplementedError
 
     @property
-    def config(self) -> StreamingConfig:
+    def config(self) -> PipelineConfig:
         raise NotImplementedError
 
     def reset(self):

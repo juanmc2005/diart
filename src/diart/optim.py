@@ -23,7 +23,7 @@ class Optimizer:
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
         hparams: Optional[Sequence[blocks.base.HyperParameter]] = None,
-        base_config: Optional[blocks.StreamingConfig] = None,
+        base_config: Optional[blocks.PipelineConfig] = None,
         do_kickstart_hparams: bool = True,
         metric: Optional[BaseMetric] = None,
         direction: Literal["minimize", "maximize"] = "minimize",
