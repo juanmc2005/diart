@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
 
-from .progress import ProgressBar
 from . import pipelines
+from .progress import ProgressBar
 
 
 class Chronometer:

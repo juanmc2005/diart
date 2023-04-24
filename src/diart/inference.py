@@ -243,7 +243,7 @@ class Benchmark:
             self.reference_path = Path(self.reference_path).expanduser()
             assert self.reference_path.is_dir(), "Reference path must be a directory"
 
-        self.output_path = output_path
+        self.output_path: Optional[Union[Text, Path]] = output_path
         if self.output_path is not None:
             self.output_path: Path = Path(output_path).expanduser()
             self.output_path.mkdir(parents=True, exist_ok=True)
@@ -436,7 +436,7 @@ class Parallelize:
         Parameters
         ----------
         pipeline_class: class
-            Class from the Pipeline hierarchy.
+            Class from the `Pipeline` hierarchy.
             A pipeline from this class will be instantiated.
         config: PipelineConfig
             Pipeline configuration.
