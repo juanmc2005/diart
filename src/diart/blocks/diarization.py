@@ -17,7 +17,7 @@ from .. import models as m
 from .. import utils
 
 
-class SpeakerDiarizationConfig(base.StreamingConfig):
+class SpeakerDiarizationConfig(base.PipelineConfig):
     def __init__(
         self,
         segmentation: Optional[m.SegmentationModel] = None,
@@ -129,7 +129,7 @@ class SpeakerDiarizationConfig(base.StreamingConfig):
         return self._sample_rate
 
 
-class SpeakerDiarization(base.StreamingPipeline):
+class SpeakerDiarization(base.Pipeline):
     def __init__(self, config: Optional[SpeakerDiarizationConfig] = None):
         self._config = SpeakerDiarizationConfig() if config is None else config
 

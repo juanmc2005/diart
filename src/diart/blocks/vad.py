@@ -15,7 +15,7 @@ from .. import models as m
 from .. import utils
 
 
-class VoiceActivityDetectionConfig(base.StreamingConfig):
+class VoiceActivityDetectionConfig(base.PipelineConfig):
     def __init__(
         self,
         segmentation: Optional[m.SegmentationModel] = None,
@@ -96,7 +96,7 @@ class VoiceActivityDetectionConfig(base.StreamingConfig):
         )
 
 
-class VoiceActivityDetection(base.StreamingPipeline):
+class VoiceActivityDetection(base.Pipeline):
     def __init__(self, config: Optional[VoiceActivityDetectionConfig] = None):
         self._config = VoiceActivityDetectionConfig() if config is None else config
 
@@ -135,7 +135,7 @@ class VoiceActivityDetection(base.StreamingPipeline):
         return [base.TauActive]
 
     @property
-    def config(self) -> base.StreamingConfig:
+    def config(self) -> base.PipelineConfig:
         return self._config
 
     def reset(self):
