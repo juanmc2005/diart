@@ -115,11 +115,11 @@ class OnlineSpeakerClustering:
         self.active_centers.add(center)
         return center
 
-    def identify(
+    def identify_old(
         self,
         segmentation: SlidingWindowFeature,
         embeddings: torch.Tensor
-    ) -> SpeakerMap:
+    ) -> SlidingWindowFeature:
         """Identify the centroids to which the input speaker embeddings belong.
 
         Parameters
@@ -145,10 +145,13 @@ class OnlineSpeakerClustering:
                 (spk, self.add_center(embeddings[spk]))
                 for spk in active_speakers
             ]
-            return SpeakerMapBuilder.hard_map(
+            mapping = SpeakerMapBuilder.hard_map(
                 shape=(num_local_speakers, self.max_speakers),
                 assignments=assignments,
                 maximize=False,
+            )
+            return SlidingWindowFeature(
+                mapping.apply(segmentation.data), segmentation.sliding_window
             )
 
         # Obtain a mapping based on distances between embeddings and centers
@@ -203,10 +206,94 @@ class OnlineSpeakerClustering:
                 spk, self.add_center(embeddings[spk])
             )
 
-        return valid_map
+        return SlidingWindowFeature(
+            valid_map.apply(segmentation.data), segmentation.sliding_window
+        )
+
+    def identify(
+        self,
+        segmentation: SlidingWindowFeature,
+        embeddings: torch.Tensor
+    ) -> SlidingWindowFeature:
+        """Identify the centroids to which the input speaker embeddings belong.
+
+        Parameters
+        ----------
+        segmentation: np.ndarray, shape (frames, local_speakers)
+            Matrix of segmentation outputs
+        embeddings: np.ndarray, shape (local_speakers, embedding_dim)
+            Matrix of embeddings
+
+        Returns
+        -------
+            speaker_map: SpeakerMap
+                A mapping from local speakers to global speakers.
+        """
+        embeddings = embeddings.detach().cpu().numpy()
+        active_speakers = np.where(np.max(segmentation.data, axis=0) >= self.tau_active)[0]
+        long_speakers = np.where(np.mean(segmentation.data, axis=0) >= self.rho_update)[0]
+        num_frames, num_local_speakers = segmentation.data.shape
+
+        if self.centers is None:
+            if len(active_speakers) == 0:
+                return SlidingWindowFeature(
+                    np.zeros((num_frames, self.max_speakers)),
+                    segmentation.sliding_window
+                )
+            self.init_centers(embeddings.shape[1])
+            assignments = [
+                (spk, self.add_center(embeddings[spk]))
+                for spk in active_speakers
+            ]
+            mapping = SpeakerMapBuilder.hard_map(
+                shape=(num_local_speakers, self.max_speakers),
+                assignments=assignments,
+                maximize=False,
+            )
+            return SlidingWindowFeature(
+                mapping.apply(segmentation.data), segmentation.sliding_window
+            )
+
+        # Obtain a mapping based on distances between embeddings and centers
+        dist_map = SpeakerMapBuilder.dist(embeddings, self.centers, self.metric)
+        # Remove any assignments containing invalid speakers
+        inactive_speakers = np.array([
+            spk for spk in range(num_local_speakers)
+            if spk not in active_speakers
+        ])
+        dist_map = dist_map.unmap_speakers(inactive_speakers, self.inactive_centers)
+
+        assignments = np.argmin(dist_map.mapping_matrix, axis=1)
+        min_dists = np.min(dist_map.mapping_matrix, axis=1)
+
+        to_update = []
+        permuted = np.zeros((self.max_speakers, num_frames))
+        for local_spk, global_spk in enumerate(assignments):
+            if local_spk not in active_speakers:
+                continue
+            if min_dists[local_spk] == dist_map.objective.invalid_value:
+                continue
+            if min_dists[local_spk] < self.delta_new:
+                # This is considered a returning speaker
+                target_speaker = global_spk
+                if local_spk in long_speakers:
+                    # Speaks enough, use it to update centroid
+                    to_update.append((local_spk, global_spk))
+            else:
+                # This is considered a new speaker, add center
+                target_speaker = self.add_center(embeddings[local_spk])
+            # If many-to-one, make sure not to overwrite activations
+            permuted[target_speaker] = np.maximum(
+                permuted[target_speaker],
+                segmentation.data[:, local_spk]
+            )
+
+        # Update returning speaker centers
+        self.update(to_update, embeddings)
+
+        return SlidingWindowFeature(
+            permuted.transpose(), segmentation.sliding_window
+        )
 
     def __call__(self, segmentation: SlidingWindowFeature, embeddings: torch.Tensor) -> SlidingWindowFeature:
-        return SlidingWindowFeature(
-            self.identify(segmentation, embeddings).apply(segmentation.data),
-            segmentation.sliding_window
-        )
+        return self.identify_old(segmentation, embeddings)

@@ -1,3 +1,4 @@
+from scipy import stats
 from typing import Optional, List
 
 import numpy as np
@@ -65,21 +66,48 @@ class AggregationStrategy:
 class HammingWeightedAverageStrategy(AggregationStrategy):
     """Compute the average weighted by the corresponding Hamming-window aligned to each buffer"""
 
+    # def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+    #     num_frames, num_speakers = buffers[0].data.shape
+    #     hamming, intersection = [], []
+    #     for buffer in buffers:
+    #         # Crop buffer to focus region
+    #         b = buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
+    #         # Crop Hamming window to focus region
+    #         h = np.expand_dims(np.hamming(num_frames), axis=-1)
+    #         h = SlidingWindowFeature(h, buffer.sliding_window)
+    #         h = h.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
+    #         hamming.append(h.data)
+    #         intersection.append(b.data)
+    #     hamming, intersection = np.stack(hamming), np.stack(intersection)
+    #     # Calculate weighted mean
+    #     return np.sum(hamming * intersection, axis=0) / np.sum(hamming, axis=0)
+
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
         num_frames, num_speakers = buffers[0].data.shape
         hamming, intersection = [], []
+        max_speakers = []
         for buffer in buffers:
             # Crop buffer to focus region
             b = buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
+            max_spk = np.argmax(b, axis=-1, keepdims=True)
+            b = np.max(b, axis=-1, keepdims=True)
             # Crop Hamming window to focus region
             h = np.expand_dims(np.hamming(num_frames), axis=-1)
             h = SlidingWindowFeature(h, buffer.sliding_window)
             h = h.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
-            hamming.append(h.data)
-            intersection.append(b.data)
+            hamming.append(h)
+            intersection.append(b)
+            max_speakers.append(max_spk)
         hamming, intersection = np.stack(hamming), np.stack(intersection)
+        max_speakers = np.stack(max_speakers)
+
         # Calculate weighted mean
-        return np.sum(hamming * intersection, axis=0) / np.sum(hamming, axis=0)
+        average = np.sum(hamming * intersection, axis=0) / np.sum(hamming, axis=0)
+        votes = stats.mode(max_speakers, axis=0)[0][0]
+        result = np.zeros((average.shape[0], num_speakers))
+        np.put_along_axis(result, votes, average, axis=-1)
+
+        return result
 
 
 class AverageStrategy(AggregationStrategy):
