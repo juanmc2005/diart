@@ -1,13 +1,13 @@
 import base64
 import time
-from typing import Optional, Text, Union, Any, Dict
+from typing import Optional, Text, Union, Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
 
+from . import pipelines
 from .progress import ProgressBar
-from . import blocks
 
 
 class Chronometer:
@@ -82,7 +82,7 @@ def repeat_label(label: Text):
 
 
 def get_pipeline_class(class_name: Text) -> type:
-    pipeline_class = getattr(blocks, class_name, None)
+    pipeline_class = getattr(pipelines, class_name, None)
     msg = f"Pipeline '{class_name}' doesn't exist"
     assert pipeline_class is not None, msg
     return pipeline_class
@@ -90,6 +90,14 @@ def get_pipeline_class(class_name: Text) -> type:
 
 def get_padding_right(latency: float, step: float) -> float:
     return latency - step
+
+
+def serialize_prediction(value: Union[Tuple, Annotation, Text]) -> Text:
+    if isinstance(value, tuple):
+        value = value[0]
+    if isinstance(value, Annotation):
+        return value.to_rttm()
+    return value
 
 
 def visualize_feature(duration: Optional[float] = None):

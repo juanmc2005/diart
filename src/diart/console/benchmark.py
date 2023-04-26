@@ -12,12 +12,20 @@ def run():
     parser.add_argument("root", type=Path, help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)")
     parser.add_argument("--pipeline", default="SpeakerDiarization", type=str,
                         help="Class of the pipeline to optimize. Defaults to 'SpeakerDiarization'")
+    parser.add_argument("--whisper", default="small", type=str,
+                        help=f"Whisper model for transcription pipeline. Defaults to 'small'")
+    parser.add_argument("--language", default="en", type=str,
+                        help=f"Transcribe in this language. Defaults to 'en' (English)")
     parser.add_argument("--segmentation", default="pyannote/segmentation", type=str,
                         help=f"{argdoc.SEGMENTATION}. Defaults to pyannote/segmentation")
     parser.add_argument("--embedding", default="pyannote/embedding", type=str,
                         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
     parser.add_argument("--reference", type=Path,
                         help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files")
+    parser.add_argument("--duration", default=5, type=float,
+                        help=f"Duration of the sliding window (in seconds). Default value depends on the pipeline")
+    parser.add_argument("--asr-duration", default=3, type=float,
+                        help=f"Duration of the transcription window (in seconds). Defaults to 3")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")

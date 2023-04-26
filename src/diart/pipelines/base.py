@@ -1,34 +1,14 @@
-from typing import Any, Tuple, Sequence, Text
-from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Tuple, Sequence, Text, List, Union
 
 import numpy as np
 from pyannote.core import SlidingWindowFeature
-from pyannote.metrics.base import BaseMetric
+from rx.core import Observer
 
+from .hparams import HyperParameter
 from .. import utils
 from ..audio import FilePath, AudioLoader
-
-
-@dataclass
-class HyperParameter:
-    name: Text
-    low: float
-    high: float
-
-    @staticmethod
-    def from_name(name: Text) -> 'HyperParameter':
-        if name == "tau_active":
-            return TauActive
-        if name == "rho_update":
-            return RhoUpdate
-        if name == "delta_new":
-            return DeltaNew
-        raise ValueError(f"Hyper-parameter '{name}' not recognized")
-
-
-TauActive = HyperParameter("tau_active", low=0, high=1)
-RhoUpdate = HyperParameter("rho_update", low=0, high=1)
-DeltaNew = HyperParameter("delta_new", low=0, high=2)
+from ..metrics import Metric
 
 
 class PipelineConfig:
@@ -68,7 +48,7 @@ class Pipeline:
         raise NotImplementedError
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
+    def suggest_metric() -> Metric:
         raise NotImplementedError
 
     @staticmethod
@@ -85,8 +65,20 @@ class Pipeline:
     def set_timestamp_shift(self, shift: float):
         raise NotImplementedError
 
+    def join_predictions(self, predictions: List[Any]) -> Any:
+        raise NotImplementedError
+
+    def write_prediction(self, uri: Text, prediction: Any, dir_path: Union[Text, Path]):
+        raise NotImplementedError
+
+    def suggest_display(self) -> Observer:
+        raise NotImplementedError
+
+    def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        raise NotImplementedError
+
     def __call__(
         self,
-        waveforms: Sequence[SlidingWindowFeature]
+        waveforms: Sequence[SlidingWindowFeature],
     ) -> Sequence[Tuple[Any, SlidingWindowFeature]]:
         raise NotImplementedError

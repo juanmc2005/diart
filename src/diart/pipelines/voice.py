@@ -1,18 +1,19 @@
-from typing import Any, Optional, Union, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Optional, Union, Sequence, Tuple, Text, List
 
 import numpy as np
 import torch
 from pyannote.core import Annotation, Timeline, SlidingWindowFeature, SlidingWindow, Segment
-from pyannote.metrics.base import BaseMetric
-from pyannote.metrics.detection import DetectionErrorRate
+from rx.core import Observer
 from typing_extensions import Literal
 
-from .aggregation import DelayedAggregation
 from . import base
-from .segmentation import SpeakerSegmentation
-from .utils import Binarize
+from .hparams import HyperParameter, TauActive
+from .. import blocks
 from .. import models as m
+from .. import sinks
 from .. import utils
+from ..metrics import Metric, DetectionErrorRate
 
 
 class VoiceActivityDetectionConfig(base.PipelineConfig):
@@ -22,7 +23,8 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         duration: Optional[float] = None,
         step: float = 0.5,
         latency: Optional[Union[float, Literal["max", "min"]]] = None,
-        tau_active: float = 0.6,
+        tau_active: float = 0.5,
+        merge_collar: float = 0.05,
         device: Optional[torch.device] = None,
         **kwargs,
     ):
@@ -43,6 +45,7 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
             self._latency = self._duration
 
         self.tau_active = tau_active
+        self.merge_collar = merge_collar
         self.device = device
         if self.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,7 +87,7 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         # Tau active and its alias
         tau = utils.get(data, "tau_active", None)
         if tau is None:
-            tau = utils.get(data, "tau", 0.6)
+            tau = utils.get(data, "tau", 0.5)
 
         return VoiceActivityDetectionConfig(
             segmentation=segmentation,
@@ -92,6 +95,7 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
             step=utils.get(data, "step", 0.5),
             latency=utils.get(data, "latency", None),
             tau_active=tau,
+            merge_collar=utils.get(data, "merge_collar", 0.05),
             device=device,
         )
 
@@ -103,20 +107,20 @@ class VoiceActivityDetection(base.Pipeline):
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
         assert self._config.step <= self._config.latency <= self._config.duration, msg
 
-        self.segmentation = SpeakerSegmentation(self._config.segmentation, self._config.device)
-        self.pred_aggregation = DelayedAggregation(
+        self.segmentation = blocks.SpeakerSegmentation(self._config.segmentation, self._config.device)
+        self.pred_aggregation = blocks.DelayedAggregation(
             self._config.step,
             self._config.latency,
             strategy="hamming",
             cropping_mode="loose",
         )
-        self.audio_aggregation = DelayedAggregation(
+        self.audio_aggregation = blocks.DelayedAggregation(
             self._config.step,
             self._config.latency,
             strategy="first",
             cropping_mode="center",
         )
-        self.binarize = Binarize(self._config.tau_active)
+        self.binarize = blocks.Binarize(self._config.tau_active)
 
         # Internal state, handle with care
         self.timestamp_shift = 0
@@ -127,15 +131,15 @@ class VoiceActivityDetection(base.Pipeline):
         return VoiceActivityDetectionConfig
 
     @staticmethod
-    def suggest_metric() -> BaseMetric:
+    def suggest_metric() -> Metric:
         return DetectionErrorRate(collar=0, skip_overlap=False)
 
     @staticmethod
-    def hyper_parameters() -> Sequence[base.HyperParameter]:
-        return [base.TauActive]
+    def hyper_parameters() -> Sequence[HyperParameter]:
+        return [TauActive]
 
     @property
-    def config(self) -> base.PipelineConfig:
+    def config(self) -> VoiceActivityDetectionConfig:
         return self._config
 
     def reset(self):
@@ -144,6 +148,27 @@ class VoiceActivityDetection(base.Pipeline):
 
     def set_timestamp_shift(self, shift: float):
         self.timestamp_shift = shift
+
+    def join_predictions(self, predictions: List[Annotation]) -> Annotation:
+        result = Annotation(uri=predictions[0].uri)
+        for pred in predictions:
+            result.update(pred)
+        return result.support(self.config.merge_collar)
+
+    def write_prediction(self, uri: Text, prediction: Annotation, dir_path: Union[Text, Path]):
+        with open(Path(dir_path) / f"{uri}.rttm", "w") as out_file:
+            prediction.write_rttm(out_file)
+
+    def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
+        return sinks.RTTMWriter(uri, Path(output_dir) / f"{uri}.rttm")
+
+    def suggest_display(self) -> Observer:
+        return sinks.StreamingPlot(
+            self.config.duration,
+            self.config.step,
+            self.config.latency,
+            self.config.sample_rate
+        )
 
     def __call__(
         self,
