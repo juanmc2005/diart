@@ -1,6 +1,6 @@
 import base64
 import time
-from typing import Optional, Text, Union, Any, Dict
+from typing import Optional, Text, Union, Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -92,7 +92,9 @@ def get_padding_right(latency: float, step: float) -> float:
     return latency - step
 
 
-def serialize_prediction(value: Union[Annotation, Text]) -> Text:
+def serialize_prediction(value: Union[Tuple, Annotation, Text]) -> Text:
+    if isinstance(value, tuple):
+        value = value[0]
     if isinstance(value, Annotation):
         return value.to_rttm()
     return value

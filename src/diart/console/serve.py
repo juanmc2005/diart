@@ -24,6 +24,8 @@ def run():
                         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding")
     parser.add_argument("--duration", type=float,
                         help=f"Duration of the sliding window (in seconds). Default value depends on the pipeline")
+    parser.add_argument("--asr-duration", default=3, type=float,
+                        help=f"Duration of the transcription window (in seconds). Defaults to 3")
     parser.add_argument("--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5")
     parser.add_argument("--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5")
     parser.add_argument("--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5")
@@ -61,7 +63,7 @@ def run():
         inference.attach_observers(pipeline.suggest_writer(audio_source.uri, args.output))
 
     # Send back responses as text
-    inference.attach_hooks(lambda pred_wav: audio_source.send(utils.serialize_prediction(pred_wav[0])))
+    inference.attach_hooks(lambda result: audio_source.send(utils.serialize_prediction(result)))
 
     # Run server and pipeline
     inference()

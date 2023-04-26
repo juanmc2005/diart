@@ -209,13 +209,8 @@ class SpeakerAwareTranscription(Pipeline):
     def suggest_writer(self, uri: Text, output_dir: Union[Text, Path]) -> Observer:
         return sinks.TextWriter(Path(output_dir) / f"{uri}.txt")
 
-    def __call__(
-        self,
-        waveforms: Sequence[SlidingWindowFeature],
-    ) -> Sequence[Text]:
-        # Compute diarization output
-        diarization_output = self.diarization(waveforms)
-
+    def _update_buffers(self, diarization_output: Sequence[Tuple[Annotation, SlidingWindowFeature]]):
+        # Separate diarization and aligned audio chunks
         first_chunk = diarization_output[0][1]
         output_start = first_chunk.extent.start
         resolution = first_chunk.sliding_window.duration
@@ -239,78 +234,109 @@ class SpeakerAwareTranscription(Pipeline):
             chunk_data.insert(0, self.audio_buffer.data)
             self.audio_buffer = SlidingWindowFeature(
                 np.concatenate(chunk_data, axis=0),
-                self.audio_buffer.sliding_window
+                self.audio_buffer.sliding_window,
             )
 
-        # Extract audio to transcribe from the buffer
-        asr_duration = self.config.asr_duration
+    def _extract_asr_inputs(self) -> Tuple[List[SlidingWindowFeature], List[Annotation]]:
+        chunk_duration = self.config.asr_duration
         buffer_duration = self.audio_buffer.extent.duration
-        asr_batch_size = int(buffer_duration / asr_duration)
-
-        if asr_batch_size == 0:
-            return ["" for _ in waveforms]
-
+        batch_size = int(buffer_duration / chunk_duration)
         buffer_start = self.audio_buffer.extent.start
+        resolution = self.audio_buffer.sliding_window.duration
+
+        # Extract audio chunks with their diarization
         asr_inputs, input_dia, last_end_time = [], [], None
-        for i in range(asr_batch_size):
-            start = buffer_start + i * asr_duration
-            last_end_time = start + asr_duration
+        for i in range(batch_size):
+            start = buffer_start + i * chunk_duration
+            last_end_time = start + chunk_duration
             region = Segment(start, last_end_time)
-            chunk = self.audio_buffer.crop(region, fixed=asr_duration)
+            chunk = self.audio_buffer.crop(region, fixed=chunk_duration)
             window = SlidingWindow(resolution, resolution, start)
             asr_inputs.append(SlidingWindowFeature(chunk, window))
             input_dia.append(self.dia_buffer.crop(region))
 
-        # Create ASR batch, shape (batch, samples, channels)
-        batch = torch.stack([torch.from_numpy(w.data) for w in asr_inputs])
+        # Remove extracted chunks from buffers
+        if asr_inputs:
+            new_buffer_bounds = Segment(last_end_time, self.audio_buffer.extent.end)
+            new_buffer = self.audio_buffer.crop(new_buffer_bounds, fixed=new_buffer_bounds.duration)
+            window = SlidingWindow(resolution, resolution, last_end_time)
+            self.audio_buffer = SlidingWindowFeature(new_buffer, window)
+            self.dia_buffer = self.dia_buffer.extrude(Segment(0, last_end_time))
 
-        # Remove transcribed chunks from buffer
-        new_buffer_bounds = Segment(last_end_time, self.audio_buffer.extent.end)
-        new_buffer = self.audio_buffer.crop(new_buffer_bounds, fixed=new_buffer_bounds.duration)
-        window = SlidingWindow(resolution, resolution, last_end_time)
-        self.audio_buffer = SlidingWindowFeature(new_buffer, window)
-        self.dia_buffer = self.dia_buffer.extrude(Segment(0, last_end_time))
+        return asr_inputs, input_dia
 
-        # Filter out non-speech chunks
-        has_voice = torch.tensor([dia.get_timeline().duration() > 0 for dia in input_dia])
-        has_voice = torch.where(has_voice)[0]
-
-        # Return empty list if no speech in the entire batch
-        if len(has_voice) == 0:
-            return ["" for _ in waveforms]
-
-        # Transcribe batch
-        outputs = self.asr(batch[has_voice])
-
-        # Align transcription with diarization to determine speakers
-        full_transcription = []
+    def _get_speaker_transcriptions(
+        self,
+        input_diarization: List[Annotation],
+        asr_inputs: List[SlidingWindowFeature],
+        asr_outputs: List[m.TranscriptionResult],
+    ) -> Text:
+        transcriptions = []
         for i, waveform in enumerate(asr_inputs):
-            if i not in has_voice:
+            if waveform is None:
                 continue
             buffer_shift = waveform.sliding_window.start
-            for text, timestamp in zip(outputs[i].chunks, outputs[i].timestamps):
+            for text, timestamp in zip(asr_outputs[i].chunks, asr_outputs[i].timestamps):
                 if not text.strip():
                     continue
                 target_region = Segment(
                     buffer_shift + timestamp.start,
                     buffer_shift + timestamp.end,
                 )
-                dia = input_dia[i].crop(target_region)
+                dia = input_diarization[i].crop(target_region)
                 speakers = dia.labels()
                 num_speakers = len(speakers)
                 if num_speakers == 0:
                     # Include transcription but don't assign a speaker
-                    full_transcription.append(text)
+                    transcriptions.append(text)
                 elif num_speakers == 1:
                     # Typical case, annotate text with the only speaker
-                    full_transcription.append(f"[{speakers[0]}]{text}")
+                    transcriptions.append(f"[{speakers[0]}]{text}")
                 else:
                     # Multiple speakers for the same text block, choose the most active one
                     max_spk = np.argmax([dia.label_duration(spk) for spk in speakers])
-                    full_transcription.append(f"[{speakers[max_spk]}]{text}")
+                    transcriptions.append(f"[{speakers[max_spk]}]{text}")
+        return " ".join(transcriptions).strip()
 
+    def __call__(
+        self,
+        waveforms: Sequence[SlidingWindowFeature],
+    ) -> Sequence[Text]:
+        # Compute diarization output
+        diarization_output = self.diarization(waveforms)
+        self._update_buffers(diarization_output)
+
+        # Extract audio to transcribe from the buffer
+        asr_inputs, asr_input_dia = self._extract_asr_inputs()
+        if not asr_inputs:
+            return ["" for _ in waveforms]
+
+        # Detect non-speech chunks
+        has_voice = torch.tensor([dia.get_timeline().duration() > 0 for dia in asr_input_dia])
+        has_voice = torch.where(has_voice)[0]
+        # Return empty strings if no speech in the entire batch
+        if len(has_voice) == 0:
+            return ["" for _ in waveforms]
+
+        # Create ASR batch, shape (batch, samples, channels)
+        batch = torch.stack([torch.from_numpy(w.data) for w in asr_inputs])
+
+        # Transcribe batch
+        asr_outputs = self.asr(batch[has_voice])
+        asr_outputs = [
+            asr_outputs[i] if i in has_voice else None
+            for i in range(batch.shape[0])
+        ]
+
+        # Attach speaker labels to ASR output and concatenate
+        transcription = self._get_speaker_transcriptions(
+            asr_input_dia, asr_inputs, asr_outputs
+        )
+
+        # Fill output sequence with empty strings
         batch_size = len(waveforms)
-        output = [" ".join(full_transcription).strip()]
+        output = [transcription]
         if batch_size > 1:
             output += [""] * (batch_size - 1)
+
         return output
