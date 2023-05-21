@@ -113,7 +113,7 @@ from diart.inference import StreamingInference
 from diart.sinks import RTTMWriter
 
 pipeline = SpeakerDiarization()
-mic = MicrophoneAudioSource(pipeline.config.sample_rate)
+mic = MicrophoneAudioSource()
 inference = StreamingInference(pipeline, mic, do_plot=True)
 inference.attach_observers(RTTMWriter(mic.uri, "/output/file.rttm"))
 prediction = inference()
@@ -167,7 +167,7 @@ config = SpeakerDiarizationConfig(
     embedding=MyEmbeddingModel()
 )
 pipeline = SpeakerDiarization(config)
-mic = MicrophoneAudioSource(config.sample_rate)
+mic = MicrophoneAudioSource()
 inference = StreamingInference(pipeline, mic)
 prediction = inference()
 ```
@@ -241,12 +241,11 @@ from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 
 segmentation = SpeakerSegmentation.from_pyannote("pyannote/segmentation")
 embedding = OverlapAwareSpeakerEmbedding.from_pyannote("pyannote/embedding")
-sample_rate = segmentation.model.sample_rate
-mic = MicrophoneAudioSource(sample_rate)
+mic = MicrophoneAudioSource()
 
 stream = mic.stream.pipe(
     # Reformat stream to 5s duration and 500ms shift
-    dops.rearrange_audio_stream(sample_rate=sample_rate),
+    dops.rearrange_audio_stream(sample_rate=segmentation.model.sample_rate),
     ops.map(lambda wav: (wav, segmentation(wav))),
     ops.starmap(embedding)
 ).subscribe(on_next=lambda emb: print(emb.shape))

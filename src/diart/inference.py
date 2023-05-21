@@ -97,18 +97,22 @@ class StreamingInference:
 
         self.stream = self.source.stream
 
+        # Rearrange stream to form sliding windows
+        self.stream = self.stream.pipe(
+            dops.rearrange_audio_stream(chunk_duration, step_duration, source.sample_rate),
+        )
+
         # Dynamic resampling if the audio source isn't compatible
         if sample_rate != self.source.sample_rate:
             msg = f"Audio source has sample rate {self.source.sample_rate}, " \
                   f"but pipeline's is {sample_rate}. Will resample."
             logging.warning(msg)
             self.stream = self.stream.pipe(
-                ops.map(blocks.Resample(self.source.sample_rate, sample_rate))
+                ops.map(blocks.Resample(self.source.sample_rate, sample_rate, self.pipeline.config.device))
             )
 
-        # Add rx operators to manage the inputs and outputs of the pipeline
+        # Form batches
         self.stream = self.stream.pipe(
-            dops.rearrange_audio_stream(chunk_duration, step_duration, sample_rate),
             ops.buffer_with_count(count=self.batch_size),
         )
 

@@ -51,7 +51,7 @@ def run():
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)
         device = int(source_components[1]) if len(source_components) > 1 else None
-        audio_source = src.MicrophoneAudioSource(config.sample_rate, block_size, device)
+        audio_source = src.MicrophoneAudioSource(config.step, device)
 
     # Run online inference
     inference = StreamingInference(

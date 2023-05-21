@@ -13,13 +13,12 @@ from websocket import WebSocket
 
 def send_audio(ws: WebSocket, source: Text, step: float, sample_rate: int):
     # Create audio source
-    block_size = int(np.rint(step * sample_rate))
     source_components = source.split(":")
     if source_components[0] != "microphone":
         audio_source = src.FileAudioSource(source, sample_rate)
     else:
         device = int(source_components[1]) if len(source_components) > 1 else None
-        audio_source = src.MicrophoneAudioSource(sample_rate, block_size, device)
+        audio_source = src.MicrophoneAudioSource(step, device)
 
     # Encode audio, then send through websocket
     audio_source.stream.pipe(

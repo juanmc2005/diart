@@ -134,11 +134,9 @@ class MicrophoneAudioSource(AudioSource):
 
     Parameters
     ----------
-    sample_rate: int
-        Sample rate for the emitted audio chunks.
-    block_size: int
-        Number of samples per chunk emitted.
-        Defaults to 1000.
+    block_duration: int
+        Duration of each chunk emitted in seconds.
+        Defaults to 0.5 seconds.
     device: int | str | (int, str) | None
         Device identifier compatible for the sounddevice stream.
         If None, use the default device.
@@ -147,15 +145,27 @@ class MicrophoneAudioSource(AudioSource):
 
     def __init__(
         self,
-        sample_rate: int,
-        block_size: int = 1000,
+        block_duration: float = 0.5,
         device: Optional[Union[int, Text, Tuple[int, Text]]] = None,
     ):
-        super().__init__("live_recording", sample_rate)
-        self.block_size = block_size
+        # Use the lowest supported sample rate
+        sample_rates = [16000, 32000, 44100, 48000]
+        best_sample_rate = None
+        for sr in sample_rates:
+            try:
+                sd.check_input_settings(device=device, samplerate=sr)
+            except Exception:
+                pass
+            else:
+                best_sample_rate = sr
+                break
+        super().__init__(f"input_device:{device}", best_sample_rate)
+
+        # Determine block size in samples and create input stream
+        self.block_size = int(np.rint(block_duration * self.sample_rate))
         self._mic_stream = sd.InputStream(
             channels=1,
-            samplerate=sample_rate,
+            samplerate=self.sample_rate,
             latency=0,
             blocksize=self.block_size,
             callback=self._read_callback,
