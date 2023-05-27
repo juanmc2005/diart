@@ -40,13 +40,12 @@ def run():
     pipeline = pipeline_class(config)
 
     # Manage audio source
-    block_size = config.optimal_block_size()
     source_components = args.source.split(":")
     if source_components[0] != "microphone":
         args.source = Path(args.source).expanduser()
         args.output = args.source.parent if args.output is None else Path(args.output)
         padding = config.get_file_padding(args.source)
-        audio_source = src.FileAudioSource(args.source, config.sample_rate, padding, block_size)
+        audio_source = src.FileAudioSource(args.source, config.sample_rate, padding, config.step)
         pipeline.set_timestamp_shift(-padding[0])
     else:
         args.output = Path("~/").expanduser() if args.output is None else Path(args.output)

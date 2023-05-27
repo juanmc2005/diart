@@ -15,7 +15,7 @@ def send_audio(ws: WebSocket, source: Text, step: float, sample_rate: int):
     # Create audio source
     source_components = source.split(":")
     if source_components[0] != "microphone":
-        audio_source = src.FileAudioSource(source, sample_rate)
+        audio_source = src.FileAudioSource(source, sample_rate, block_duration=step)
     else:
         device = int(source_components[1]) if len(source_components) > 1 else None
         audio_source = src.MicrophoneAudioSource(step, device)

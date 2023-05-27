@@ -320,7 +320,7 @@ class Benchmark:
             filepath,
             pipeline.config.sample_rate,
             padding,
-            pipeline.config.optimal_block_size(),
+            pipeline.config.step,
         )
         pipeline.set_timestamp_shift(-padding[0])
         inference = StreamingInference(

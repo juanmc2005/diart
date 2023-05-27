@@ -58,23 +58,23 @@ class FileAudioSource(AudioSource):
     padding: (float, float)
         Left and right padding to add to the file (in seconds).
         Defaults to (0, 0).
-    block_size: int
-        Number of samples per chunk emitted.
-        Defaults to 1000.
+    block_duration: int
+        Duration of each emitted chunk in seconds.
+        Defaults to 0.5 seconds.
     """
     def __init__(
         self,
         file: FilePath,
         sample_rate: int,
         padding: Tuple[float, float] = (0, 0),
-        block_size: int = 1000,
+        block_duration: float = 0.5,
     ):
         super().__init__(Path(file).stem, sample_rate)
         self.loader = AudioLoader(self.sample_rate, mono=True)
         self._duration = self.loader.get_duration(file)
         self.file = file
         self.resolution = 1 / self.sample_rate
-        self.block_size = block_size
+        self.block_size = int(np.rint(block_duration * self.sample_rate))
         self.padding_start, self.padding_end = padding
         self.is_closed = False
 
@@ -135,7 +135,7 @@ class MicrophoneAudioSource(AudioSource):
     Parameters
     ----------
     block_duration: int
-        Duration of each chunk emitted in seconds.
+        Duration of each emitted chunk in seconds.
         Defaults to 0.5 seconds.
     device: int | str | (int, str) | None
         Device identifier compatible for the sounddevice stream.
@@ -271,10 +271,10 @@ class TorchStreamAudioSource(AudioSource):
         sample_rate: int,
         streamer: StreamReader,
         stream_index: Optional[int] = None,
-        block_size: int = 1000,
+        block_duration: float = 0.5,
     ):
         super().__init__(uri, sample_rate)
-        self.block_size = block_size
+        self.block_size = int(np.rint(block_duration * self.sample_rate))
         self._streamer = streamer
         self._streamer.add_basic_audio_stream(
             frames_per_chunk=self.block_size,
