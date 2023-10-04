@@ -1,4 +1,5 @@
 from typing import Any, Optional, Union, Tuple
+from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
@@ -11,24 +12,29 @@ from ..audio import FilePath, AudioLoader
 
 class BasePipelineConfig:
     @property
+    @abstractmethod
     def duration(self) -> float:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def step(self) -> float:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def latency(self) -> float:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def sample_rate(self) -> int:
-        raise NotImplementedError
+        pass
 
     @staticmethod
+    @abstractmethod
     def from_dict(data: Any) -> 'BasePipelineConfig':
-        raise NotImplementedError
+        pass
 
     def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
         file_duration = AudioLoader(self.sample_rate, mono=True).get_duration(filepath)

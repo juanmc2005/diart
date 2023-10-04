@@ -1,6 +1,7 @@
 from pathlib import Path
 from queue import SimpleQueue
 from typing import Text, Optional, AnyStr, Dict, Any, Union, Tuple
+from abc import ABC, abstractmethod
 
 import numpy as np
 import sounddevice as sd
@@ -14,7 +15,7 @@ from websocket_server import WebsocketServer
 from .audio import FilePath, AudioLoader
 
 
-class AudioSource:
+class AudioSource(ABC):
     """Represents a source of audio that can start streaming via the `stream` property.
 
     Parameters
@@ -34,13 +35,15 @@ class AudioSource:
         """The duration of the stream if known. Defaults to None (unknown duration)."""
         return None
 
+    @abstractmethod
     def read(self):
         """Start reading the source and yielding samples through the stream."""
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def close(self):
         """Stop reading the source and close all open streams."""
-        raise NotImplementedError
+        pass
 
 
 class FileAudioSource(AudioSource):

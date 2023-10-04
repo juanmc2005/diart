@@ -1,4 +1,5 @@
 from typing import Optional, Tuple, Sequence
+from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
@@ -12,26 +13,31 @@ from .utils import Binarize
 from .config import BasePipelineConfig, PipelineConfig
 
 
-class BasePipeline:
+class BasePipeline(ABC):
     @staticmethod
+    @abstractmethod
     def get_config_class() -> type:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def config(self) -> BasePipelineConfig:
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def reset(self):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def set_timestamp_shift(self, shift: float):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature]
     ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
-        raise NotImplementedError
+        pass
 
 
 class OnlineSpeakerDiarization(BasePipeline):

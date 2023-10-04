@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Callable, Iterable, List, Optional, Text, Tuple, Union, Dict
+from abc import ABC, abstractmethod
 
 import numpy as np
 from pyannote.core.utils.distance import cdist
@@ -51,16 +52,19 @@ class MappingMatrixObjective:
         return -1e10 if self.maximize else 1e10
 
     @property
+    @abstractmethod
     def maximize(self) -> bool:
-        raise NotImplementedError()
+        pass
 
     @property
+    @abstractmethod
     def best_possible_value(self) -> float:
-        raise NotImplementedError()
+        pass
 
     @property
+    @abstractmethod
     def best_value_fn(self) -> Callable:
-        raise NotImplementedError()
+        pass
 
 
 class MinimizationObjective(MappingMatrixObjective):

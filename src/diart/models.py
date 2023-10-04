@@ -1,4 +1,5 @@
 from typing import Optional, Text, Union, Callable
+from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
@@ -20,7 +21,7 @@ class PyannoteLoader:
         return pyannote_loader.get_model(self.model_info, self.hf_token)
 
 
-class LazyModel(nn.Module):
+class LazyModel(nn.Module, ABC):
     def __init__(self, loader: Callable[[], nn.Module]):
         super().__init__()
         self.get_model = loader
@@ -69,13 +70,16 @@ class SegmentationModel(LazyModel):
         return PyannoteSegmentationModel(model, use_hf_token)
 
     @property
+    @abstractmethod
     def sample_rate(self) -> int:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def duration(self) -> float:
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the segmentation model.
@@ -88,7 +92,7 @@ class SegmentationModel(LazyModel):
         -------
         speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
         """
-        raise NotImplementedError
+        pass
 
 
 class PyannoteSegmentationModel(SegmentationModel):
@@ -132,6 +136,7 @@ class EmbeddingModel(LazyModel):
         assert _has_pyannote, "No pyannote.audio installation found"
         return PyannoteEmbeddingModel(model, use_hf_token)
 
+    @abstractmethod
     def forward(
         self,
         waveform: torch.Tensor,
@@ -150,7 +155,7 @@ class EmbeddingModel(LazyModel):
         -------
         speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
         """
-        raise NotImplementedError
+        pass
 
 
 class PyannoteEmbeddingModel(EmbeddingModel):

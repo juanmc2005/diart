@@ -1,11 +1,12 @@
 from typing import Optional, List
+from abc import ABC, abstractmethod
 
 import numpy as np
 from pyannote.core import Segment, SlidingWindow, SlidingWindowFeature
 from typing_extensions import Literal
 
 
-class AggregationStrategy:
+class AggregationStrategy(ABC):
     """Abstract class representing a strategy to aggregate overlapping buffers
 
     Parameters
@@ -58,8 +59,9 @@ class AggregationStrategy:
         )
         return SlidingWindowFeature(aggregation, resolution)
 
+    @abstractmethod
     def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
-        raise NotImplementedError
+        pass
 
 
 class HammingWeightedAverageStrategy(AggregationStrategy):
