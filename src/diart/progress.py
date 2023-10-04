@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Optional, Text
 
 import rich
@@ -5,32 +6,40 @@ from rich.progress import Progress, TaskID
 from tqdm import tqdm
 
 
-class ProgressBar:
+class ProgressBar(ABC):
+    @abstractmethod
     def create(self, total: int, description: Optional[Text] = None, unit: Text = "it", **kwargs):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def start(self):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def update(self, n: int = 1):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def write(self, text: Text):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def stop(self):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def close(self):
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def default_description(self) -> Text:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def initial_description(self) -> Optional[Text]:
-        raise NotImplementedError
+        pass
 
     def resolve_description(self, new_description: Optional[Text] = None) -> Text:
         if self.initial_description is None:

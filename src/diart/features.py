@@ -1,4 +1,5 @@
 from typing import Union, Optional
+from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
@@ -7,15 +8,18 @@ from pyannote.core import SlidingWindow, SlidingWindowFeature
 TemporalFeatures = Union[SlidingWindowFeature, np.ndarray, torch.Tensor]
 
 
-class TemporalFeatureFormatterState:
+class TemporalFeatureFormatterState(ABC):
     """
     Represents the recorded type of a temporal feature formatter.
     Its job is to transform temporal features into tensors and
     recover the original format on other features.
     """
-    def to_tensor(self, features: TemporalFeatures) -> torch.Tensor:
-        raise NotImplementedError
 
+    @abstractmethod
+    def to_tensor(self, features: TemporalFeatures) -> torch.Tensor:
+        pass
+
+    @abstractmethod
     def to_internal_type(self, features: torch.Tensor) -> TemporalFeatures:
         """
         Cast `features` to the representing type and remove batch dimension if required.
@@ -28,7 +32,7 @@ class TemporalFeatureFormatterState:
         -------
         new_features: SlidingWindowFeature or numpy.ndarray or torch.Tensor, shape (batch, frames, dim)
         """
-        raise NotImplementedError
+        pass
 
 
 class SlidingWindowFeatureFormatterState(TemporalFeatureFormatterState):

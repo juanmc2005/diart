@@ -7,8 +7,8 @@ from pyannote.metrics.base import BaseMetric
 from pyannote.metrics.diarization import DiarizationErrorRate
 from typing_extensions import Literal
 
-from .aggregation import DelayedAggregation
 from . import base
+from .aggregation import DelayedAggregation
 from .clustering import OnlineSpeakerClustering
 from .embedding import OverlapAwareSpeakerEmbedding
 from .segmentation import SpeakerSegmentation
