@@ -64,17 +64,11 @@
 1) Create environment:
 
 ```shell
-conda create -n diart python=3.8
+conda env create -f diart/environment.yml
 conda activate diart
 ```
 
-2) Install audio libraries:
-
-```shell
-conda install portaudio pysoundfile ffmpeg -c conda-forge
-```
-
-3) Install diart:
+2) Install the package:
 ```shell
 pip install diart
 ```
