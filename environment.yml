@@ -1,0 +1,12 @@
+name: diart
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - portaudio=19.6.*
+  - pysoundfile=0.12.*
+  - ffmpeg[version='<4.4']
+  - pip
+  - pip:
+    - .
