@@ -1,5 +1,6 @@
 from typing import Any, Tuple, Sequence, Text
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 import numpy as np
 from pyannote.core import SlidingWindowFeature
@@ -31,26 +32,31 @@ RhoUpdate = HyperParameter("rho_update", low=0, high=1)
 DeltaNew = HyperParameter("delta_new", low=0, high=2)
 
 
-class PipelineConfig:
+class PipelineConfig(ABC):
     @property
+    @abstractmethod
     def duration(self) -> float:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def step(self) -> float:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def latency(self) -> float:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def sample_rate(self) -> int:
-        raise NotImplementedError
+        pass
 
     @staticmethod
+    @abstractmethod
     def from_dict(data: Any) -> 'PipelineConfig':
-        raise NotImplementedError
+        pass
 
     def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
         file_duration = AudioLoader(self.sample_rate, mono=True).get_duration(filepath)
@@ -62,31 +68,38 @@ class PipelineConfig:
         return int(np.rint(self.step * self.sample_rate))
 
 
-class Pipeline:
+class Pipeline(ABC):
     @staticmethod
+    @abstractmethod
     def get_config_class() -> type:
-        raise NotImplementedError
+        pass
 
     @staticmethod
+    @abstractmethod
     def suggest_metric() -> BaseMetric:
-        raise NotImplementedError
+        pass
 
     @staticmethod
+    @abstractmethod
     def hyper_parameters() -> Sequence[HyperParameter]:
-        raise NotImplementedError
+        pass
 
     @property
+    @abstractmethod
     def config(self) -> PipelineConfig:
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def reset(self):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def set_timestamp_shift(self, shift: float):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature]
     ) -> Sequence[Tuple[Any, SlidingWindowFeature]]:
-        raise NotImplementedError
+        pass
