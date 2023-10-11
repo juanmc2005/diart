@@ -307,3 +307,16 @@ class TorchStreamAudioSource(AudioSource):
 
     def close(self):
         self.is_closed = True
+
+
+class AppleDeviceAudioSource(TorchStreamAudioSource):
+    def __init__(
+        self,
+        sample_rate: int,
+        device: str = "0:0",
+        stream_index: int = 0,
+        block_duration: float = 0.5,
+    ):
+        uri = f"apple_input_device:{device}"
+        streamer = StreamReader(device, format="avfoundation")
+        super().__init__(uri, sample_rate, streamer, stream_index, block_duration)
