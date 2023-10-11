@@ -1,5 +1,6 @@
 SEGMENTATION = "Segmentation model name from pyannote"
 EMBEDDING = "Embedding model name from pyannote"
+DURATION = "Chunk duration (in seconds)"
 STEP = "Sliding window step (in seconds)"
 LATENCY = "System latency (in seconds). STEP <= LATENCY <= CHUNK_DURATION"
 TAU = "Probability threshold to consider a speaker as active. 0 <= TAU <= 1"

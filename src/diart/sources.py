@@ -25,6 +25,7 @@ class AudioSource(ABC):
     sample_rate: int
         Sample rate of the audio source.
     """
+
     def __init__(self, uri: Text, sample_rate: int):
         self.uri = uri
         self.sample_rate = sample_rate
@@ -62,6 +63,7 @@ class FileAudioSource(AudioSource):
         Duration of each emitted chunk in seconds.
         Defaults to 0.5 seconds.
     """
+
     def __init__(
         self,
         file: FilePath,
@@ -108,9 +110,13 @@ class FileAudioSource(AudioSource):
 
         # Add last incomplete chunk with padding
         if num_samples % self.block_size != 0:
-            last_chunk = waveform[:, chunks.shape[0] * self.block_size:].unsqueeze(0).numpy()
+            last_chunk = (
+                waveform[:, chunks.shape[0] * self.block_size :].unsqueeze(0).numpy()
+            )
             diff_samples = self.block_size - last_chunk.shape[-1]
-            last_chunk = np.concatenate([last_chunk, np.zeros((1, 1, diff_samples))], axis=-1)
+            last_chunk = np.concatenate(
+                [last_chunk, np.zeros((1, 1, diff_samples))], axis=-1
+            )
             chunks = np.vstack([chunks, last_chunk])
 
         # Stream blocks
@@ -215,13 +221,14 @@ class WebSocketAudioSource(AudioSource):
         Path to a certificate if using SSL.
         Defaults to no certificate.
     """
+
     def __init__(
         self,
         sample_rate: int,
         host: Text = "127.0.0.1",
         port: int = 7007,
         key: Optional[Union[Text, Path]] = None,
-        certificate: Optional[Union[Text, Path]] = None
+        certificate: Optional[Union[Text, Path]] = None,
     ):
         # FIXME sample_rate is not being used, this can be confusing and lead to incompatibilities.
         #  I would prefer the client to send a JSON with data and sample rate, then resample if needed
@@ -300,3 +307,16 @@ class TorchStreamAudioSource(AudioSource):
 
     def close(self):
         self.is_closed = True
+
+
+class AppleDeviceAudioSource(TorchStreamAudioSource):
+    def __init__(
+        self,
+        sample_rate: int,
+        device: str = "0:0",
+        stream_index: int = 0,
+        block_duration: float = 0.5,
+    ):
+        uri = f"apple_input_device:{device}"
+        streamer = StreamReader(device, format="avfoundation")
+        super().__init__(uri, sample_rate, streamer, stream_index, block_duration)

@@ -8,7 +8,13 @@ from tqdm import tqdm
 
 class ProgressBar(ABC):
     @abstractmethod
-    def create(self, total: int, description: Optional[Text] = None, unit: Text = "it", **kwargs):
+    def create(
+        self,
+        total: int,
+        description: Optional[Text] = None,
+        unit: Text = "it",
+        **kwargs,
+    ):
         pass
 
     @abstractmethod
@@ -75,7 +81,13 @@ class RichProgressBar(ProgressBar):
             return f"[{self.color}]{self.description}"
         return self.description
 
-    def create(self, total: int, description: Optional[Text] = None, unit: Text = "it", **kwargs):
+    def create(
+        self,
+        total: int,
+        description: Optional[Text] = None,
+        unit: Text = "it",
+        **kwargs,
+    ):
         if self.task_id is None:
             self.task_id = self.bar.add_task(
                 self.resolve_description(f"[{self.color}]{description}"),
@@ -83,7 +95,7 @@ class RichProgressBar(ProgressBar):
                 total=total,
                 completed=0,
                 visible=True,
-                **kwargs
+                **kwargs,
             )
 
     def start(self):
@@ -112,7 +124,7 @@ class TQDMProgressBar(ProgressBar):
         description: Optional[Text] = None,
         leave: bool = True,
         position: Optional[int] = None,
-        do_close: bool = True
+        do_close: bool = True,
     ):
         self.description = description
         self.leave = leave
@@ -128,7 +140,13 @@ class TQDMProgressBar(ProgressBar):
     def initial_description(self) -> Optional[Text]:
         return self.description
 
-    def create(self, total: int, description: Optional[Text] = None, unit: Optional[Text] = "it", **kwargs):
+    def create(
+        self,
+        total: int,
+        description: Optional[Text] = None,
+        unit: Optional[Text] = "it",
+        **kwargs,
+    ):
         if self.pbar is None:
             self.pbar = tqdm(
                 desc=self.resolve_description(description),
@@ -136,7 +154,7 @@ class TQDMProgressBar(ProgressBar):
                 unit=unit,
                 leave=self.leave,
                 position=self.position,
-                **kwargs
+                **kwargs,
             )
 
     def start(self):

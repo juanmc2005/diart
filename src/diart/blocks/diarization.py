@@ -37,7 +37,9 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         # Default segmentation model is pyannote/segmentation
         self.segmentation = segmentation
         if self.segmentation is None:
-            self.segmentation = m.SegmentationModel.from_pyannote("pyannote/segmentation")
+            self.segmentation = m.SegmentationModel.from_pyannote(
+                "pyannote/segmentation"
+            )
 
         self._duration = duration
         self._sample_rate: Optional[int] = None
@@ -67,7 +69,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @staticmethod
-    def from_dict(data: Any) -> 'SpeakerDiarizationConfig':
+    def from_dict(data: Any) -> "SpeakerDiarizationConfig":
         # Check for explicit device, otherwise check for 'cpu' bool, otherwise pass None
         device = utils.get(data, "device", None)
         if device is None:
@@ -136,9 +138,15 @@ class SpeakerDiarization(base.Pipeline):
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
         assert self._config.step <= self._config.latency <= self._config.duration, msg
 
-        self.segmentation = SpeakerSegmentation(self._config.segmentation, self._config.device)
+        self.segmentation = SpeakerSegmentation(
+            self._config.segmentation, self._config.device
+        )
         self.embedding = OverlapAwareSpeakerEmbedding(
-            self._config.embedding, self._config.gamma, self._config.beta, norm=1, device=self._config.device
+            self._config.embedding,
+            self._config.gamma,
+            self._config.beta,
+            norm=1,
+            device=self._config.device,
         )
         self.pred_aggregation = DelayedAggregation(
             self._config.step,
@@ -191,8 +199,7 @@ class SpeakerDiarization(base.Pipeline):
         self.chunk_buffer, self.pred_buffer = [], []
 
     def __call__(
-        self,
-        waveforms: Sequence[SlidingWindowFeature]
+        self, waveforms: Sequence[SlidingWindowFeature]
     ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
@@ -201,13 +208,17 @@ class SpeakerDiarization(base.Pipeline):
         # Create batch from chunk sequence, shape (batch, samples, channels)
         batch = torch.stack([torch.from_numpy(w.data) for w in waveforms])
 
-        expected_num_samples = int(np.rint(self.config.duration * self.config.sample_rate))
+        expected_num_samples = int(
+            np.rint(self.config.duration * self.config.sample_rate)
+        )
         msg = f"Expected {expected_num_samples} samples per chunk, but got {batch.shape[1]}"
         assert batch.shape[1] == expected_num_samples, msg
 
         # Extract segmentation and embeddings
         segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
-        embeddings = self.embedding(batch, segmentations)  # shape (batch, speakers, emb_dim)
+        embeddings = self.embedding(
+            batch, segmentations
+        )  # shape (batch, speakers, emb_dim)
 
         seg_resolution = waveforms[0].extent.duration / segmentations.shape[1]
 
@@ -236,7 +247,9 @@ class SpeakerDiarization(base.Pipeline):
             # Shift prediction timestamps if required
             if self.timestamp_shift != 0:
                 shifted_agg_prediction = Annotation(agg_prediction.uri)
-                for segment, track, speaker in agg_prediction.itertracks(yield_label=True):
+                for segment, track, speaker in agg_prediction.itertracks(
+                    yield_label=True
+                ):
                     new_segment = Segment(
                         segment.start + self.timestamp_shift,
                         segment.end + self.timestamp_shift,

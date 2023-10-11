@@ -18,14 +18,18 @@ class AggregationStrategy(ABC):
     """
 
     def __init__(self, cropping_mode: Literal["strict", "loose", "center"] = "loose"):
-        assert cropping_mode in ["strict", "loose", "center"], f"Invalid cropping mode `{cropping_mode}`"
+        assert cropping_mode in [
+            "strict",
+            "loose",
+            "center",
+        ], f"Invalid cropping mode `{cropping_mode}`"
         self.cropping_mode = cropping_mode
 
     @staticmethod
     def build(
         name: Literal["mean", "hamming", "first"],
-        cropping_mode: Literal["strict", "loose", "center"] = "loose"
-    ) -> 'AggregationStrategy':
+        cropping_mode: Literal["strict", "loose", "center"] = "loose",
+    ) -> "AggregationStrategy":
         """Build an AggregationStrategy instance based on its name"""
         assert name in ("mean", "hamming", "first")
         if name == "mean":
@@ -35,7 +39,9 @@ class AggregationStrategy(ABC):
         else:
             return FirstOnlyStrategy(cropping_mode)
 
-    def __call__(self, buffers: List[SlidingWindowFeature], focus: Segment) -> SlidingWindowFeature:
+    def __call__(
+        self, buffers: List[SlidingWindowFeature], focus: Segment
+    ) -> SlidingWindowFeature:
         """Aggregate chunks over a specific region.
 
         Parameters
@@ -53,21 +59,23 @@ class AggregationStrategy(ABC):
         aggregation = self.aggregate(buffers, focus)
         resolution = focus.duration / aggregation.shape[0]
         resolution = SlidingWindow(
-            start=focus.start,
-            duration=resolution,
-            step=resolution
+            start=focus.start, duration=resolution, step=resolution
         )
         return SlidingWindowFeature(aggregation, resolution)
 
     @abstractmethod
-    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+    def aggregate(
+        self, buffers: List[SlidingWindowFeature], focus: Segment
+    ) -> np.ndarray:
         pass
 
 
 class HammingWeightedAverageStrategy(AggregationStrategy):
     """Compute the average weighted by the corresponding Hamming-window aligned to each buffer"""
 
-    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+    def aggregate(
+        self, buffers: List[SlidingWindowFeature], focus: Segment
+    ) -> np.ndarray:
         num_frames, num_speakers = buffers[0].data.shape
         hamming, intersection = [], []
         for buffer in buffers:
@@ -87,19 +95,25 @@ class HammingWeightedAverageStrategy(AggregationStrategy):
 class AverageStrategy(AggregationStrategy):
     """Compute a simple average over the focus region"""
 
-    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+    def aggregate(
+        self, buffers: List[SlidingWindowFeature], focus: Segment
+    ) -> np.ndarray:
         # Stack all overlapping regions
-        intersection = np.stack([
-            buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
-            for buffer in buffers
-        ])
+        intersection = np.stack(
+            [
+                buffer.crop(focus, mode=self.cropping_mode, fixed=focus.duration)
+                for buffer in buffers
+            ]
+        )
         return np.mean(intersection, axis=0)
 
 
 class FirstOnlyStrategy(AggregationStrategy):
     """Instead of aggregating, keep the first focus region in the buffer list"""
 
-    def aggregate(self, buffers: List[SlidingWindowFeature], focus: Segment) -> np.ndarray:
+    def aggregate(
+        self, buffers: List[SlidingWindowFeature], focus: Segment
+    ) -> np.ndarray:
         return buffers[0].crop(focus, mode=self.cropping_mode, fixed=focus.duration)
 
 
@@ -151,12 +165,16 @@ class DelayedAggregation:
         step: float,
         latency: Optional[float] = None,
         strategy: Literal["mean", "hamming", "first"] = "hamming",
-        cropping_mode: Literal["strict", "loose", "center"] = "loose"
+        cropping_mode: Literal["strict", "loose", "center"] = "loose",
     ):
         self.step = step
         self.latency = latency
         self.strategy = strategy
-        assert cropping_mode in ["strict", "loose", "center"], f"Invalid cropping mode `{cropping_mode}`"
+        assert cropping_mode in [
+            "strict",
+            "loose",
+            "center",
+        ], f"Invalid cropping mode `{cropping_mode}`"
         self.cropping_mode = cropping_mode
 
         if self.latency is None:
@@ -171,7 +189,7 @@ class DelayedAggregation:
         self,
         output_window: SlidingWindowFeature,
         output_region: Segment,
-        buffers: List[SlidingWindowFeature]
+        buffers: List[SlidingWindowFeature],
     ):
         # FIXME instead of prepending the output of the first chunk,
         #  add padding of `chunk_duration - latency` seconds at the
@@ -189,7 +207,7 @@ class DelayedAggregation:
             resolution = output_region.end / first_output.shape[0]
             output_window = SlidingWindowFeature(
                 first_output,
-                SlidingWindow(start=0, duration=resolution, step=resolution)
+                SlidingWindow(start=0, duration=resolution, step=resolution),
             )
         return output_window
 

@@ -21,8 +21,8 @@ class SpeakerSegmentation:
     def from_pyannote(
         model,
         use_hf_token: Union[Text, bool, None] = True,
-        device: Optional[torch.device] = None
-    ) -> 'SpeakerSegmentation':
+        device: Optional[torch.device] = None,
+    ) -> "SpeakerSegmentation":
         seg_model = SegmentationModel.from_pyannote(model, use_hf_token)
         return SpeakerSegmentation(seg_model, device)
 
@@ -40,6 +40,9 @@ class SpeakerSegmentation:
             The batch dimension is omitted if waveform is a `SlidingWindowFeature`.
         """
         with torch.no_grad():
-            wave = rearrange(self.formatter.cast(waveform), "batch sample channel -> batch channel sample")
+            wave = rearrange(
+                self.formatter.cast(waveform),
+                "batch sample channel -> batch channel sample",
+            )
             output = self.model(wave.to(self.device)).cpu()
         return self.formatter.restore_type(output)

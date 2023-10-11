@@ -25,20 +25,24 @@ class AudioBufferState:
     def has_samples(num_samples: int):
         def call_fn(state) -> bool:
             return state.chunk is not None and state.chunk.shape[1] == num_samples
+
         return call_fn
 
     @staticmethod
     def to_sliding_window(sample_rate: int):
         def call_fn(state) -> SlidingWindowFeature:
-            resolution = SlidingWindow(start=state.start_time, duration=1. / sample_rate, step=1. / sample_rate)
+            resolution = SlidingWindow(
+                start=state.start_time,
+                duration=1.0 / sample_rate,
+                step=1.0 / sample_rate,
+            )
             return SlidingWindowFeature(state.chunk.T, resolution)
+
         return call_fn
 
 
 def rearrange_audio_stream(
-    duration: float = 5,
-    step: float = 0.5,
-    sample_rate: int = 16000
+    duration: float = 5, step: float = 0.5, sample_rate: int = 16000
 ) -> Operator:
     chunk_samples = int(round(sample_rate * duration))
     step_samples = int(round(sample_rate * step))
@@ -49,11 +53,17 @@ def rearrange_audio_stream(
     def accumulate(state: AudioBufferState, value: np.ndarray):
         # State contains the last emitted chunk, the current step buffer and the last starting time
         if value.ndim != 2 or value.shape[0] != 1:
-            raise ValueError(f"Waveform must have shape (1, samples) but {value.shape} was found")
+            raise ValueError(
+                f"Waveform must have shape (1, samples) but {value.shape} was found"
+            )
         start_time = state.start_time
 
         # Add new samples to the buffer
-        buffer = value if state.buffer is None else np.concatenate([state.buffer, value], axis=1)
+        buffer = (
+            value
+            if state.buffer is None
+            else np.concatenate([state.buffer, value], axis=1)
+        )
 
         # Check for buffer overflow
         if buffer.shape[1] >= step_samples:
@@ -86,7 +96,7 @@ def rearrange_audio_stream(
         ops.filter(AudioBufferState.has_samples(chunk_samples)),
         ops.filter(lambda state: state.changed),
         # Transform state into a SlidingWindowFeature containing the new chunk
-        ops.map(AudioBufferState.to_sliding_window(sample_rate))
+        ops.map(AudioBufferState.to_sliding_window(sample_rate)),
     )
 
 
@@ -96,6 +106,7 @@ def buffer_slide(n: int):
         if len(new_state) > n:
             return new_state[1:]
         return new_state
+
     return rx.pipe(ops.scan(accumulate, []))
 
 
@@ -117,17 +128,19 @@ class OutputAccumulationState:
     next_sample: Optional[int]
 
     @staticmethod
-    def initial() -> 'OutputAccumulationState':
+    def initial() -> "OutputAccumulationState":
         return OutputAccumulationState(None, None, 0, 0)
 
     @property
     def cropped_waveform(self) -> SlidingWindowFeature:
         return SlidingWindowFeature(
-            self.waveform[:self.next_sample],
+            self.waveform[: self.next_sample],
             self.waveform.sliding_window,
         )
 
-    def to_tuple(self) -> Tuple[Optional[Annotation], Optional[SlidingWindowFeature], float]:
+    def to_tuple(
+        self,
+    ) -> Tuple[Optional[Annotation], Optional[SlidingWindowFeature], float]:
         return self.annotation, self.cropped_waveform, self.real_time
 
 
@@ -153,9 +166,10 @@ def accumulate_output(
     -------
     A reactive x operator implementing this behavior.
     """
+
     def accumulate(
         state: OutputAccumulationState,
-        value: Tuple[Annotation, Optional[SlidingWindowFeature]]
+        value: Tuple[Annotation, Optional[SlidingWindowFeature]],
     ) -> OutputAccumulationState:
         value = PredictionWithAudio(*value)
         annotation, waveform = None, None
@@ -187,7 +201,7 @@ def accumulate_output(
                     (state.waveform.data, np.zeros_like(state.waveform.data)), axis=0
                 )
             # Copy chunk into buffer
-            waveform[state.next_sample:new_next_sample] = value.waveform.data
+            waveform[state.next_sample : new_next_sample] = value.waveform.data
             waveform = SlidingWindowFeature(waveform, sw_holder.waveform.sliding_window)
 
         return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
@@ -234,14 +248,14 @@ def buffer_output(
 
     def accumulate(
         state: OutputAccumulationState,
-        value: Tuple[Annotation, Optional[SlidingWindowFeature]]
+        value: Tuple[Annotation, Optional[SlidingWindowFeature]],
     ) -> OutputAccumulationState:
         value = PredictionWithAudio(*value)
         annotation, waveform = None, None
 
         # Determine the real time of the stream and the start time of the buffer
         real_time = duration if state.annotation is None else state.real_time + step
-        start_time = max(0., real_time - latency - duration)
+        start_time = max(0.0, real_time - latency - duration)
 
         # Update annotation and constrain its bounds to the buffer
         if state.annotation is None:
@@ -267,7 +281,7 @@ def buffer_output(
             elif state.next_sample <= num_samples:
                 # The buffer isn't full, copy into next free buffer chunk
                 waveform = state.waveform.data
-                waveform[state.next_sample:new_next_sample] = value.waveform.data
+                waveform[state.next_sample : new_next_sample] = value.waveform.data
             else:
                 # The buffer is full, shift values to the left and copy into last buffer chunk
                 waveform = np.roll(state.waveform.data, -num_step_samples, axis=0)
@@ -277,7 +291,9 @@ def buffer_output(
                 waveform[-num_step_samples:] = value.waveform.data[:num_step_samples]
 
             # Wrap waveform in a sliding window feature to include timestamps
-            window = SlidingWindow(start=start_time, duration=resolution, step=resolution)
+            window = SlidingWindow(
+                start=start_time, duration=resolution, step=resolution
+            )
             waveform = SlidingWindowFeature(waveform, window)
 
         return OutputAccumulationState(annotation, waveform, real_time, new_next_sample)
