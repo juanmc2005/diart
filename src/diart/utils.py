@@ -102,6 +102,7 @@ def visualize_feature(duration: Optional[float] = None):
         notebook.plot_feature(feature)
         plt.tight_layout()
         plt.show()
+
     return apply
 
 
@@ -116,4 +117,5 @@ def visualize_annotation(duration: Optional[float] = None):
         notebook.plot_annotation(annotation)
         plt.tight_layout()
         plt.show()
+
     return apply

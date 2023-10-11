@@ -52,7 +52,9 @@ class SlidingWindowFeatureFormatterState(TemporalFeatureFormatterState):
         # Calculate resolution
         resolution = self.duration / num_frames
         # Temporal shift to keep track of current start time
-        resolution = SlidingWindow(start=self._cur_start_time, duration=resolution, step=resolution)
+        resolution = SlidingWindow(
+            start=self._cur_start_time, duration=resolution, step=resolution
+        )
         return SlidingWindowFeature(features.squeeze(dim=0).cpu().numpy(), resolution)
 
 
@@ -78,6 +80,7 @@ class TemporalFeatureFormatter:
     When casting temporal features as torch.Tensor, it remembers its
     type and format so it can lately restore it on other temporal features.
     """
+
     def __init__(self):
         self.state: Optional[TemporalFeatureFormatterState] = None
 

@@ -2,7 +2,13 @@ from typing import Any, Optional, Union, Sequence, Tuple
 
 import numpy as np
 import torch
-from pyannote.core import Annotation, Timeline, SlidingWindowFeature, SlidingWindow, Segment
+from pyannote.core import (
+    Annotation,
+    Timeline,
+    SlidingWindowFeature,
+    SlidingWindow,
+    Segment,
+)
 from pyannote.metrics.base import BaseMetric
 from pyannote.metrics.detection import DetectionErrorRate
 from typing_extensions import Literal
@@ -29,7 +35,9 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         # Default segmentation model is pyannote/segmentation
         self.segmentation = segmentation
         if self.segmentation is None:
-            self.segmentation = m.SegmentationModel.from_pyannote("pyannote/segmentation")
+            self.segmentation = m.SegmentationModel.from_pyannote(
+                "pyannote/segmentation"
+            )
 
         self._duration = duration
         self._step = step
@@ -70,7 +78,7 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         return self._sample_rate
 
     @staticmethod
-    def from_dict(data: Any) -> 'VoiceActivityDetectionConfig':
+    def from_dict(data: Any) -> "VoiceActivityDetectionConfig":
         # Check for explicit device, otherwise check for 'cpu' bool, otherwise pass None
         device = utils.get(data, "device", None)
         if device is None:
@@ -103,7 +111,9 @@ class VoiceActivityDetection(base.Pipeline):
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
         assert self._config.step <= self._config.latency <= self._config.duration, msg
 
-        self.segmentation = SpeakerSegmentation(self._config.segmentation, self._config.device)
+        self.segmentation = SpeakerSegmentation(
+            self._config.segmentation, self._config.device
+        )
         self.pred_aggregation = DelayedAggregation(
             self._config.step,
             self._config.latency,
@@ -156,13 +166,17 @@ class VoiceActivityDetection(base.Pipeline):
         # Create batch from chunk sequence, shape (batch, samples, channels)
         batch = torch.stack([torch.from_numpy(w.data) for w in waveforms])
 
-        expected_num_samples = int(np.rint(self.config.duration * self.config.sample_rate))
+        expected_num_samples = int(
+            np.rint(self.config.duration * self.config.sample_rate)
+        )
         msg = f"Expected {expected_num_samples} samples per chunk, but got {batch.shape[1]}"
         assert batch.shape[1] == expected_num_samples, msg
 
         # Extract segmentation
         segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
-        voice_detection = torch.max(segmentations, dim=-1, keepdim=True)[0]  # shape (batch, frames, 1)
+        voice_detection = torch.max(segmentations, dim=-1, keepdim=True)[
+            0
+        ]  # shape (batch, frames, 1)
 
         seg_resolution = waveforms[0].extent.duration / segmentations.shape[1]
 
