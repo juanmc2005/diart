@@ -122,7 +122,10 @@ def run():
     inference.attach_observers(
         RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm")
     )
-    inference()
+    try:
+        inference()
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":
