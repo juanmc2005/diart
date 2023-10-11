@@ -6,6 +6,7 @@ import torch.nn as nn
 
 try:
     import pyannote.audio.pipelines.utils as pyannote_loader
+
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
@@ -48,8 +49,11 @@ class SegmentationModel(LazyModel):
     """
     Minimal interface for a segmentation model.
     """
+
     @staticmethod
-    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = True) -> 'SegmentationModel':
+    def from_pyannote(
+        model, use_hf_token: Union[Text, bool, None] = True
+    ) -> "SegmentationModel":
         """
         Returns a `SegmentationModel` wrapping a pyannote model.
 
@@ -115,8 +119,11 @@ class PyannoteSegmentationModel(SegmentationModel):
 
 class EmbeddingModel(LazyModel):
     """Minimal interface for an embedding model."""
+
     @staticmethod
-    def from_pyannote(model, use_hf_token: Union[Text, bool, None] = True) -> 'EmbeddingModel':
+    def from_pyannote(
+        model, use_hf_token: Union[Text, bool, None] = True
+    ) -> "EmbeddingModel":
         """
         Returns an `EmbeddingModel` wrapping a pyannote model.
 
@@ -138,9 +145,7 @@ class EmbeddingModel(LazyModel):
 
     @abstractmethod
     def forward(
-        self,
-        waveform: torch.Tensor,
-        weights: Optional[torch.Tensor] = None
+        self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
         Forward pass of an embedding model with optional weights.

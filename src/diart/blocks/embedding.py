@@ -22,12 +22,14 @@ class SpeakerEmbedding:
     def from_pyannote(
         model,
         use_hf_token: Union[Text, bool, None] = True,
-        device: Optional[torch.device] = None
-    ) -> 'SpeakerEmbedding':
+        device: Optional[torch.device] = None,
+    ) -> "SpeakerEmbedding":
         emb_model = EmbeddingModel.from_pyannote(model, use_hf_token)
         return SpeakerEmbedding(emb_model, device)
 
-    def __call__(self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None) -> torch.Tensor:
+    def __call__(
+        self, waveform: TemporalFeatures, weights: Optional[TemporalFeatures] = None
+    ) -> torch.Tensor:
         """
         Calculate speaker embeddings of input audio.
         If weights are given, calculate many speaker embeddings from the same waveform.
@@ -58,7 +60,7 @@ class SpeakerEmbedding:
                     self.model(inputs, weights),
                     "(batch spk) feat -> batch spk feat",
                     batch=batch_size,
-                    spk=num_speakers
+                    spk=num_speakers,
                 )
             else:
                 output = self.model(inputs)
@@ -76,6 +78,7 @@ class OverlappedSpeechPenalty:
         Temperature parameter (actually 1/beta) to lower joint speaker activations.
         Defaults to 10.
     """
+
     def __init__(self, gamma: float = 3, beta: float = 10):
         self.gamma = gamma
         self.beta = beta
@@ -106,7 +109,11 @@ class EmbeddingNormalization:
             batch_size2, num_speakers2, _ = embeddings.shape
             assert batch_size1 == batch_size2 and num_speakers1 == num_speakers2
         with torch.no_grad():
-            norm_embs = self.norm * embeddings / torch.norm(embeddings, p=2, dim=-1, keepdim=True)
+            norm_embs = (
+                self.norm
+                * embeddings
+                / torch.norm(embeddings, p=2, dim=-1, keepdim=True)
+            )
         return norm_embs
 
 
@@ -131,6 +138,7 @@ class OverlapAwareSpeakerEmbedding:
         The device on which to run the embedding model.
         Defaults to GPU if available or CPU if not.
     """
+
     def __init__(
         self,
         model: EmbeddingModel,
@@ -155,5 +163,7 @@ class OverlapAwareSpeakerEmbedding:
         model = EmbeddingModel.from_pyannote(model, use_hf_token)
         return OverlapAwareSpeakerEmbedding(model, gamma, beta, norm, device)
 
-    def __call__(self, waveform: TemporalFeatures, segmentation: TemporalFeatures) -> torch.Tensor:
+    def __call__(
+        self, waveform: TemporalFeatures, segmentation: TemporalFeatures
+    ) -> torch.Tensor:
         return self.normalize(self.embedding(waveform, self.osp(segmentation)))

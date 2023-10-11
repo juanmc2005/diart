@@ -54,8 +54,10 @@ class Optimizer:
         # Make sure hyper-parameters exist in the configuration class given
         possible_hparams = vars(self.base_config)
         for param in self.hparams:
-            msg = f"Hyper-parameter {param.name} not found " \
-                  f"in configuration {self.base_config.__class__.__name__}"
+            msg = (
+                f"Hyper-parameter {param.name} not found "
+                f"in configuration {self.base_config.__class__.__name__}"
+            )
             assert param.name in possible_hparams, msg
 
         self._progress: Optional[tqdm] = None
@@ -129,8 +131,11 @@ class Optimizer:
             self._progress.set_description(f"Trial {last_trial + 1}")
         # Start with base config hyper-parameters if config was given
         if self.do_kickstart_hparams:
-            self.study.enqueue_trial({
-                param.name: getattr(self.base_config, param.name)
-                for param in self.hparams
-            }, skip_if_exists=True)
+            self.study.enqueue_trial(
+                {
+                    param.name: getattr(self.base_config, param.name)
+                    for param in self.hparams
+                },
+                skip_if_exists=True,
+            )
         self.study.optimize(self.objective, num_iter, callbacks=[self._callback])

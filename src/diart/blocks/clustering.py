@@ -27,13 +27,14 @@ class OnlineSpeakerClustering:
     max_speakers: int
         Maximum number of global speakers to track through a conversation. Defaults to 20.
     """
+
     def __init__(
         self,
         tau_active: float,
         rho_update: float,
         delta_new: float,
         metric: Optional[str] = "cosine",
-        max_speakers: int = 20
+        max_speakers: int = 20,
     ):
         self.tau_active = tau_active
         self.rho_update = rho_update
@@ -116,9 +117,7 @@ class OnlineSpeakerClustering:
         return center
 
     def identify(
-        self,
-        segmentation: SlidingWindowFeature,
-        embeddings: torch.Tensor
+        self, segmentation: SlidingWindowFeature, embeddings: torch.Tensor
     ) -> SpeakerMap:
         """Identify the centroids to which the input speaker embeddings belong.
 
@@ -135,15 +134,18 @@ class OnlineSpeakerClustering:
                 A mapping from local speakers to global speakers.
         """
         embeddings = embeddings.detach().cpu().numpy()
-        active_speakers = np.where(np.max(segmentation.data, axis=0) >= self.tau_active)[0]
-        long_speakers = np.where(np.mean(segmentation.data, axis=0) >= self.rho_update)[0]
+        active_speakers = np.where(
+            np.max(segmentation.data, axis=0) >= self.tau_active
+        )[0]
+        long_speakers = np.where(np.mean(segmentation.data, axis=0) >= self.rho_update)[
+            0
+        ]
         num_local_speakers = segmentation.data.shape[1]
 
         if self.centers is None:
             self.init_centers(embeddings.shape[1])
             assignments = [
-                (spk, self.add_center(embeddings[spk]))
-                for spk in active_speakers
+                (spk, self.add_center(embeddings[spk])) for spk in active_speakers
             ]
             return SpeakerMapBuilder.hard_map(
                 shape=(num_local_speakers, self.max_speakers),
@@ -154,18 +156,16 @@ class OnlineSpeakerClustering:
         # Obtain a mapping based on distances between embeddings and centers
         dist_map = SpeakerMapBuilder.dist(embeddings, self.centers, self.metric)
         # Remove any assignments containing invalid speakers
-        inactive_speakers = np.array([
-            spk for spk in range(num_local_speakers)
-            if spk not in active_speakers
-        ])
+        inactive_speakers = np.array(
+            [spk for spk in range(num_local_speakers) if spk not in active_speakers]
+        )
         dist_map = dist_map.unmap_speakers(inactive_speakers, self.inactive_centers)
         # Keep assignments under the distance threshold
         valid_map = dist_map.unmap_threshold(self.delta_new)
 
         # Some speakers might be unidentified
         missed_speakers = [
-            s for s in active_speakers
-            if not valid_map.is_source_speaker_mapped(s)
+            s for s in active_speakers if not valid_map.is_source_speaker_mapped(s)
         ]
 
         # Add assignments to new centers if possible
@@ -205,8 +205,10 @@ class OnlineSpeakerClustering:
 
         return valid_map
 
-    def __call__(self, segmentation: SlidingWindowFeature, embeddings: torch.Tensor) -> SlidingWindowFeature:
+    def __call__(
+        self, segmentation: SlidingWindowFeature, embeddings: torch.Tensor
+    ) -> SlidingWindowFeature:
         return SlidingWindowFeature(
             self.identify(segmentation, embeddings).apply(segmentation.data),
-            segmentation.sliding_window
+            segmentation.sliding_window,
         )

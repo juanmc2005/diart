@@ -41,14 +41,14 @@ class RTTMWriter(Observer):
         if annotations:
             annotation = annotations[0]
             annotation.uri = self.uri
-            with open(self.path, 'w') as file:
+            with open(self.path, "w") as file:
                 annotation.support(self.patch_collar).write_rttm(file)
 
     def on_next(self, value: Union[Tuple, Annotation]):
         prediction = _extract_prediction(value)
         # Write prediction in RTTM format
         prediction.uri = self.uri
-        with open(self.path, 'a') as file:
+        with open(self.path, "a") as file:
             prediction.write_rttm(file)
 
     def on_error(self, error: Exception):
@@ -121,10 +121,12 @@ class StreamingPlot(Observer):
 
     def _init_figure(self):
         self._init_num_axs()
-        self.figure, self.axs = plt.subplots(self.num_axs, 1, figsize=(10, 2 * self.num_axs))
+        self.figure, self.axs = plt.subplots(
+            self.num_axs, 1, figsize=(10, 2 * self.num_axs)
+        )
         if self.num_axs == 1:
             self.axs = [self.axs]
-        self.figure.canvas.mpl_connect('close_event', self._on_window_closed)
+        self.figure.canvas.mpl_connect("close_event", self._on_window_closed)
 
     def _clear_axs(self):
         for i in range(self.num_axs):
@@ -134,13 +136,10 @@ class StreamingPlot(Observer):
         start_time = 0
         end_time = real_time - self.latency
         if self.visualization == "slide":
-            start_time = max(0., end_time - self.window_duration)
+            start_time = max(0.0, end_time - self.window_duration)
         return Segment(start_time, end_time)
 
-    def on_next(
-        self,
-        values: Tuple[Annotation, SlidingWindowFeature, float]
-    ):
+    def on_next(self, values: Tuple[Annotation, SlidingWindowFeature, float]):
         if self.window_closed:
             raise WindowClosedException
 

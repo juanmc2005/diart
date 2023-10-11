@@ -17,7 +17,7 @@ class HyperParameter:
     high: float
 
     @staticmethod
-    def from_name(name: Text) -> 'HyperParameter':
+    def from_name(name: Text) -> "HyperParameter":
         if name == "tau_active":
             return TauActive
         if name == "rho_update":
@@ -55,7 +55,7 @@ class PipelineConfig(ABC):
 
     @staticmethod
     @abstractmethod
-    def from_dict(data: Any) -> 'PipelineConfig':
+    def from_dict(data: Any) -> "PipelineConfig":
         pass
 
     def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
@@ -96,7 +96,6 @@ class Pipeline(ABC):
 
     @abstractmethod
     def __call__(
-        self,
-        waveforms: Sequence[SlidingWindowFeature]
+        self, waveforms: Sequence[SlidingWindowFeature]
     ) -> Sequence[Tuple[Any, SlidingWindowFeature]]:
         pass

@@ -69,7 +69,13 @@ class Resample:
     resample_rate: int
         Sample rate of the output
     """
-    def __init__(self, sample_rate: int, resample_rate: int, device: Optional[torch.device] = None):
+
+    def __init__(
+        self,
+        sample_rate: int,
+        resample_rate: int,
+        device: Optional[torch.device] = None,
+    ):
         self.device = device
         if self.device is None:
             self.device = torch.device("cpu")
@@ -93,6 +99,7 @@ class AdjustVolume:
     volume_in_db: float
         Target volume in dB.
     """
+
     def __init__(self, volume_in_db: float):
         self.target_db = volume_in_db
         self.formatter = TemporalFeatureFormatter()
@@ -111,7 +118,9 @@ class AdjustVolume:
         volumes: torch.Tensor
             Audio chunk volumes per channel. Shape (batch, 1, channels)
         """
-        return 10 * torch.log10(torch.mean(torch.abs(waveforms) ** 2, dim=1, keepdim=True))
+        return 10 * torch.log10(
+            torch.mean(torch.abs(waveforms) ** 2, dim=1, keepdim=True)
+        )
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
         wav = self.formatter.cast(waveform)  # shape (batch, samples, channels)

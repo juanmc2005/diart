@@ -51,6 +51,7 @@ class StreamingInference:
         If description is not provided, set to 'Streaming <source uri>'.
         Defaults to RichProgressBar().
     """
+
     def __init__(
         self,
         pipeline: blocks.Pipeline,
@@ -89,7 +90,7 @@ class StreamingInference:
             self._pbar.create(
                 total=self.num_chunks,
                 description=f"Streaming {self.source.uri}",
-                unit=self.unit
+                unit=self.unit,
             )
 
         # Initialize chronometer for profiling
@@ -99,16 +100,26 @@ class StreamingInference:
 
         # Rearrange stream to form sliding windows
         self.stream = self.stream.pipe(
-            dops.rearrange_audio_stream(chunk_duration, step_duration, source.sample_rate),
+            dops.rearrange_audio_stream(
+                chunk_duration, step_duration, source.sample_rate
+            ),
         )
 
         # Dynamic resampling if the audio source isn't compatible
         if sample_rate != self.source.sample_rate:
-            msg = f"Audio source has sample rate {self.source.sample_rate}, " \
-                  f"but pipeline's is {sample_rate}. Will resample."
+            msg = (
+                f"Audio source has sample rate {self.source.sample_rate}, "
+                f"but pipeline's is {sample_rate}. Will resample."
+            )
             logging.warning(msg)
             self.stream = self.stream.pipe(
-                ops.map(blocks.Resample(self.source.sample_rate, sample_rate, self.pipeline.config.device))
+                ops.map(
+                    blocks.Resample(
+                        self.source.sample_rate,
+                        sample_rate,
+                        self.pipeline.config.device,
+                    )
+                )
             )
 
         # Form batches
@@ -145,7 +156,9 @@ class StreamingInference:
                 self._chrono.stop(do_count=False)
             self._chrono.report()
 
-    def attach_hooks(self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]):
+    def attach_hooks(
+        self, *hooks: Callable[[Tuple[Annotation, SlidingWindowFeature]], None]
+    ):
         """Attach hooks to the pipeline.
 
         Parameters
@@ -251,6 +264,7 @@ class Benchmark:
         The performance between this two modes does not differ.
         Defaults to 32.
     """
+
     def __init__(
         self,
         speech_path: Union[Text, Path],
@@ -430,6 +444,7 @@ class Parallelize:
         Number of parallel workers.
         Defaults to 0 (no parallelism).
     """
+
     def __init__(
         self,
         benchmark: Benchmark,
@@ -466,12 +481,14 @@ class Parallelize:
             Pipeline prediction for the given file.
         """
         # The process ID inside the pool determines the position of the progress bar
-        idx_process = int(current_process().name.split('-')[1]) - 1
+        idx_process = int(current_process().name.split("-")[1]) - 1
         # TODO share models across processes
         # Instantiate a pipeline with the config
         pipeline = pipeline_class(config)
         # Create the progress bar for this job
-        progress = TQDMProgressBar(description, leave=False, position=idx_process, do_close=True)
+        progress = TQDMProgressBar(
+            description, leave=False, position=idx_process, do_close=True
+        )
         # Run the pipeline
         return self.benchmark.run_single(pipeline, filepath, progress)
 
@@ -507,12 +524,14 @@ class Parallelize:
         num_audio_files = len(audio_file_paths)
 
         # Workaround for multiprocessing with GPU
-        torch.multiprocessing.set_start_method('spawn')
+        torch.multiprocessing.set_start_method("spawn")
         # For Windows support
         freeze_support()
 
         # Create the pool of workers using a lock for parallel tqdm usage
-        pool = Pool(processes=self.num_workers, initargs=(RLock(),), initializer=tqdm.set_lock)
+        pool = Pool(
+            processes=self.num_workers, initargs=(RLock(),), initializer=tqdm.set_lock
+        )
         # Determine the arguments for each job
         arg_list = [
             (
