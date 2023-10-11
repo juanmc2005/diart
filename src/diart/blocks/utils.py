@@ -69,12 +69,15 @@ class Resample:
     resample_rate: int
         Sample rate of the output
     """
-    def __init__(self, sample_rate: int, resample_rate: int):
-        self.resample = T.Resample(sample_rate, resample_rate)
+    def __init__(self, sample_rate: int, resample_rate: int, device: Optional[torch.device] = None):
+        self.device = device
+        if self.device is None:
+            self.device = torch.device("cpu")
+        self.resample = T.Resample(sample_rate, resample_rate).to(self.device)
         self.formatter = TemporalFeatureFormatter()
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
-        wav = self.formatter.cast(waveform)  # shape (batch, samples, 1)
+        wav = self.formatter.cast(waveform).to(self.device)  # shape (batch, samples, 1)
         with torch.no_grad():
             resampled_wav = self.resample(wav.transpose(-1, -2)).transpose(-1, -2)
         return self.formatter.restore_type(resampled_wav)
