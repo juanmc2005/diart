@@ -237,32 +237,24 @@ class WeSpeakerSpeakerEmbeddingInference(LazyWeSpeakerSpeakerEmbedding):
         assert _has_pyannote, "No pyannote.audio installation found"
         return PyannoteWeSpeakerSpeakerEmbeddingInference(inference)
 
-    @abstractmethod
-    def forward(
-            self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Forward pass of an embedding model with optional weights.
-
-        Parameters
-        ----------
-        waveform: torch.Tensor, shape (batch, channels, samples)
-        weights: Optional[torch.Tensor], shape (batch, frames)
-            Temporal weights for each sample in the batch. Defaults to no weights.
-
-        Returns
-        -------
-        speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
-        """
-        pass
+    def eval(self):
+        """Mock method to match pytorch api"""
+        return
 
 
 class PyannoteWeSpeakerSpeakerEmbeddingInference(WeSpeakerSpeakerEmbeddingInference):
     def __init__(self, wespeaker_info):
         super().__init__(PyannoteWeSpeakerSpeakerEmbeddingLoader(wespeaker_info))
 
-    def forward(
+    def __call__(
             self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         self.load()
+        # Normalize weights
+        weights -= weights.min(dim=1, keepdim=True).values
+        weights /= weights.max(dim=1, keepdim=True).values
+        weights.nan_to_num_(0.0)
+        # Move to cpu for numpy conversion
+        weights = weights.to("cpu")
+        waveform = waveform.to("cpu")
         return torch.from_numpy(self.inference(waveform, weights))
