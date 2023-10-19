@@ -82,26 +82,15 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         embedding = utils.get(data, "embedding", "pyannote/embedding")
         embedding = m.EmbeddingModel.from_pyannote(embedding, hf_token)
 
-        # Hyper-parameters and their aliases
-        tau = utils.get(data, "tau_active", None)
-        if tau is None:
-            tau = utils.get(data, "tau", 0.6)
-        rho = utils.get(data, "rho_update", None)
-        if rho is None:
-            rho = utils.get(data, "rho", 0.3)
-        delta = utils.get(data, "delta_new", None)
-        if delta is None:
-            delta = utils.get(data, "delta", 1)
-
         return SpeakerDiarizationConfig(
             segmentation=segmentation,
             embedding=embedding,
             duration=utils.get(data, "duration", None),
             step=utils.get(data, "step", 0.5),
             latency=utils.get(data, "latency", None),
-            tau_active=tau,
-            rho_update=rho,
-            delta_new=delta,
+            tau_active=utils.get(data, "tau_active", 0.6),
+            rho_update=utils.get(data, "rho_update", 0.3),
+            delta_new=utils.get(data, "delta_new", 1.0),
             gamma=utils.get(data, "gamma", 3),
             beta=utils.get(data, "beta", 10),
             max_speakers=utils.get(data, "max_speakers", 20),

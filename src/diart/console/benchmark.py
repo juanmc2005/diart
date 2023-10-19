@@ -44,13 +44,13 @@ def run():
         "--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5"
     )
     parser.add_argument(
-        "--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5"
+        "--tau-active", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5"
     )
     parser.add_argument(
-        "--rho", default=0.3, type=float, help=f"{argdoc.RHO}. Defaults to 0.3"
+        "--rho-update", default=0.3, type=float, help=f"{argdoc.RHO}. Defaults to 0.3"
     )
     parser.add_argument(
-        "--delta", default=1, type=float, help=f"{argdoc.DELTA}. Defaults to 1"
+        "--delta-new", default=1, type=float, help=f"{argdoc.DELTA}. Defaults to 1"
     )
     parser.add_argument(
         "--gamma", default=3, type=float, help=f"{argdoc.GAMMA}. Defaults to 3"

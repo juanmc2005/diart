@@ -1,4 +1,6 @@
-from typing import Any, Optional, Union, Sequence, Tuple
+from __future__ import annotations
+
+from typing import Any, Sequence
 
 import numpy as np
 import torch
@@ -13,8 +15,8 @@ from pyannote.metrics.base import BaseMetric
 from pyannote.metrics.detection import DetectionErrorRate
 from typing_extensions import Literal
 
-from .aggregation import DelayedAggregation
 from . import base
+from .aggregation import DelayedAggregation
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
 from .. import models as m
@@ -24,12 +26,12 @@ from .. import utils
 class VoiceActivityDetectionConfig(base.PipelineConfig):
     def __init__(
         self,
-        segmentation: Optional[m.SegmentationModel] = None,
-        duration: Optional[float] = None,
+        segmentation: m.SegmentationModel | None = None,
+        duration: float | None = None,
         step: float = 0.5,
-        latency: Optional[Union[float, Literal["max", "min"]]] = None,
+        latency: float | Literal["max", "min"] | None = None,
         tau_active: float = 0.6,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         **kwargs,
     ):
         # Default segmentation model is pyannote/segmentation
@@ -41,7 +43,7 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
 
         self._duration = duration
         self._step = step
-        self._sample_rate: Optional[int] = None
+        self._sample_rate: int | None = None
 
         # Latency defaults to the step duration
         self._latency = latency
@@ -89,23 +91,18 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         segmentation = utils.get(data, "segmentation", "pyannote/segmentation")
         segmentation = m.SegmentationModel.from_pyannote(segmentation, hf_token)
 
-        # Tau active and its alias
-        tau = utils.get(data, "tau_active", None)
-        if tau is None:
-            tau = utils.get(data, "tau", 0.6)
-
         return VoiceActivityDetectionConfig(
             segmentation=segmentation,
             duration=utils.get(data, "duration", None),
             step=utils.get(data, "step", 0.5),
             latency=utils.get(data, "latency", None),
-            tau_active=tau,
+            tau_active=utils.get(data, "tau_active", 0.6),
             device=device,
         )
 
 
 class VoiceActivityDetection(base.Pipeline):
-    def __init__(self, config: Optional[VoiceActivityDetectionConfig] = None):
+    def __init__(self, config: VoiceActivityDetectionConfig | None = None):
         self._config = VoiceActivityDetectionConfig() if config is None else config
 
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
@@ -158,7 +155,7 @@ class VoiceActivityDetection(base.Pipeline):
     def __call__(
         self,
         waveforms: Sequence[SlidingWindowFeature],
-    ) -> Sequence[Tuple[Annotation, SlidingWindowFeature]]:
+    ) -> Sequence[tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
         assert batch_size >= 1, msg
