@@ -1,8 +1,7 @@
-from typing import Any, Tuple, Sequence, Text
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Tuple, Sequence, Text
 
-import numpy as np
 from pyannote.core import SlidingWindowFeature
 from pyannote.metrics.base import BaseMetric
 
@@ -51,11 +50,6 @@ class PipelineConfig(ABC):
     @property
     @abstractmethod
     def sample_rate(self) -> int:
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def from_dict(data: Any) -> "PipelineConfig":
         pass
 
     def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:

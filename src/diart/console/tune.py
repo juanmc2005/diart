@@ -2,11 +2,14 @@ import argparse
 from pathlib import Path
 
 import optuna
+import torch
+from optuna.samplers import TPESampler
+
 from diart import argdoc
+from diart import models as m
 from diart import utils
 from diart.blocks.base import HyperParameter
 from diart.optim import Optimizer
-from optuna.samplers import TPESampler
 
 
 def run():
@@ -39,6 +42,11 @@ def run():
         default="pyannote/embedding",
         type=str,
         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding",
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        help=f"{argdoc.DURATION}. Defaults to training segmentation duration",
     )
     parser.add_argument(
         "--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5"
@@ -102,11 +110,19 @@ def run():
     )
     args = parser.parse_args()
 
+    # Resolve device
+    args.device = torch.device("cpu") if args.cpu else None
+
+    # Resolve models
+    hf_token = utils.parse_hf_token_arg(args.hf_token)
+    args.segmentation = m.SegmentationModel.from_pyannote(args.segmentation, hf_token)
+    args.embedding = m.EmbeddingModel.from_pyannote(args.embedding, hf_token)
+
     # Retrieve pipeline class
     pipeline_class = utils.get_pipeline_class(args.pipeline)
 
     # Create the base configuration for each trial
-    base_config = pipeline_class.get_config_class().from_dict(vars(args))
+    base_config = pipeline_class.get_config_class()(**vars(args))
 
     # Create hyper-parameters to optimize
     possible_hparams = pipeline_class.hyper_parameters()

@@ -1,13 +1,13 @@
 import base64
 import time
-from typing import Optional, Text, Union, Any, Dict
+from typing import Optional, Text, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook
 
-from .progress import ProgressBar
 from . import blocks
+from .progress import ProgressBar
 
 
 class Chronometer:
@@ -51,10 +51,6 @@ def parse_hf_token_arg(hf_token: Union[bool, Text]) -> Union[bool, Text]:
     if hf_token.lower() == "false":
         return False
     return hf_token
-
-
-def get(data: Dict[Text, Any], key: Text, default: Any) -> Any:
-    return data[key] if key in data else default
 
 
 def encode_audio(waveform: np.ndarray) -> Text:

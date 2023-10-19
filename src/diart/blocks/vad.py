@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Sequence
 
 import numpy as np
 import torch
@@ -35,11 +35,9 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         **kwargs,
     ):
         # Default segmentation model is pyannote/segmentation
-        self.segmentation = segmentation
-        if self.segmentation is None:
-            self.segmentation = m.SegmentationModel.from_pyannote(
-                "pyannote/segmentation"
-            )
+        self.segmentation = segmentation or m.SegmentationModel.from_pyannote(
+            "pyannote/segmentation"
+        )
 
         self._duration = duration
         self._step = step
@@ -53,9 +51,9 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
             self._latency = self._duration
 
         self.tau_active = tau_active
-        self.device = device
-        if self.device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
 
     @property
     def duration(self) -> float:
@@ -78,27 +76,6 @@ class VoiceActivityDetectionConfig(base.PipelineConfig):
         if self._sample_rate is None:
             self._sample_rate = self.segmentation.sample_rate
         return self._sample_rate
-
-    @staticmethod
-    def from_dict(data: Any) -> "VoiceActivityDetectionConfig":
-        # Check for explicit device, otherwise check for 'cpu' bool, otherwise pass None
-        device = utils.get(data, "device", None)
-        if device is None:
-            device = torch.device("cpu") if utils.get(data, "cpu", False) else None
-
-        # Instantiate segmentation model
-        hf_token = utils.parse_hf_token_arg(utils.get(data, "hf_token", True))
-        segmentation = utils.get(data, "segmentation", "pyannote/segmentation")
-        segmentation = m.SegmentationModel.from_pyannote(segmentation, hf_token)
-
-        return VoiceActivityDetectionConfig(
-            segmentation=segmentation,
-            duration=utils.get(data, "duration", None),
-            step=utils.get(data, "step", 0.5),
-            latency=utils.get(data, "latency", None),
-            tau_active=utils.get(data, "tau_active", 0.6),
-            device=device,
-        )
 
 
 class VoiceActivityDetection(base.Pipeline):

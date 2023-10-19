@@ -1,7 +1,10 @@
 import argparse
 from pathlib import Path
 
+import torch
+
 from diart import argdoc
+from diart import models as m
 from diart import sources as src
 from diart import utils
 from diart.inference import StreamingInference
@@ -34,7 +37,9 @@ def run():
         help=f"{argdoc.EMBEDDING}. Defaults to pyannote/embedding",
     )
     parser.add_argument(
-        "--duration", type=float, help=f"{argdoc.DURATION}. Defaults to training segmentation duration"
+        "--duration",
+        type=float,
+        help=f"{argdoc.DURATION}. Defaults to training segmentation duration",
     )
     parser.add_argument(
         "--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5"
@@ -88,9 +93,17 @@ def run():
     )
     args = parser.parse_args()
 
+    # Resolve device
+    args.device = torch.device("cpu") if args.cpu else None
+
+    # Resolve models
+    hf_token = utils.parse_hf_token_arg(args.hf_token)
+    args.segmentation = m.SegmentationModel.from_pyannote(args.segmentation, hf_token)
+    args.embedding = m.EmbeddingModel.from_pyannote(args.embedding, hf_token)
+
     # Resolve pipeline
     pipeline_class = utils.get_pipeline_class(args.pipeline)
-    config = pipeline_class.get_config_class().from_dict(vars(args))
+    config = pipeline_class.get_config_class()(**vars(args))
     pipeline = pipeline_class(config)
 
     # Manage audio source
