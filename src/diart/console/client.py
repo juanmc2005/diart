@@ -3,12 +3,12 @@ from pathlib import Path
 from threading import Thread
 from typing import Text, Optional
 
-import numpy as np
 import rx.operators as ops
+from websocket import WebSocket
+
 from diart import argdoc
 from diart import sources as src
 from diart import utils
-from websocket import WebSocket
 
 
 def send_audio(ws: WebSocket, source: Text, step: float, sample_rate: int):

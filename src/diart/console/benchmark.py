@@ -2,7 +2,10 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+import torch
+
 from diart import argdoc
+from diart import models as m
 from diart import utils
 from diart.inference import Benchmark, Parallelize
 
@@ -38,19 +41,24 @@ def run():
         help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files",
     )
     parser.add_argument(
+        "--duration",
+        type=float,
+        help=f"{argdoc.DURATION}. Defaults to training segmentation duration",
+    )
+    parser.add_argument(
         "--step", default=0.5, type=float, help=f"{argdoc.STEP}. Defaults to 0.5"
     )
     parser.add_argument(
         "--latency", default=0.5, type=float, help=f"{argdoc.LATENCY}. Defaults to 0.5"
     )
     parser.add_argument(
-        "--tau", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5"
+        "--tau-active", default=0.5, type=float, help=f"{argdoc.TAU}. Defaults to 0.5"
     )
     parser.add_argument(
-        "--rho", default=0.3, type=float, help=f"{argdoc.RHO}. Defaults to 0.3"
+        "--rho-update", default=0.3, type=float, help=f"{argdoc.RHO}. Defaults to 0.3"
     )
     parser.add_argument(
-        "--delta", default=1, type=float, help=f"{argdoc.DELTA}. Defaults to 1"
+        "--delta-new", default=1, type=float, help=f"{argdoc.DELTA}. Defaults to 1"
     )
     parser.add_argument(
         "--gamma", default=3, type=float, help=f"{argdoc.GAMMA}. Defaults to 3"
@@ -93,6 +101,14 @@ def run():
     )
     args = parser.parse_args()
 
+    # Resolve device
+    args.device = torch.device("cpu") if args.cpu else None
+
+    # Resolve models
+    hf_token = utils.parse_hf_token_arg(args.hf_token)
+    args.segmentation = m.SegmentationModel.from_pyannote(args.segmentation, hf_token)
+    args.embedding = m.EmbeddingModel.from_pyannote(args.embedding, hf_token)
+
     pipeline_class = utils.get_pipeline_class(args.pipeline)
 
     benchmark = Benchmark(
@@ -104,7 +120,7 @@ def run():
         batch_size=args.batch_size,
     )
 
-    config = pipeline_class.get_config_class().from_dict(vars(args))
+    config = pipeline_class.get_config_class()(**vars(args))
     if args.num_workers > 0:
         benchmark = Parallelize(benchmark, args.num_workers)
 
