@@ -22,7 +22,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
     def __init__(
         self,
         segmentation: m.SegmentationModel | None = None,
-        embedding: m.EmbeddingModel | m.WeSpeakerSpeakerEmbeddingInference | None = None,
+        embedding: m.EmbeddingModel | None = None,
         duration: float | None = None,
         step: float = 0.5,
         latency: float | Literal["max", "min"] | None = None,

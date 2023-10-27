@@ -13,7 +13,10 @@ class MappingMatrixObjective(ABC):
         return np.ones(shape) * self.invalid_value
 
     def optimal_assignments(self, matrix: np.ndarray) -> List[int]:
-        return list(lsap(matrix, self.maximize)[1])
+        try:
+            return list(lsap(matrix, self.maximize)[1])
+        except ValueError:
+            print(matrix)
 
     def mapped_indices(self, matrix: np.ndarray, axis: int) -> List[int]:
         # Entries full of invalid_value are not mapped

@@ -3,18 +3,23 @@ from typing import Optional, Text, Union, Callable, Mapping, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
+from requests import HTTPError
 
 try:
     import pyannote.audio.pipelines.utils as pyannote_loader
     from pyannote.audio import Inference, Model
-    from pyannote.audio.pipelines.speaker_verification import WeSpeakerPretrainedSpeakerEmbedding
+    from pyannote.audio.pipelines.speaker_verification import (
+        WeSpeakerPretrainedSpeakerEmbedding,
+    )
 
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
 
 if TYPE_CHECKING:
-    PipelineInference = Union[WeSpeakerPretrainedSpeakerEmbedding, Model, Text, Mapping]
+    from pyannote.audio.pipelines.speaker_verification import (
+        WeSpeakerPretrainedSpeakerEmbedding,
+    )
 
 
 class PyannoteLoader:
@@ -23,20 +28,14 @@ class PyannoteLoader:
         self.model_info = model_info
         self.hf_token = hf_token
 
-    def __call__(self) -> nn.Module:
-        return pyannote_loader.get_model(self.model_info, self.hf_token)
+    def __call__(self) -> Union[nn.Module, WeSpeakerPretrainedSpeakerEmbedding]:
+        try:
+            return pyannote_loader.get_model(self.model_info)
+        except HTTPError:
+            return WeSpeakerPretrainedSpeakerEmbedding(self.model_info)
 
 
-class PyannoteWeSpeakerSpeakerEmbeddingLoader:
-    def __init__(self, inference_info):
-        super().__init__()
-        self.inference_info = inference_info
-
-    def __call__(self) -> WeSpeakerPretrainedSpeakerEmbedding:
-        return WeSpeakerPretrainedSpeakerEmbedding(self.inference_info)
-
-
-class LazyModel(nn.Module, ABC):
+class LazyModel(ABC):
     def __init__(self, loader: Callable[[], nn.Module]):
         super().__init__()
         self.get_model = loader
@@ -52,35 +51,17 @@ class LazyModel(nn.Module, ABC):
 
     def to(self, *args, **kwargs) -> nn.Module:
         self.load()
-        return super().to(*args, **kwargs)
+        return self.model.to(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
         self.load()
-        return super().__call__(*args, **kwargs)
+        return self.model(*args, **kwargs)
 
-
-class LazyWeSpeakerSpeakerEmbedding(WeSpeakerPretrainedSpeakerEmbedding, ABC):
-    def __init__(self, loader: Callable[[], WeSpeakerPretrainedSpeakerEmbedding]):
-        self.get_inference = loader
-        self.inference: Optional[WeSpeakerPretrainedSpeakerEmbedding] = None
-        # __init__ at end because in there we call .to() which requires .load()
-        super().__init__()
-
-    def is_in_memory(self) -> bool:
-        """Return whether the model has been loaded into memory"""
-        return self.inference is not None
-
-    def load(self):
-        if not self.is_in_memory():
-            self.inference = self.get_inference()
-
-    def to(self, *args, **kwargs) -> WeSpeakerPretrainedSpeakerEmbedding:
+    def eval(self) -> "LazyModel":
         self.load()
-        return super().to(*args, **kwargs)
-
-    def __call__(self, *args, **kwargs):
-        self.load()
-        return super().__call__(*args, **kwargs)
+        if not isinstance(self.model, WeSpeakerPretrainedSpeakerEmbedding):
+            self.model.eval()
+        return self
 
 
 class SegmentationModel(LazyModel):
@@ -90,7 +71,7 @@ class SegmentationModel(LazyModel):
 
     @staticmethod
     def from_pyannote(
-            model, use_hf_token: Union[Text, bool, None] = True
+        model, use_hf_token: Union[Text, bool, None] = True
     ) -> "SegmentationModel":
         """
         Returns a `SegmentationModel` wrapping a pyannote model.
@@ -160,7 +141,7 @@ class EmbeddingModel(LazyModel):
 
     @staticmethod
     def from_pyannote(
-            model, use_hf_token: Union[Text, bool, None] = True
+        model, use_hf_token: Union[Text, bool, None] = True
     ) -> "EmbeddingModel":
         """
         Returns an `EmbeddingModel` wrapping a pyannote model.
@@ -181,80 +162,25 @@ class EmbeddingModel(LazyModel):
         assert _has_pyannote, "No pyannote.audio installation found"
         return PyannoteEmbeddingModel(model, use_hf_token)
 
-    @abstractmethod
-    def forward(
-            self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Forward pass of an embedding model with optional weights.
-
-        Parameters
-        ----------
-        waveform: torch.Tensor, shape (batch, channels, samples)
-        weights: Optional[torch.Tensor], shape (batch, frames)
-            Temporal weights for each sample in the batch. Defaults to no weights.
-
-        Returns
-        -------
-        speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
-        """
-        pass
-
 
 class PyannoteEmbeddingModel(EmbeddingModel):
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
         super().__init__(PyannoteLoader(model_info, hf_token))
 
-    def forward(
-            self,
-            waveform: torch.Tensor,
-            weights: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        return self.model(waveform, weights=weights)
-
-
-class WeSpeakerSpeakerEmbeddingInference(LazyWeSpeakerSpeakerEmbedding):
-    """Minimal interface for a we speaker embedding inference."""
-
-    def __init__(self, loader: Callable[[], WeSpeakerPretrainedSpeakerEmbedding]):
-        super().__init__(loader)
-
-    @staticmethod
-    def from_pyannote(inference,
-                      ) -> "WeSpeakerSpeakerEmbeddingInference":
-        """
-        Returns an `EmbeddingModel` wrapping a pyannote model.
-
-        Parameters
-        ----------
-        inference: pyannote.audio.pipelines.speaker_verification.WeSpeakerPretrainedSpeakerEmbedding
-            The pyannote.audio inference to fetch.
-
-        Returns
-        -------
-        wrapper: EmbeddingModel
-        """
-        assert _has_pyannote, "No pyannote.audio installation found"
-        return PyannoteWeSpeakerSpeakerEmbeddingInference(inference)
-
-    def eval(self):
-        """Mock method to match pytorch api"""
-        return
-
-
-class PyannoteWeSpeakerSpeakerEmbeddingInference(WeSpeakerSpeakerEmbeddingInference):
-    def __init__(self, wespeaker_info):
-        super().__init__(PyannoteWeSpeakerSpeakerEmbeddingLoader(wespeaker_info))
-
     def __call__(
-            self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
+        self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        self.load()
-        # Normalize weights
-        weights -= weights.min(dim=1, keepdim=True).values
-        weights /= weights.max(dim=1, keepdim=True).values
-        weights.nan_to_num_(0.0)
-        # Move to cpu for numpy conversion
-        weights = weights.to("cpu")
-        waveform = waveform.to("cpu")
-        return torch.from_numpy(self.inference(waveform, weights))
+        if not isinstance(self.model, WeSpeakerPretrainedSpeakerEmbedding):
+            return super().__call__(waveform, weights)
+        else:
+            self.load()
+            # Normalize weights
+            if weights is not None:
+                weights -= weights.min(dim=1, keepdim=True).values
+                weights /= weights.max(dim=1, keepdim=True).values
+                weights.nan_to_num_(0.0)
+                # Move to cpu for numpy conversion
+                weights = weights.to("cpu")
+            # Move to cpu for numpy conversion
+            waveform = waveform.to("cpu")
+            return torch.from_numpy(self.model(waveform, weights))
