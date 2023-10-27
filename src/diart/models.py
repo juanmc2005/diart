@@ -59,7 +59,7 @@ class LazyModel(ABC):
 
     def eval(self) -> "LazyModel":
         self.load()
-        if not isinstance(self.model, WeSpeakerPretrainedSpeakerEmbedding):
+        if isinstance(self.model, nn.Module):
             self.model.eval()
         return self
 
@@ -170,17 +170,19 @@ class PyannoteEmbeddingModel(EmbeddingModel):
     def __call__(
         self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if not isinstance(self.model, WeSpeakerPretrainedSpeakerEmbedding):
+        # Normalize weights
+        if weights is not None:
+            weights -= weights.min(dim=1, keepdim=True).values
+            weights /= weights.max(dim=1, keepdim=True).values
+            weights.nan_to_num_(0.0)
+
+        if isinstance(self.model, nn.Module):
             return super().__call__(waveform, weights)
+
         else:
-            self.load()
-            # Normalize weights
             if weights is not None:
-                weights -= weights.min(dim=1, keepdim=True).values
-                weights /= weights.max(dim=1, keepdim=True).values
-                weights.nan_to_num_(0.0)
                 # Move to cpu for numpy conversion
                 weights = weights.to("cpu")
             # Move to cpu for numpy conversion
             waveform = waveform.to("cpu")
-            return torch.from_numpy(self.model(waveform, weights))
+            return torch.from_numpy(super().__call__(waveform, weights))
