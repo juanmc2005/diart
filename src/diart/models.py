@@ -10,6 +10,7 @@ try:
     from pyannote.audio import Inference, Model
     from pyannote.audio.pipelines.speaker_verification import (
         WeSpeakerPretrainedSpeakerEmbedding,
+        PretrainedSpeakerEmbedding,
     )
 
     _has_pyannote = True
@@ -28,15 +29,17 @@ class PyannoteLoader:
         self.model_info = model_info
         self.hf_token = hf_token
 
-    def __call__(self) -> Union[nn.Module, WeSpeakerPretrainedSpeakerEmbedding]:
+    def __call__(self) -> Union[Model, PretrainedSpeakerEmbedding]:
         try:
-            return pyannote_loader.get_model(self.model_info)
+            return Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
         except HTTPError:
-            return WeSpeakerPretrainedSpeakerEmbedding(self.model_info)
+            return PretrainedSpeakerEmbedding(
+                self.model_info, use_auth_token=self.hf_token
+            )
 
 
 class LazyModel(ABC):
-    def __init__(self, loader: Callable[[], nn.Module]):
+    def __init__(self, loader: Callable[[], Callable]):
         super().__init__()
         self.get_model = loader
         self.model: Optional[nn.Module] = None
@@ -102,21 +105,6 @@ class SegmentationModel(LazyModel):
     def duration(self) -> float:
         pass
 
-    @abstractmethod
-    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the segmentation model.
-
-        Parameters
-        ----------
-        waveform: torch.Tensor, shape (batch, channels, samples)
-
-        Returns
-        -------
-        speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
-        """
-        pass
-
 
 class PyannoteSegmentationModel(SegmentationModel):
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
@@ -132,8 +120,8 @@ class PyannoteSegmentationModel(SegmentationModel):
         self.load()
         return self.model.specifications.duration
 
-    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        return self.model(waveform)
+    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
+        return super().__call__(waveform)
 
 
 class EmbeddingModel(LazyModel):
