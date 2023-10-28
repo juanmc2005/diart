@@ -160,8 +160,9 @@ class PyannoteEmbeddingModel(EmbeddingModel):
     ) -> torch.Tensor:
         # Normalize weights
         if weights is not None:
-            weights -= weights.min(dim=1, keepdim=True).values
-            weights /= weights.max(dim=1, keepdim=True).values
+            min_values = weights.min(dim=1, keepdim=True).values
+            max_values = weights.max(dim=1, keepdim=True).values
+            weights = (weights - min_values) / (max_values - min_values)
             weights.nan_to_num_(0.0)
 
         if isinstance(self.model, nn.Module):
