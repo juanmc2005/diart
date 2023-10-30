@@ -35,7 +35,7 @@ class LazyModel(ABC):
     def __init__(self, loader: Callable[[], Callable]):
         super().__init__()
         self.get_model = loader
-        self.model: Optional[nn.Module] = None
+        self.model: Optional[Callable] = None
 
     def is_in_memory(self) -> bool:
         """Return whether the model has been loaded into memory"""
