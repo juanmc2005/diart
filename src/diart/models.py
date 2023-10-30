@@ -1,15 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Text, Union, Callable, Mapping, TYPE_CHECKING
+from typing import Optional, Text, Union, Callable, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 from requests import HTTPError
 
 try:
-    import pyannote.audio.pipelines.utils as pyannote_loader
     from pyannote.audio import Inference, Model
     from pyannote.audio.pipelines.speaker_verification import (
-        WeSpeakerPretrainedSpeakerEmbedding,
         PretrainedSpeakerEmbedding,
     )
 
@@ -18,8 +16,9 @@ except ImportError:
     _has_pyannote = False
 
 if TYPE_CHECKING:
+    from pyannote.audio import Model
     from pyannote.audio.pipelines.speaker_verification import (
-        WeSpeakerPretrainedSpeakerEmbedding,
+        PretrainedSpeakerEmbedding,
     )
 
 
