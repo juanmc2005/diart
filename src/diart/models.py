@@ -16,7 +16,6 @@ except ImportError:
     _has_pyannote = False
 
 
-
 class PyannoteLoader:
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
         super().__init__()
