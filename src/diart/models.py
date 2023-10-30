@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Text, Union, Callable, TYPE_CHECKING
+from typing import Optional, Text, Union, Callable
 
 import torch
 import torch.nn as nn
@@ -15,11 +15,6 @@ try:
 except ImportError:
     _has_pyannote = False
 
-if TYPE_CHECKING:
-    from pyannote.audio import Model
-    from pyannote.audio.pipelines.speaker_verification import (
-        PretrainedSpeakerEmbedding,
-    )
 
 
 class PyannoteLoader:
