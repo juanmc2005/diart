@@ -28,7 +28,7 @@ class PyannoteLoader:
         self.model_info = model_info
         self.hf_token = hf_token
 
-    def __call__(self) -> Union[Model, PretrainedSpeakerEmbedding]:
+    def __call__(self) -> Callable:
         try:
             return Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
         except HTTPError:
