@@ -33,13 +33,18 @@ jobs:
       run: |
         sudo add-apt-repository ppa:savoury1/ffmpeg4
         sudo apt-get update
-        sudo apt-get -y install ffmpeg
-        sudo apt-get -y install libportaudio2=19.6.0-1.1
+        sudo apt-get -y install ffmpeg libportaudio2=19.6.0-1.1 sox
         python -m pip install --upgrade pip
         pip install .
+    - name: Crop audio and rttm
+      run: |
+        sox audio/ES2002a.wav audio/ES2002a.wav trim 00:40 01:10
+        sox audio/ES2002b.wav audio/ES2002b.wav trim 00:10 00:40
+        head -n 4 rttms/ES2002a.rttm > rttms/ES2002a.rttm
+        head -n 7 rttms/ES2002b.rttm > rttms/ES2002b.rttm
     - name: Run stream
       run: |
-        diart.stream audio/ES2002a.wav --output trash --hf-token ${{ secrets.HUGGINGFACE }} --no-plot
+        diart.stream audio/ES2002a.wav --output trash --no-plot --hf-token ${{ secrets.HUGGINGFACE }}
     - name: Run benchmark
       run: |
         diart.benchmark audio --reference rttms --batch-size 4 --hf-token ${{ secrets.HUGGINGFACE }}
