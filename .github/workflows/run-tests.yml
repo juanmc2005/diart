@@ -1,0 +1,43 @@
+name: Run Tests
+
+on:
+  pull_request:
+    branches:
+    - main
+    - develop
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.10'
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+    - name: Install package
+      run: |
+        conda env create -f environment.yml
+        conda activate diart
+        pip install -e {{ github.repository }}
+    - name: Download data
+      run: |
+        mkdir audio rttms trash
+        wget --no-verbose --show-progress --continue -P audio/ES2002a.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002a.Mix-Headset.wav
+        wget --no-verbose --show-progress --continue -P audio/ES2002b.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002b.Mix-Headset.wav
+        wget --no-verbose --show-progress --continue -P rttms/ES2002a.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002a.rttm
+        wget --no-verbose --show-progress --continue -P rttms/ES2002b.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002b.rttm
+    - name: Run stream
+      run: |
+        diart.stream audio/ES2002a.wav --output trash
+    - name: Run benchmark
+      run: |
+        diart.benchmark audio --reference rttms --batch-size 4 --num-workers 2
