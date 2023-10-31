@@ -31,7 +31,7 @@ jobs:
         wget --no-verbose --show-progress --continue -O rttms/ES2002b.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002b.rttm
     - name: Install dependencies
       run: |
-        sudo add-apt-repository ppa:jonathonf/ffmpeg-4
+        sudo add-apt-repository ppa:savoury1/ffmpeg4
         sudo apt-get update
         sudo apt-get -y install ffmpeg=4.3
         sudo apt-get -y install libportaudio2=19.6.0-1.1
