@@ -27,7 +27,7 @@ jobs:
       run: |
         mkdir audio rttms trash
         wget --no-verbose --show-progress --continue -O audio/ES2002a.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002a.Mix-Headset.wav
-        wget --no-verbose --show-progress --continue -O audio/ES2002b.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002b.Mix-Headset.wav
+        wget --no-verbose --show-progress --continue -O audio/ES2002b.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002b/audio/ES2002b.Mix-Headset.wav
         wget --no-verbose --show-progress --continue -O rttms/ES2002a.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002a.rttm
         wget --no-verbose --show-progress --continue -O rttms/ES2002b.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002b.rttm
     - name: Install package
