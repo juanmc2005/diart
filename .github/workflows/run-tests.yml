@@ -23,11 +23,6 @@ jobs:
       run: |
         # $CONDA is an environment variable pointing to the root of the miniconda directory
         echo $CONDA/bin >> $GITHUB_PATH
-    - name: Install package
-      run: |
-        conda env create -f environment.yml
-        conda activate diart
-        pip install -e {{ github.repository }}
     - name: Download data
       run: |
         mkdir audio rttms trash
@@ -35,6 +30,10 @@ jobs:
         wget --no-verbose --show-progress --continue -P audio/ES2002b.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002b.Mix-Headset.wav
         wget --no-verbose --show-progress --continue -P rttms/ES2002a.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002a.rttm
         wget --no-verbose --show-progress --continue -P rttms/ES2002b.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002b.rttm
+    - name: Install package
+      run: |
+        conda env update --file environment.yml --name base
+        pip install -e .
     - name: Run stream
       run: |
         diart.stream audio/ES2002a.wav --output trash
