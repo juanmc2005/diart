@@ -33,7 +33,7 @@ jobs:
       run: |
         sudo add-apt-repository ppa:savoury1/ffmpeg4
         sudo apt-get update
-        sudo apt-get -y install ffmpeg=4.3
+        sudo apt-get -y install ffmpeg
         sudo apt-get -y install libportaudio2=19.6.0-1.1
         python -m pip install --upgrade pip
         pip install .
