@@ -36,7 +36,7 @@ jobs:
         pip install -e .
     - name: Run stream
       run: |
-        diart.stream audio/ES2002a.wav --output trash
+        diart.stream audio/ES2002a.wav --output trash --hf-token ${{ secrets.HUGGINGFACE }}
     - name: Run benchmark
       run: |
-        diart.benchmark audio --reference rttms --batch-size 4 --num-workers 2
+        diart.benchmark audio --reference rttms --batch-size 4 --num-workers 2 --hf-token ${{ secrets.HUGGINGFACE }}
