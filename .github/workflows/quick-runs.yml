@@ -1,0 +1,59 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Quick Runs
+
+on:
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.10"]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Download data
+      run: |
+        mkdir audio rttms trash
+        wget --no-verbose --show-progress --continue -O audio/ES2002a_long.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002a/audio/ES2002a.Mix-Headset.wav
+        wget --no-verbose --show-progress --continue -O audio/ES2002b_long.wav http://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2002b/audio/ES2002b.Mix-Headset.wav
+        wget --no-verbose --show-progress --continue -O rttms/ES2002a_long.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002a.rttm
+        wget --no-verbose --show-progress --continue -O rttms/ES2002b_long.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002b.rttm
+    - name: Install apt dependencies
+      run: |
+        sudo add-apt-repository ppa:savoury1/ffmpeg4
+        sudo apt-get update
+        sudo apt-get -y install ffmpeg libportaudio2=19.6.0-1.1 sox
+    - name: Install pip dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install .
+    - name: Crop audio and rttm
+      run: |
+        sox audio/ES2002a_long.wav audio/ES2002a.wav trim 00:40 00:30
+        sox audio/ES2002b_long.wav audio/ES2002b.wav trim 00:10 00:30
+        head -n 4 rttms/ES2002a_long.rttm > rttms/ES2002a.rttm
+        head -n 7 rttms/ES2002b_long.rttm > rttms/ES2002b.rttm
+        rm audio/ES2002a_long.wav
+        rm audio/ES2002b_long.wav
+        rm rttms/ES2002a_long.rttm
+        rm rttms/ES2002b_long.rttm
+    - name: Run stream
+      run: |
+        diart.stream audio/ES2002a.wav --output trash --no-plot --hf-token ${{ secrets.HUGGINGFACE }}
+    - name: Run benchmark
+      run: |
+        diart.benchmark audio --reference rttms --batch-size 4 --hf-token ${{ secrets.HUGGINGFACE }}
+    - name: Run tuning
+      run: |
+        diart.tune audio --reference rttms --batch-size 4 --num-iter 2 --output trash --hf-token ${{ secrets.HUGGINGFACE }}
