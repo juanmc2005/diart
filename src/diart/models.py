@@ -114,6 +114,15 @@ class PyannoteSegmentationModel(SegmentationModel):
         return self.model.specifications.duration
 
     def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
+        """
+        Call the forward pass of the segmentation model.
+        Parameters
+        ----------
+        waveform: torch.Tensor, shape (batch, channels, samples)
+        Returns
+        -------
+        speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
+        """
         return super().__call__(waveform)
 
 
@@ -151,6 +160,17 @@ class PyannoteEmbeddingModel(EmbeddingModel):
     def __call__(
         self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """
+        Call the forward pass of an embedding model with optional weights.
+        Parameters
+        ----------
+        waveform: torch.Tensor, shape (batch, channels, samples)
+        weights: Optional[torch.Tensor], shape (batch, frames)
+            Temporal weights for each sample in the batch. Defaults to no weights.
+        Returns
+        -------
+        speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
+        """
         # Normalize weights
         if weights is not None:
             min_values = weights.min(dim=1, keepdim=True).values
@@ -162,9 +182,4 @@ class PyannoteEmbeddingModel(EmbeddingModel):
             return super().__call__(waveform, weights)
 
         else:
-            if weights is not None:
-                # Move to cpu for numpy conversion
-                weights = weights.to("cpu")
-            # Move to cpu for numpy conversion
-            waveform = waveform.to("cpu")
             return torch.from_numpy(super().__call__(waveform, weights))
