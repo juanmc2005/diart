@@ -177,9 +177,8 @@ class SpeakerDiarization(base.Pipeline):
 
         # Extract segmentation and embeddings
         segmentations = self.segmentation(batch)  # shape (batch, frames, speakers)
-        embeddings = self.embedding(
-            batch, segmentations
-        )  # shape (batch, speakers, emb_dim)
+        # embeddings has shape (batch, speakers, emb_dim)
+        embeddings = self.embedding(batch, segmentations)
 
         seg_resolution = waveforms[0].extent.duration / segmentations.shape[1]
 
