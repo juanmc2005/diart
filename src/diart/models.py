@@ -178,8 +178,7 @@ class PyannoteEmbeddingModel(EmbeddingModel):
             weights = (weights - min_values) / (max_values - min_values)
             weights.nan_to_num_(0.0)
 
-        if isinstance(self.model, nn.Module):
-            return super().__call__(waveform, weights)
-
-        else:
-            return torch.from_numpy(super().__call__(waveform, weights))
+        embeddings = super().__call__(waveform, weights)
+        if isinstance(embeddings, np.ndarray):
+            embeddings = torch.from_numpy(embeddings)
+        return embeddings
