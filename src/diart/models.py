@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Text, Union, Callable
 
+import numpy as np
 import torch
 import torch.nn as nn
 from requests import HTTPError
