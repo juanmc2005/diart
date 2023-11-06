@@ -84,13 +84,12 @@ class ONNXModel:
         self.session = None
         self.recreate_session()
 
+    @property
+    def execution_provider(self) -> str:
+        device = "CUDA" if self.device.type == "cuda" else "CPU"
+        return f"{device}ExecutionProvider"
+
     def recreate_session(self):
-        if self.device.type == "cuda":
-            providers = ["CUDAExecutionProvider"]
-            provider_options = [{"cudnn_conv_algo_search": "DEFAULT"}]
-        else:
-            providers = ["CPUExecutionProvider"]
-            provider_options = None
         options = onnxruntime.SessionOptions()
         options.graph_optimization_level = (
             onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -98,8 +97,7 @@ class ONNXModel:
         self.session = onnxruntime.InferenceSession(
             self.path,
             sess_options=options,
-            providers=providers,
-            provider_options=provider_options,
+            providers=[self.execution_provider],
         )
 
     def to(self, device: torch.device) -> ONNXModel:
@@ -107,7 +105,6 @@ class ONNXModel:
             self.device = device
             self.recreate_session()
         return self
-
 
     def __call__(self, *args) -> Tuple[torch.Tensor, ...]:
         inputs = {
