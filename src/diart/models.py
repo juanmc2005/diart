@@ -172,13 +172,6 @@ class PyannoteEmbeddingModel(EmbeddingModel):
         -------
         speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
         """
-        # Normalize weights
-        if weights is not None:
-            min_values = weights.min(dim=1, keepdim=True).values
-            max_values = weights.max(dim=1, keepdim=True).values
-            weights = (weights - min_values) / (max_values - min_values)
-            weights.nan_to_num_(0.0)
-
         embeddings = super().__call__(waveform, weights)
         if isinstance(embeddings, np.ndarray):
             embeddings = torch.from_numpy(embeddings)
