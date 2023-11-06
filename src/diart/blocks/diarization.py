@@ -106,7 +106,7 @@ class SpeakerDiarization(base.Pipeline):
             self._config.gamma,
             self._config.beta,
             norm=1,
-            normalize=self._config.normalize_embedding_weights,
+            normalize_weights=self._config.normalize_embedding_weights,
             device=self._config.device,
         )
         self.pred_aggregation = DelayedAggregation(
