@@ -46,9 +46,10 @@ class LazyModel(ABC):
         if not self.is_in_memory():
             self.model = self.get_model()
 
-    def to(self, *args, **kwargs) -> nn.Module:
+    def to(self, device: torch.device) -> "LazyModel":
         self.load()
-        return self.model.to(*args, **kwargs)
+        self.model = self.model.to(device)
+        return self
 
     def __call__(self, *args, **kwargs):
         self.load()

@@ -78,7 +78,7 @@ class OverlappedSpeechPenalty:
         Temperature parameter (actually 1/beta) to lower joint speaker activations.
         Defaults to 10.
     normalize: bool, optional
-        Whether to normalize the weights to be in the range [0, 1].
+        Whether to min-max normalize weights to be in the range [0, 1].
         Defaults to False.
     """
 
@@ -143,8 +143,8 @@ class OverlapAwareSpeakerEmbedding:
     norm: float or torch.Tensor of shape (batch, speakers, 1) where batch is optional
         The target norm for the embeddings. It can be different for each speaker.
         Defaults to 1.
-    normalize: bool, optional
-        Whether to normalize the embeddings to be in the range [0, 1].
+    normalize_weights: bool, optional
+        Whether to min-max normalize embedding weights to be in the range [0, 1].
     device: Optional[torch.device]
         The device on which to run the embedding model.
         Defaults to GPU if available or CPU if not.
@@ -156,11 +156,11 @@ class OverlapAwareSpeakerEmbedding:
         gamma: float = 3,
         beta: float = 10,
         norm: Union[float, torch.Tensor] = 1,
-        normalize: bool = False,
+        normalize_weights: bool = False,
         device: Optional[torch.device] = None,
     ):
         self.embedding = SpeakerEmbedding(model, device)
-        self.osp = OverlappedSpeechPenalty(gamma, beta, normalize)
+        self.osp = OverlappedSpeechPenalty(gamma, beta, normalize_weights)
         self.normalize = EmbeddingNormalization(norm)
 
     @staticmethod
@@ -170,11 +170,11 @@ class OverlapAwareSpeakerEmbedding:
         beta: float = 10,
         norm: Union[float, torch.Tensor] = 1,
         use_hf_token: Union[Text, bool, None] = True,
-        normalize: bool = False,
+        normalize_weights: bool = False,
         device: Optional[torch.device] = None,
     ):
         model = EmbeddingModel.from_pyannote(model, use_hf_token)
-        return OverlapAwareSpeakerEmbedding(model, gamma, beta, norm, normalize, device)
+        return OverlapAwareSpeakerEmbedding(model, gamma, beta, norm, normalize_weights, device)
 
     def __call__(
         self, waveform: TemporalFeatures, segmentation: TemporalFeatures
