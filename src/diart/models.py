@@ -7,10 +7,8 @@ import torch.nn as nn
 from requests import HTTPError
 
 try:
-    from pyannote.audio import Inference, Model
-    from pyannote.audio.pipelines.speaker_verification import (
-        PretrainedSpeakerEmbedding,
-    )
+    import pyannote.audio.pipelines.utils as pyannote_loader
+    from pyannote.audio.utils.powerset import Powerset
 
     _has_pyannote = True
 except ImportError:
@@ -126,6 +124,17 @@ class PyannoteSegmentationModel(SegmentationModel):
     def duration(self) -> float:
         self.load()
         return self.model.specifications.duration
+
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+        predictions = self.model(waveform)
+
+        if (specs := self.model.specifications).powerset:
+            max_speakers_per_frame = specs.powerset_max_classes
+            max_speakers_per_chunk = len(specs.classes)
+            powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
+            predictions = powerset.to_multilabel(predictions, soft=False)
+
+        return predictions
 
 
 class EmbeddingModel(LazyModel):
