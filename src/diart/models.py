@@ -15,6 +15,7 @@ except ImportError:
 
 class PowersetAdapter(nn.Module):
     def __init__(self, segmentation_model: nn.Module):
+        super().__init__()
         self.model = segmentation_model
         specs = self.model.specifications
         max_speakers_per_frame = specs.powerset_max_classes
