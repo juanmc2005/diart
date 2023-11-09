@@ -7,7 +7,10 @@ import torch.nn as nn
 from requests import HTTPError
 
 try:
-    import pyannote.audio.pipelines.utils as pyannote_loader
+    from pyannote.audio import Inference, Model
+    from pyannote.audio.pipelines.speaker_verification import (
+        PretrainedSpeakerEmbedding,
+    )
     from pyannote.audio.utils.powerset import Powerset
 
     _has_pyannote = True
@@ -42,12 +45,17 @@ class PyannoteLoader:
         self.model_info = model_info
         self.hf_token = hf_token
 
-    def __call__(self) -> nn.Module:
-        model = pyannote_loader.get_model(self.model_info, self.hf_token)
-        specs = getattr(model, "specifications", None)
-        if specs is not None and specs.powerset:
-            model = PowersetAdapter(model)
-        return model
+    def __call__(self) -> Callable:
+        try:
+            model = Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
+            specs = getattr(model, "specifications", None)
+            if specs is not None and specs.powerset:
+                model = PowersetAdapter(model)
+            return model
+        except HTTPError:
+            return PretrainedSpeakerEmbedding(
+                self.model_info, use_auth_token=self.hf_token
+            )
 
 
 class LazyModel(ABC):
@@ -144,9 +152,6 @@ class PyannoteSegmentationModel(SegmentationModel):
     def duration(self) -> float:
         self.load()
         return self.model.specifications.duration
-
-    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        return self.model(waveform)
 
 
 class EmbeddingModel(LazyModel):
