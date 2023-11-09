@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Text, Union, Callable, List, Tuple
+from typing import Optional, Text, Union, Callable, List
 
 import numpy as np
 import onnxruntime
@@ -64,22 +64,22 @@ class PyannoteLoader:
 
 
 class ONNXLoader:
-    def __init__(self, path: Path, input_names: List[str], output_names: List[str]):
+    def __init__(self, path: Path, input_names: List[str], output_name: str):
         super().__init__()
         self.path = path
         self.input_names = input_names
-        self.output_names = output_names
+        self.output_name = output_name
 
     def __call__(self) -> ONNXModel:
-        return ONNXModel(self.path, self.input_names, self.output_names)
+        return ONNXModel(self.path, self.input_names, self.output_name)
 
 
 class ONNXModel:
-    def __init__(self, path: Path, input_names: List[str], output_names: List[str]):
+    def __init__(self, path: Path, input_names: List[str], output_name: str):
         super().__init__()
         self.path = path
         self.input_names = input_names
-        self.output_names = output_names
+        self.output_name = output_name
         self.device = torch.device("cpu")
         self.session = None
         self.recreate_session()
@@ -106,15 +106,13 @@ class ONNXModel:
             self.recreate_session()
         return self
 
-    def __call__(self, *args) -> Tuple[torch.Tensor, ...]:
+    def __call__(self, *args) -> torch.Tensor:
         inputs = {
             name: arg.cpu().numpy().astype(np.float32)
             for name, arg in zip(self.input_names, args)
         }
-        outputs = self.session.run(self.output_names, inputs)
-        return tuple(
-            torch.from_numpy(out).float().to(args[0].device) for out in outputs
-        )
+        output = self.session.run([self.output_name], inputs)[0]
+        return torch.from_numpy(output).float().to(args[0].device)
 
 
 class LazyModel(ABC):
@@ -227,7 +225,7 @@ class PyannoteSegmentationModel(SegmentationModel):
 class ONNXSegmentationModel(SegmentationModel):
     def __init__(self, model_path: Union[str, Path]):
         model_path = Path(model_path)
-        loader = ONNXLoader(model_path, input_names=["waveform"], output_names=["segmentation"])
+        loader = ONNXLoader(model_path, input_names=["waveform"], output_name="segmentation")
         super().__init__(loader)
         with open(model_path.parent / f"{model_path.stem}.yml", "r") as metadata_file:
             metadata = yaml.load(metadata_file, yaml.SafeLoader)
@@ -240,10 +238,6 @@ class ONNXSegmentationModel(SegmentationModel):
     @property
     def duration(self) -> float:
         return self.metadata["duration"]
-
-    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
-        # ONNX models may have multiple return values, so this will be a list of size 1
-        return super().__call__(waveform)[0]
 
 
 class EmbeddingModel(LazyModel):
@@ -310,15 +304,5 @@ class PyannoteEmbeddingModel(EmbeddingModel):
 
 class ONNXEmbeddingModel(EmbeddingModel):
     def __init__(self, model_path: Union[str, Path]):
-        loader = ONNXLoader(Path(model_path), input_names=["waveform", "weights"], output_names=["embedding"])
+        loader = ONNXLoader(Path(model_path), input_names=["waveform", "weights"], output_name="embedding")
         super().__init__(loader)
-
-    def __call__(
-        self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        self.load()
-        # ONNX models may have multiple return values, so this will be a list of size 1
-        embeddings = self.model(waveform, weights)[0]
-        if isinstance(embeddings, np.ndarray):
-            embeddings = torch.from_numpy(embeddings)
-        return embeddings
