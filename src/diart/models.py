@@ -100,7 +100,6 @@ class SegmentationModel(LazyModel):
     def duration(self) -> float:
         pass
 
-    @abstractmethod
     def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
         """
         Call the forward pass of the segmentation model.
@@ -111,7 +110,7 @@ class SegmentationModel(LazyModel):
         -------
         speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
         """
-        pass
+        return super().__call__(waveform)
 
 
 class PyannoteSegmentationModel(SegmentationModel):
@@ -127,18 +126,6 @@ class PyannoteSegmentationModel(SegmentationModel):
     def duration(self) -> float:
         self.load()
         return self.model.specifications.duration
-
-    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
-        """
-        Call the forward pass of the segmentation model.
-        Parameters
-        ----------
-        waveform: torch.Tensor, shape (batch, channels, samples)
-        Returns
-        -------
-        speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
-        """
-        return super().__call__(waveform)
 
 
 class EmbeddingModel(LazyModel):
@@ -167,28 +154,6 @@ class EmbeddingModel(LazyModel):
         assert _has_pyannote, "No pyannote.audio installation found"
         return PyannoteEmbeddingModel(model, use_hf_token)
 
-    @abstractmethod
-    def __call__(
-        self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Call the forward pass of an embedding model with optional weights.
-        Parameters
-        ----------
-        waveform: torch.Tensor, shape (batch, channels, samples)
-        weights: Optional[torch.Tensor], shape (batch, frames)
-            Temporal weights for each sample in the batch. Defaults to no weights.
-        Returns
-        -------
-        speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
-        """
-        pass
-
-
-class PyannoteEmbeddingModel(EmbeddingModel):
-    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
-        super().__init__(PyannoteLoader(model_info, hf_token))
-
     def __call__(
         self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
@@ -207,3 +172,8 @@ class PyannoteEmbeddingModel(EmbeddingModel):
         if isinstance(embeddings, np.ndarray):
             embeddings = torch.from_numpy(embeddings)
         return embeddings
+
+
+class PyannoteEmbeddingModel(EmbeddingModel):
+    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
+        super().__init__(PyannoteLoader(model_info, hf_token))
