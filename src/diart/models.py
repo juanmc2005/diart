@@ -100,6 +100,19 @@ class SegmentationModel(LazyModel):
     def duration(self) -> float:
         pass
 
+    @abstractmethod
+    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
+        """
+        Call the forward pass of the segmentation model.
+        Parameters
+        ----------
+        waveform: torch.Tensor, shape (batch, channels, samples)
+        Returns
+        -------
+        speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
+        """
+        pass
+
 
 class PyannoteSegmentationModel(SegmentationModel):
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
@@ -153,6 +166,23 @@ class EmbeddingModel(LazyModel):
         """
         assert _has_pyannote, "No pyannote.audio installation found"
         return PyannoteEmbeddingModel(model, use_hf_token)
+
+    @abstractmethod
+    def __call__(
+        self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        Call the forward pass of an embedding model with optional weights.
+        Parameters
+        ----------
+        waveform: torch.Tensor, shape (batch, channels, samples)
+        weights: Optional[torch.Tensor], shape (batch, frames)
+            Temporal weights for each sample in the batch. Defaults to no weights.
+        Returns
+        -------
+        speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
+        """
+        pass
 
 
 class PyannoteEmbeddingModel(EmbeddingModel):
