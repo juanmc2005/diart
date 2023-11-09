@@ -174,11 +174,17 @@ class SegmentationModel(LazyModel):
         return PyannoteSegmentationModel(model, use_hf_token)
 
     @staticmethod
-    def from_onnx(model_path: Union[str, Path]) -> "SegmentationModel":
-        return ONNXSegmentationModel(model_path)
+    def from_onnx(
+        model_path: Union[str, Path],
+        input_name: str = "waveform",
+        output_name: str = "segmentation",
+    ) -> "SegmentationModel":
+        return ONNXSegmentationModel(model_path, input_name, output_name)
 
     @staticmethod
-    def from_pretrained(model, use_hf_token: Union[Text, bool, None] = True) -> "SegmentationModel":
+    def from_pretrained(
+        model, use_hf_token: Union[Text, bool, None] = True
+    ) -> "SegmentationModel":
         if isinstance(model, str) or isinstance(model, Path):
             if Path(model).name.endswith(".onnx"):
                 return SegmentationModel.from_onnx(model)
@@ -223,9 +229,14 @@ class PyannoteSegmentationModel(SegmentationModel):
 
 
 class ONNXSegmentationModel(SegmentationModel):
-    def __init__(self, model_path: Union[str, Path]):
+    def __init__(
+        self,
+        model_path: Union[str, Path],
+        input_name: str = "waveform",
+        output_name: str = "segmentation",
+    ):
         model_path = Path(model_path)
-        loader = ONNXLoader(model_path, input_names=["waveform"], output_name="segmentation")
+        loader = ONNXLoader(model_path, [input_name], output_name)
         super().__init__(loader)
         with open(model_path.parent / f"{model_path.stem}.yml", "r") as metadata_file:
             metadata = yaml.load(metadata_file, yaml.SafeLoader)
@@ -264,14 +275,23 @@ class EmbeddingModel(LazyModel):
         wrapper: EmbeddingModel
         """
         assert _has_pyannote, "No pyannote.audio installation found"
-        return PyannoteEmbeddingModel(model, use_hf_token)
+        loader = PyannoteLoader(model, use_hf_token)
+        return EmbeddingModel(loader)
 
     @staticmethod
-    def from_onnx(model_path: Union[str, Path]) -> "EmbeddingModel":
-        return ONNXEmbeddingModel(model_path)
+    def from_onnx(
+        model_path: Union[str, Path],
+        input_names: List[str] | None = None,
+        output_name: str = "embedding",
+    ) -> "EmbeddingModel":
+        input_names = input_names or ["waveform", "weights"]
+        loader = ONNXLoader(model_path, input_names, output_name)
+        return EmbeddingModel(loader)
 
     @staticmethod
-    def from_pretrained(model, use_hf_token: Union[Text, bool, None] = True) -> "EmbeddingModel":
+    def from_pretrained(
+        model, use_hf_token: Union[Text, bool, None] = True
+    ) -> "EmbeddingModel":
         if isinstance(model, str) or isinstance(model, Path):
             if Path(model).name.endswith(".onnx"):
                 return EmbeddingModel.from_onnx(model)
@@ -295,14 +315,3 @@ class EmbeddingModel(LazyModel):
         if isinstance(embeddings, np.ndarray):
             embeddings = torch.from_numpy(embeddings)
         return embeddings
-
-
-class PyannoteEmbeddingModel(EmbeddingModel):
-    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
-        super().__init__(PyannoteLoader(model_info, hf_token))
-
-
-class ONNXEmbeddingModel(EmbeddingModel):
-    def __init__(self, model_path: Union[str, Path]):
-        loader = ONNXLoader(Path(model_path), input_names=["waveform", "weights"], output_name="embedding")
-        super().__init__(loader)
