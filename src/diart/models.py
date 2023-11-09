@@ -15,19 +15,38 @@ except ImportError:
     _has_pyannote = False
 
 
+class PowersetAdapter(nn.Module):
+    def __init__(self, segmentation_model: nn.Module):
+        self.model = segmentation_model
+        specs = self.model.specifications
+        max_speakers_per_frame = specs.powerset_max_classes
+        max_speakers_per_chunk = len(specs.classes)
+        self.powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
+
+    @property
+    def sample_rate(self) -> int:
+        return self.model.hparams.sample_rate
+
+    @property
+    def duration(self) -> float:
+        return self.model.specifications.duration
+
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+        return self.powerset.to_multilabel(self.model(waveform), soft=False)
+
+
 class PyannoteLoader:
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
         super().__init__()
         self.model_info = model_info
         self.hf_token = hf_token
 
-    def __call__(self) -> Callable:
-        try:
-            return Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
-        except HTTPError:
-            return PretrainedSpeakerEmbedding(
-                self.model_info, use_auth_token=self.hf_token
-            )
+    def __call__(self) -> nn.Module:
+        model = pyannote_loader.get_model(self.model_info, self.hf_token)
+        specs = getattr(model, "specifications", None)
+        if specs is not None and specs.powerset:
+            model = PowersetAdapter(model)
+        return model
 
 
 class LazyModel(ABC):
@@ -126,15 +145,7 @@ class PyannoteSegmentationModel(SegmentationModel):
         return self.model.specifications.duration
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        predictions = self.model(waveform)
-
-        if (specs := self.model.specifications).powerset:
-            max_speakers_per_frame = specs.powerset_max_classes
-            max_speakers_per_chunk = len(specs.classes)
-            powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
-            predictions = powerset.to_multilabel(predictions, soft=False)
-
-        return predictions
+        return self.model(waveform)
 
 
 class EmbeddingModel(LazyModel):
