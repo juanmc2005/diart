@@ -140,6 +140,10 @@ class OnlineSpeakerClustering:
         long_speakers = np.where(np.mean(segmentation.data, axis=0) >= self.rho_update)[
             0
         ]
+        # Remove speakers that have NaN embeddings
+        no_nan_embeddings = np.where(~np.isnan(embeddings).any(axis=1))[0]
+        active_speakers = np.intersect1d(active_speakers, no_nan_embeddings)
+
         num_local_speakers = segmentation.data.shape[1]
 
         if self.centers is None:

@@ -108,6 +108,11 @@ def run():
         type=str,
         help=f"{argdoc.HF_TOKEN}. Defaults to 'true' (required by pyannote)",
     )
+    parser.add_argument(
+        "--normalize-embedding-weights",
+        action="store_true",
+        help=f"{argdoc.NORMALIZE_EMBEDDING_WEIGHTS}. Defaults to False",
+    )
     args = parser.parse_args()
 
     # Resolve device
