@@ -25,12 +25,12 @@ class PowersetAdapter(nn.Module):
         self.powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
 
     @property
-    def sample_rate(self) -> int:
-        return self.model.hparams.sample_rate
+    def specifications(self):
+        return self.model.specifications
 
     @property
-    def duration(self) -> float:
-        return self.model.specifications.duration
+    def audio(self):
+        return self.model.audio
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         return self.powerset.to_multilabel(self.model(waveform), soft=False)
