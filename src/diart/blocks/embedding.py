@@ -174,7 +174,9 @@ class OverlapAwareSpeakerEmbedding:
         device: Optional[torch.device] = None,
     ):
         model = EmbeddingModel.from_pyannote(model, use_hf_token)
-        return OverlapAwareSpeakerEmbedding(model, gamma, beta, norm, normalize_weights, device)
+        return OverlapAwareSpeakerEmbedding(
+            model, gamma, beta, norm, normalize_weights, device
+        )
 
     def __call__(
         self, waveform: TemporalFeatures, segmentation: TemporalFeatures
