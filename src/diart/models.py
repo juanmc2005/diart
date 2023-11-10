@@ -7,7 +7,7 @@ import torch.nn as nn
 from requests import HTTPError
 
 try:
-    from pyannote.audio import Inference, Model
+    from pyannote.audio import Model
     from pyannote.audio.pipelines.speaker_verification import (
         PretrainedSpeakerEmbedding,
     )
