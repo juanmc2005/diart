@@ -8,8 +8,6 @@ from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
 
-from . import utils
-
 
 class WindowClosedException(Exception):
     pass

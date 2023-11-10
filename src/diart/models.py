@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
 from typing import Optional, Text, Union, Callable, List
 
@@ -8,7 +8,6 @@ import numpy as np
 import onnxruntime
 import torch
 import torch.nn as nn
-import yaml
 from requests import HTTPError
 
 try:
@@ -41,7 +40,7 @@ class PowersetAdapter(nn.Module):
         return self.model.audio
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        return self.powerset.to_multilabel(self.model(waveform), soft=False)
+        return self.powerset.to_multilabel(self.model(waveform))
 
 
 class PyannoteLoader:
@@ -64,9 +63,9 @@ class PyannoteLoader:
 
 
 class ONNXLoader:
-    def __init__(self, path: Path, input_names: List[str], output_name: str):
+    def __init__(self, path: str | Path, input_names: List[str], output_name: str):
         super().__init__()
-        self.path = path
+        self.path = Path(path)
         self.input_names = input_names
         self.output_name = output_name
 
@@ -171,7 +170,7 @@ class SegmentationModel(LazyModel):
         wrapper: SegmentationModel
         """
         assert _has_pyannote, "No pyannote.audio installation found"
-        return PyannoteSegmentationModel(model, use_hf_token)
+        return SegmentationModel(PyannoteLoader(model, use_hf_token))
 
     @staticmethod
     def from_onnx(
@@ -179,7 +178,7 @@ class SegmentationModel(LazyModel):
         input_name: str = "waveform",
         output_name: str = "segmentation",
     ) -> "SegmentationModel":
-        return ONNXSegmentationModel(model_path, input_name, output_name)
+        return SegmentationModel(ONNXLoader(model_path, [input_name], output_name))
 
     @staticmethod
     def from_pretrained(
@@ -189,16 +188,6 @@ class SegmentationModel(LazyModel):
             if Path(model).name.endswith(".onnx"):
                 return SegmentationModel.from_onnx(model)
         return SegmentationModel.from_pyannote(model, use_hf_token)
-
-    @property
-    @abstractmethod
-    def sample_rate(self) -> int:
-        pass
-
-    @property
-    @abstractmethod
-    def duration(self) -> float:
-        pass
 
     def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -211,44 +200,6 @@ class SegmentationModel(LazyModel):
         speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
         """
         return super().__call__(waveform)
-
-
-class PyannoteSegmentationModel(SegmentationModel):
-    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
-        super().__init__(PyannoteLoader(model_info, hf_token))
-
-    @property
-    def sample_rate(self) -> int:
-        self.load()
-        return self.model.audio.sample_rate
-
-    @property
-    def duration(self) -> float:
-        self.load()
-        return self.model.specifications.duration
-
-
-class ONNXSegmentationModel(SegmentationModel):
-    def __init__(
-        self,
-        model_path: Union[str, Path],
-        input_name: str = "waveform",
-        output_name: str = "segmentation",
-    ):
-        model_path = Path(model_path)
-        loader = ONNXLoader(model_path, [input_name], output_name)
-        super().__init__(loader)
-        with open(model_path.parent / f"{model_path.stem}.yml", "r") as metadata_file:
-            metadata = yaml.load(metadata_file, yaml.SafeLoader)
-        self.metadata = metadata
-
-    @property
-    def sample_rate(self) -> int:
-        return self.metadata["sample_rate"]
-
-    @property
-    def duration(self) -> float:
-        return self.metadata["duration"]
 
 
 class EmbeddingModel(LazyModel):

@@ -23,7 +23,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         self,
         segmentation: m.SegmentationModel | None = None,
         embedding: m.EmbeddingModel | None = None,
-        duration: float | None = None,
+        duration: float = 5,
         step: float = 0.5,
         latency: float | Literal["max", "min"] | None = None,
         tau_active: float = 0.6,
@@ -34,6 +34,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         max_speakers: int = 20,
         normalize_embedding_weights: bool = False,
         device: torch.device | None = None,
+        sample_rate: int = 16000,
         **kwargs,
     ):
         # Default segmentation model is pyannote/segmentation
@@ -47,7 +48,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         )
 
         self._duration = duration
-        self._sample_rate: int | None = None
+        self._sample_rate = sample_rate
 
         # Latency defaults to the step duration
         self._step = step
@@ -70,9 +71,6 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
 
     @property
     def duration(self) -> float:
-        # Default duration is the one given by the segmentation model
-        if self._duration is None:
-            self._duration = self.segmentation.duration
         return self._duration
 
     @property
@@ -85,9 +83,6 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
 
     @property
     def sample_rate(self) -> int:
-        # Expected sample rate is given by the segmentation model
-        if self._sample_rate is None:
-            self._sample_rate = self.segmentation.sample_rate
         return self._sample_rate
 
 

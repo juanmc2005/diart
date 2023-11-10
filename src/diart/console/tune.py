@@ -46,6 +46,7 @@ def run():
     parser.add_argument(
         "--duration",
         type=float,
+        default=5,
         help=f"{argdoc.DURATION}. Defaults to training segmentation duration",
     )
     parser.add_argument(
