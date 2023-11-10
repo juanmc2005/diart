@@ -7,14 +7,36 @@ import torch.nn as nn
 from requests import HTTPError
 
 try:
-    from pyannote.audio import Inference, Model
+    from pyannote.audio import Model
     from pyannote.audio.pipelines.speaker_verification import (
         PretrainedSpeakerEmbedding,
     )
+    from pyannote.audio.utils.powerset import Powerset
 
     _has_pyannote = True
 except ImportError:
     _has_pyannote = False
+
+
+class PowersetAdapter(nn.Module):
+    def __init__(self, segmentation_model: nn.Module):
+        super().__init__()
+        self.model = segmentation_model
+        specs = self.model.specifications
+        max_speakers_per_frame = specs.powerset_max_classes
+        max_speakers_per_chunk = len(specs.classes)
+        self.powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
+
+    @property
+    def specifications(self):
+        return self.model.specifications
+
+    @property
+    def audio(self):
+        return self.model.audio
+
+    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+        return self.powerset.to_multilabel(self.model(waveform), soft=False)
 
 
 class PyannoteLoader:
@@ -25,7 +47,11 @@ class PyannoteLoader:
 
     def __call__(self) -> Callable:
         try:
-            return Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
+            model = Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
+            specs = getattr(model, "specifications", None)
+            if specs is not None and specs.powerset:
+                model = PowersetAdapter(model)
+            return model
         except HTTPError:
             return PretrainedSpeakerEmbedding(
                 self.model_info, use_auth_token=self.hf_token
