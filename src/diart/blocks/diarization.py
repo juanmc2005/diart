@@ -32,6 +32,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         gamma: float = 3,
         beta: float = 10,
         max_speakers: int = 20,
+        normalize_embedding_weights: bool = False,
         device: torch.device | None = None,
         **kwargs,
     ):
@@ -62,7 +63,7 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
         self.gamma = gamma
         self.beta = beta
         self.max_speakers = max_speakers
-
+        self.normalize_embedding_weights = normalize_embedding_weights
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -105,6 +106,7 @@ class SpeakerDiarization(base.Pipeline):
             self._config.gamma,
             self._config.beta,
             norm=1,
+            normalize_weights=self._config.normalize_embedding_weights,
             device=self._config.device,
         )
         self.pred_aggregation = DelayedAggregation(

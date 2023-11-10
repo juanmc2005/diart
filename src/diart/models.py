@@ -1,11 +1,16 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Text, Union, Callable
 
+import numpy as np
 import torch
 import torch.nn as nn
+from requests import HTTPError
 
 try:
-    import pyannote.audio.pipelines.utils as pyannote_loader
+    from pyannote.audio import Model
+    from pyannote.audio.pipelines.speaker_verification import (
+        PretrainedSpeakerEmbedding,
+    )
     from pyannote.audio.utils.powerset import Powerset
 
     _has_pyannote = True
@@ -23,12 +28,12 @@ class PowersetAdapter(nn.Module):
         self.powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
 
     @property
-    def sample_rate(self) -> int:
-        return self.model.hparams.sample_rate
+    def specifications(self):
+        return self.model.specifications
 
     @property
-    def duration(self) -> float:
-        return self.model.specifications.duration
+    def audio(self):
+        return self.model.audio
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         return self.powerset.to_multilabel(self.model(waveform), soft=False)
@@ -40,19 +45,24 @@ class PyannoteLoader:
         self.model_info = model_info
         self.hf_token = hf_token
 
-    def __call__(self) -> nn.Module:
-        model = pyannote_loader.get_model(self.model_info, self.hf_token)
-        specs = getattr(model, "specifications", None)
-        if specs is not None and specs.powerset:
-            model = PowersetAdapter(model)
-        return model
+    def __call__(self) -> Callable:
+        try:
+            model = Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
+            specs = getattr(model, "specifications", None)
+            if specs is not None and specs.powerset:
+                model = PowersetAdapter(model)
+            return model
+        except HTTPError:
+            return PretrainedSpeakerEmbedding(
+                self.model_info, use_auth_token=self.hf_token
+            )
 
 
-class LazyModel(nn.Module, ABC):
-    def __init__(self, loader: Callable[[], nn.Module]):
+class LazyModel(ABC):
+    def __init__(self, loader: Callable[[], Callable]):
         super().__init__()
         self.get_model = loader
-        self.model: Optional[nn.Module] = None
+        self.model: Optional[Callable] = None
 
     def is_in_memory(self) -> bool:
         """Return whether the model has been loaded into memory"""
@@ -62,13 +72,20 @@ class LazyModel(nn.Module, ABC):
         if not self.is_in_memory():
             self.model = self.get_model()
 
-    def to(self, *args, **kwargs) -> nn.Module:
+    def to(self, device: torch.device) -> "LazyModel":
         self.load()
-        return super().to(*args, **kwargs)
+        self.model = self.model.to(device)
+        return self
 
     def __call__(self, *args, **kwargs):
         self.load()
-        return super().__call__(*args, **kwargs)
+        return self.model(*args, **kwargs)
+
+    def eval(self) -> "LazyModel":
+        self.load()
+        if isinstance(self.model, nn.Module):
+            self.model.eval()
+        return self
 
 
 class SegmentationModel(LazyModel):
@@ -109,20 +126,17 @@ class SegmentationModel(LazyModel):
     def duration(self) -> float:
         pass
 
-    @abstractmethod
-    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
+    def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of the segmentation model.
-
+        Call the forward pass of the segmentation model.
         Parameters
         ----------
         waveform: torch.Tensor, shape (batch, channels, samples)
-
         Returns
         -------
         speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
         """
-        pass
+        return super().__call__(waveform)
 
 
 class PyannoteSegmentationModel(SegmentationModel):
@@ -138,9 +152,6 @@ class PyannoteSegmentationModel(SegmentationModel):
     def duration(self) -> float:
         self.load()
         return self.model.specifications.duration
-
-    def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        return self.model(waveform)
 
 
 class EmbeddingModel(LazyModel):
@@ -169,33 +180,26 @@ class EmbeddingModel(LazyModel):
         assert _has_pyannote, "No pyannote.audio installation found"
         return PyannoteEmbeddingModel(model, use_hf_token)
 
-    @abstractmethod
-    def forward(
+    def __call__(
         self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
-        Forward pass of an embedding model with optional weights.
-
+        Call the forward pass of an embedding model with optional weights.
         Parameters
         ----------
         waveform: torch.Tensor, shape (batch, channels, samples)
         weights: Optional[torch.Tensor], shape (batch, frames)
             Temporal weights for each sample in the batch. Defaults to no weights.
-
         Returns
         -------
         speaker_embeddings: torch.Tensor, shape (batch, embedding_dim)
         """
-        pass
+        embeddings = super().__call__(waveform, weights)
+        if isinstance(embeddings, np.ndarray):
+            embeddings = torch.from_numpy(embeddings)
+        return embeddings
 
 
 class PyannoteEmbeddingModel(EmbeddingModel):
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
         super().__init__(PyannoteLoader(model_info, hf_token))
-
-    def forward(
-        self,
-        waveform: torch.Tensor,
-        weights: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        return self.model(waveform, weights=weights)
