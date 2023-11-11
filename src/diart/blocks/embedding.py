@@ -3,6 +3,7 @@ from typing import Optional, Union, Text
 import torch
 from einops import rearrange
 
+from .. import functional as F
 from ..features import TemporalFeatures, TemporalFeatureFormatter
 from ..models import EmbeddingModel
 
@@ -90,10 +91,8 @@ class OverlappedSpeechPenalty:
 
     def __call__(self, segmentation: TemporalFeatures) -> TemporalFeatures:
         weights = self.formatter.cast(segmentation)  # shape (batch, frames, speakers)
-        with torch.no_grad():
-            probs = torch.softmax(self.beta * weights, dim=-1)
-            weights = torch.pow(weights, self.gamma) * torch.pow(probs, self.gamma)
-            weights[weights < 1e-8] = 1e-8
+        with torch.inference_mode():
+            weights = F.overlapped_speech_penalty(weights, self.gamma, self.beta)
             if self.normalize:
                 min_values = weights.min(dim=1, keepdim=True).values
                 max_values = weights.max(dim=1, keepdim=True).values
@@ -110,19 +109,8 @@ class EmbeddingNormalization:
             self.norm = self.norm.unsqueeze(0)
 
     def __call__(self, embeddings: torch.Tensor) -> torch.Tensor:
-        # Add batch dimension if missing
-        if embeddings.ndim == 2:
-            embeddings = embeddings.unsqueeze(0)
-        if isinstance(self.norm, torch.Tensor):
-            batch_size1, num_speakers1, _ = self.norm.shape
-            batch_size2, num_speakers2, _ = embeddings.shape
-            assert batch_size1 == batch_size2 and num_speakers1 == num_speakers2
-        with torch.no_grad():
-            norm_embs = (
-                self.norm
-                * embeddings
-                / torch.norm(embeddings, p=2, dim=-1, keepdim=True)
-            )
+        with torch.inference_mode():
+            norm_embs = F.normalize_embeddings(embeddings, self.norm)
         return norm_embs
 
 
