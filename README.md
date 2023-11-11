@@ -1,5 +1,3 @@
-<br/>
-
 <p align="center">
 <img width="100%" src="https://raw.githubusercontent.com/juanmc2005/diart/main/logo.jpg" title="diart logo" />
 </p>
