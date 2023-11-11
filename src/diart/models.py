@@ -1,7 +1,11 @@
-from abc import ABC, abstractmethod
-from typing import Optional, Text, Union, Callable
+from __future__ import annotations
+
+from abc import ABC
+from pathlib import Path
+from typing import Optional, Text, Union, Callable, List
 
 import numpy as np
+import onnxruntime
 import torch
 import torch.nn as nn
 from requests import HTTPError
@@ -36,7 +40,7 @@ class PowersetAdapter(nn.Module):
         return self.model.audio
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
-        return self.powerset.to_multilabel(self.model(waveform), soft=False)
+        return self.powerset.to_multilabel(self.model(waveform))
 
 
 class PyannoteLoader:
@@ -58,6 +62,58 @@ class PyannoteLoader:
             )
 
 
+class ONNXLoader:
+    def __init__(self, path: str | Path, input_names: List[str], output_name: str):
+        super().__init__()
+        self.path = Path(path)
+        self.input_names = input_names
+        self.output_name = output_name
+
+    def __call__(self) -> ONNXModel:
+        return ONNXModel(self.path, self.input_names, self.output_name)
+
+
+class ONNXModel:
+    def __init__(self, path: Path, input_names: List[str], output_name: str):
+        super().__init__()
+        self.path = path
+        self.input_names = input_names
+        self.output_name = output_name
+        self.device = torch.device("cpu")
+        self.session = None
+        self.recreate_session()
+
+    @property
+    def execution_provider(self) -> str:
+        device = "CUDA" if self.device.type == "cuda" else "CPU"
+        return f"{device}ExecutionProvider"
+
+    def recreate_session(self):
+        options = onnxruntime.SessionOptions()
+        options.graph_optimization_level = (
+            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+        )
+        self.session = onnxruntime.InferenceSession(
+            self.path,
+            sess_options=options,
+            providers=[self.execution_provider],
+        )
+
+    def to(self, device: torch.device) -> ONNXModel:
+        if device.type != self.device.type:
+            self.device = device
+            self.recreate_session()
+        return self
+
+    def __call__(self, *args) -> torch.Tensor:
+        inputs = {
+            name: arg.cpu().numpy().astype(np.float32)
+            for name, arg in zip(self.input_names, args)
+        }
+        output = self.session.run([self.output_name], inputs)[0]
+        return torch.from_numpy(output).float().to(args[0].device)
+
+
 class LazyModel(ABC):
     def __init__(self, loader: Callable[[], Callable]):
         super().__init__()
@@ -72,7 +128,7 @@ class LazyModel(ABC):
         if not self.is_in_memory():
             self.model = self.get_model()
 
-    def to(self, device: torch.device) -> "LazyModel":
+    def to(self, device: torch.device) -> LazyModel:
         self.load()
         self.model = self.model.to(device)
         return self
@@ -81,7 +137,7 @@ class LazyModel(ABC):
         self.load()
         return self.model(*args, **kwargs)
 
-    def eval(self) -> "LazyModel":
+    def eval(self) -> LazyModel:
         self.load()
         if isinstance(self.model, nn.Module):
             self.model.eval()
@@ -114,17 +170,24 @@ class SegmentationModel(LazyModel):
         wrapper: SegmentationModel
         """
         assert _has_pyannote, "No pyannote.audio installation found"
-        return PyannoteSegmentationModel(model, use_hf_token)
+        return SegmentationModel(PyannoteLoader(model, use_hf_token))
 
-    @property
-    @abstractmethod
-    def sample_rate(self) -> int:
-        pass
+    @staticmethod
+    def from_onnx(
+        model_path: Union[str, Path],
+        input_name: str = "waveform",
+        output_name: str = "segmentation",
+    ) -> "SegmentationModel":
+        return SegmentationModel(ONNXLoader(model_path, [input_name], output_name))
 
-    @property
-    @abstractmethod
-    def duration(self) -> float:
-        pass
+    @staticmethod
+    def from_pretrained(
+        model, use_hf_token: Union[Text, bool, None] = True
+    ) -> "SegmentationModel":
+        if isinstance(model, str) or isinstance(model, Path):
+            if Path(model).name.endswith(".onnx"):
+                return SegmentationModel.from_onnx(model)
+        return SegmentationModel.from_pyannote(model, use_hf_token)
 
     def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
         """
@@ -137,21 +200,6 @@ class SegmentationModel(LazyModel):
         speaker_segmentation: torch.Tensor, shape (batch, frames, speakers)
         """
         return super().__call__(waveform)
-
-
-class PyannoteSegmentationModel(SegmentationModel):
-    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
-        super().__init__(PyannoteLoader(model_info, hf_token))
-
-    @property
-    def sample_rate(self) -> int:
-        self.load()
-        return self.model.audio.sample_rate
-
-    @property
-    def duration(self) -> float:
-        self.load()
-        return self.model.specifications.duration
 
 
 class EmbeddingModel(LazyModel):
@@ -178,7 +226,27 @@ class EmbeddingModel(LazyModel):
         wrapper: EmbeddingModel
         """
         assert _has_pyannote, "No pyannote.audio installation found"
-        return PyannoteEmbeddingModel(model, use_hf_token)
+        loader = PyannoteLoader(model, use_hf_token)
+        return EmbeddingModel(loader)
+
+    @staticmethod
+    def from_onnx(
+        model_path: Union[str, Path],
+        input_names: List[str] | None = None,
+        output_name: str = "embedding",
+    ) -> "EmbeddingModel":
+        input_names = input_names or ["waveform", "weights"]
+        loader = ONNXLoader(model_path, input_names, output_name)
+        return EmbeddingModel(loader)
+
+    @staticmethod
+    def from_pretrained(
+        model, use_hf_token: Union[Text, bool, None] = True
+    ) -> "EmbeddingModel":
+        if isinstance(model, str) or isinstance(model, Path):
+            if Path(model).name.endswith(".onnx"):
+                return EmbeddingModel.from_onnx(model)
+        return EmbeddingModel.from_pyannote(model, use_hf_token)
 
     def __call__(
         self, waveform: torch.Tensor, weights: Optional[torch.Tensor] = None
@@ -198,8 +266,3 @@ class EmbeddingModel(LazyModel):
         if isinstance(embeddings, np.ndarray):
             embeddings = torch.from_numpy(embeddings)
         return embeddings
-
-
-class PyannoteEmbeddingModel(EmbeddingModel):
-    def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
-        super().__init__(PyannoteLoader(model_info, hf_token))

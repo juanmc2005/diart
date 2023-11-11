@@ -46,6 +46,7 @@ def run():
     parser.add_argument(
         "--duration",
         type=float,
+        default=5,
         help=f"{argdoc.DURATION}. Defaults to training segmentation duration",
     )
     parser.add_argument(
@@ -120,8 +121,8 @@ def run():
 
     # Resolve models
     hf_token = utils.parse_hf_token_arg(args.hf_token)
-    args.segmentation = m.SegmentationModel.from_pyannote(args.segmentation, hf_token)
-    args.embedding = m.EmbeddingModel.from_pyannote(args.embedding, hf_token)
+    args.segmentation = m.SegmentationModel.from_pretrained(args.segmentation, hf_token)
+    args.embedding = m.EmbeddingModel.from_pretrained(args.embedding, hf_token)
 
     # Retrieve pipeline class
     pipeline_class = utils.get_pipeline_class(args.pipeline)
