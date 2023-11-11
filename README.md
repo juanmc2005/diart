@@ -144,8 +144,21 @@ For inference and evaluation on a dataset we recommend to use `Benchmark` (see n
 
 ## 🧠 Available models
 
-| Model                               | Model Type   | CPU Time (5s chunk)* | GPU Time (5s chunk)* |
-|-------------------------------------|--------------|---------------------|---------------------|
+You can use a different segmentation or embedding model with `--segmentation` and `--embedding`.
+
+Or in python:
+
+```python
+import diart.models as m
+
+segmentation = m.SegmentationModel.from_pretrained("model_name")
+embedding = m.EmbeddingModel.from_pretrained("model_name")
+```
+
+Below is a list of all the models currently supported by diart:
+
+| Model Name | Model Type   | CPU Time* | GPU Time* |
+|------------|--------------|-----------|-----------|
 | [`pyannote/segmentation`](pyannote/segmentation) | segmentation | 12ms | 8ms |
 | [`pyannote/segmentation-3.0`](https://huggingface.co/pyannote/segmentation-3.0) | segmentation | 11ms | 8ms |
 | [`pyannote/embedding`](https://huggingface.co/pyannote/embedding) | embedding | 26ms | 12ms |
@@ -156,9 +169,9 @@ For inference and evaluation on a dataset we recommend to use `Benchmark` (see n
 | [`speechbrain/spkrec-ecapa-voxceleb-mel-spec`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb-mel-spec) | embedding | | |
 | [`speechbrain/spkrec-resnet-voxceleb`](https://huggingface.co/speechbrain/spkrec-resnet-voxceleb) | embedding | | |
 
-The latency of segmentation models is measured in a VAD pipeline.
+The latency of segmentation models is measured in a VAD pipeline (5s chunks).
 
-The latency of embedding models is measured in a diarization pipeline using `pyannote/segmentation`.
+The latency of embedding models is measured in a diarization pipeline using `pyannote/segmentation` (also 5s chunks).
 
 \* CPU: AMD Ryzen 9 - GPU: RTX 4060 Max-Q
 
