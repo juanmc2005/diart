@@ -11,7 +11,7 @@
 <p align="center">
 <img alt="PyPI Version" src="https://img.shields.io/pypi/v/diart?color=g">
 <img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/diart?period=total&units=international_system&left_color=grey&right_color=brightgreen&left_text=downloads">
-<img alt="Top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="Python Versions" src="https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10-dark_green">
 <img alt="Code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
 <img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
 <a href="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996"><img src="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996/status.svg"></a>
