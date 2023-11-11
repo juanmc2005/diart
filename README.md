@@ -34,11 +34,11 @@
     <a href="#-add-your-model">
       🤖 Add your model
     </a>
-    <span> | </span>
+    <br />
     <a href="#-tune-hyper-parameters">
       📈 Tune hyper-parameters
     </a>
-    <br />
+    <span> | </span>
     <a href="#-build-pipelines">
       🧠🔗 Build pipelines
     </a>
@@ -49,10 +49,6 @@
     <span> | </span>
     <a href="#-powered-by-research">
       🔬 Research
-    </a>
-    <span> | </span>
-    <a href="#-citation">
-      📗 Citation
     </a>
     <span> | </span>
     <a href="#-reproducibility">
@@ -357,7 +353,7 @@ and [Sophie Rosset](https://perso.limsi.fr/rosset/).
 <img height="400" src="https://github.com/juanmc2005/diart/blob/main/figure1.png?raw=true" title="Visual explanation of the system" width="325" />
 </p>
 
-## 📗 Citation
+### Citation
 
 If you found diart useful, please make sure to cite our paper:
 
