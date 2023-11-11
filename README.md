@@ -27,7 +27,11 @@
       🎙️ Stream audio
     </a>
     <span> | </span>
-    <a href="#-custom-models">
+    <a href="#-available-models">
+      🧠 Available models
+    </a>
+    <span> | </span>
+    <a href="#-add-your-model">
       🤖 Add your model
     </a>
     <span> | </span>
@@ -137,6 +141,26 @@ prediction = inference()
 ```
 
 For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#-reproducibility)).
+
+## 🧠 Available models
+
+| Model                               | Model Type   | CPU Time (5s chunk)* | GPU Time (5s chunk)* |
+|-------------------------------------|--------------|---------------------|---------------------|
+| [`pyannote/segmentation`](pyannote/segmentation) | segmentation | 12ms | 8ms |
+| [`pyannote/segmentation-3.0`](https://huggingface.co/pyannote/segmentation-3.0) | segmentation | 11ms | 8ms |
+| [`pyannote/embedding`](https://huggingface.co/pyannote/embedding) | embedding | 26ms | 12ms |
+| [`hbredin/wespeaker-voxceleb-resnet34-LM`](https://huggingface.co/hbredin/wespeaker-voxceleb-resnet34-LM) | embedding | 41ms | 15ms |
+| [`nvidia/speakerverification_en_titanet_large`](https://huggingface.co/nvidia/speakerverification_en_titanet_large) | embedding | 91ms | 16ms |
+| [`speechbrain/spkrec-xvect-voxceleb`](https://huggingface.co/speechbrain/spkrec-xvect-voxceleb) | embedding | | |
+| [`speechbrain/spkrec-ecapa-voxceleb`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) | embedding | | |
+| [`speechbrain/spkrec-ecapa-voxceleb-mel-spec`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb-mel-spec) | embedding | | |
+| [`speechbrain/spkrec-resnet-voxceleb`](https://huggingface.co/speechbrain/spkrec-resnet-voxceleb) | embedding | | |
+
+The latency of segmentation models is measured in a VAD pipeline.
+
+The latency of embedding models is measured in a diarization pipeline using `pyannote/segmentation`.
+
+\* CPU: AMD Ryzen 9 - GPU: RTX 4060 Max-Q
 
 ## 🤖 Add your model
 
