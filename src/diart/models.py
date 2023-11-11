@@ -57,9 +57,10 @@ class PyannoteLoader:
                 model = PowersetAdapter(model)
             return model
         except HTTPError:
-            return PretrainedSpeakerEmbedding(
-                self.model_info, use_auth_token=self.hf_token
-            )
+            pass
+        except ModuleNotFoundError:
+            pass
+        return PretrainedSpeakerEmbedding(self.model_info, use_auth_token=self.hf_token)
 
 
 class ONNXLoader:
