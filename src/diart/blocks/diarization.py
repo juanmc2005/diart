@@ -157,6 +157,18 @@ class SpeakerDiarization(base.Pipeline):
     def __call__(
         self, waveforms: Sequence[SlidingWindowFeature]
     ) -> Sequence[tuple[Annotation, SlidingWindowFeature]]:
+        """Diarize the next audio chunks of an audio stream.
+
+        Parameters
+        ----------
+        waveforms: Sequence[SlidingWindowFeature]
+            A sequence of consecutive audio chunks from an audio stream.
+
+        Returns
+        -------
+        Sequence[tuple[Annotation, SlidingWindowFeature]]
+            Speaker diarization of each chunk alongside their corresponding audio.
+        """
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
         assert batch_size >= 1, msg
