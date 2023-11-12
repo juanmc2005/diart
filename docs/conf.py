@@ -6,22 +6,27 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'diart'
-copyright = '2023, Juan Manuel Coria'
-author = 'Juan Manuel Coria'
-release = 'v0.9.0'
+project = "diart"
+copyright = "2023, Juan Manuel Coria"
+author = "Juan Manuel Coria"
+release = "v0.9.0"
 
 # sys.path.insert(0, os.path.abspath('..'))
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['autoapi.extension', 'sphinx.ext.coverage', 'sphinx.ext.napoleon']
+extensions = [
+    "autoapi.extension",
+    "sphinx.ext.coverage",
+    "sphinx.ext.napoleon",
+    "sphinx_mdinclude",
+]
 
-autoapi_dirs = ['../src/diart']
+autoapi_dirs = ["../src/diart"]
 
-templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # -- Options for autodoc ----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#configuration
@@ -36,10 +41,10 @@ autodoc_class_signature = "separated"
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'furo'
-html_static_path = ['_static']
+html_theme = "furo"
+html_static_path = ["_static"]
 html_logo = "_static/logo.png"
-html_title = 'Documentation'
+html_title = "Documentation"
 
 
 def skip_submodules(app, what, name, obj, skip, options):

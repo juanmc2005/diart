@@ -1,7 +1,7 @@
 <br/>
 
 <p align="center">
-<img width="50%" src="/logo.jpg" title="Logo" />
+<img width="50%" src="https://raw.githubusercontent.com/juanmc2005/diart/main/logo.jpg" title="Logo" />
 </p>
 
 <p align="center">
@@ -53,10 +53,15 @@
   </h4>
 </div>
 
-<br/>
+## Introduction
+
+Diart is a python package to turn the latest and greatest AI audio
+models into powerful real-time applications. It provides tools to
+create your own AI pipeline, benchmark it on a dataset, tune
+hyper-parameters, and even to serve your pipeline using websockets.
 
 <p align="center">
-<img width="100%" src="/demo.gif" title="Real-time diarization example" />
+<img width="100%" src="https://github.com/juanmc2005/diart/blob/main/demo.gif?raw=true" title="Real-time diarization example" />
 </p>
 
 ## 💾 Installation
@@ -295,7 +300,7 @@ Diart is the official implementation of the paper *[Overlap-aware low-latency on
 > We propose to address online speaker diarization as a combination of incremental clustering and local diarization applied to a rolling buffer updated every 500ms. Every single step of the proposed pipeline is designed to take full advantage of the strong ability of a recently proposed end-to-end overlap-aware segmentation to detect and separate overlapping speakers. In particular, we propose a modified version of the statistics pooling layer (initially introduced in the x-vector architecture) to give less weight to frames where the segmentation model predicts simultaneous speakers. Furthermore, we derive cannot-link constraints from the initial segmentation step to prevent two local speakers from being wrongfully merged during the incremental clustering step. Finally, we show how the latency of the proposed approach can be adjusted between 500ms and 5s to match the requirements of a particular use case, and we provide a systematic analysis of the influence of latency on the overall performance (on AMI, DIHARD and VoxConverse).
 
 <p align="center">
-<img height="400" src="/figure1.png" title="Visual explanation of the system" width="325" />
+<img height="400" src="https://github.com/juanmc2005/diart/blob/main/figure1.png?raw=true" title="Visual explanation of the system" width="325" />
 </p>
 
 ## 📗 Citation
@@ -315,7 +320,7 @@ If you found diart useful, please make sure to cite our paper:
 
 ## 👨‍💻 Reproducibility
 
-![Results table](/table1.png)
+![Results table](https://github.com/juanmc2005/diart/blob/main/table1.png?raw=true)
 
 Diart aims to be lightweight and capable of real-time streaming in practical scenarios.
 Its performance is very close to what is reported in the paper (and sometimes even a bit better).
@@ -369,7 +374,7 @@ See `diart.benchmark -h` for more options.
 
 For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
-![Figure 5](/figure5.png)
+![Figure 5](https://github.com/juanmc2005/diart/blob/main/figure5.png?raw=true)
 
 ## 📑 License
 

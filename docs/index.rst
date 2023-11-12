@@ -1,14 +1,11 @@
-Welcome to diart's documentation!
-=================================
+Diart Documentation
+===================
+
+.. mdinclude:: ../README.md
+
+
+Useful Links
+============
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   :maxdepth: 1
