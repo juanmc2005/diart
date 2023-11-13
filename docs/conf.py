@@ -9,9 +9,7 @@
 project = "diart"
 copyright = "2023, Juan Manuel Coria"
 author = "Juan Manuel Coria"
-release = "v0.9.0"
-
-# sys.path.insert(0, os.path.abspath('..'))
+release = "v0.9"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
