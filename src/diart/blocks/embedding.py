@@ -69,7 +69,13 @@ class SpeakerEmbedding:
 
 
 class OverlappedSpeechPenalty:
-    """
+    """Applies a penalty on overlapping speech and low-confidence regions to speaker segmentation scores.
+
+    .. note::
+        For more information, see `"Overlap-Aware Low-Latency Online Speaker Diarization
+        based on End-to-End Local Segmentation" <https://github.com/juanmc2005/diart/blob/main/paper.pdf>`_
+        (Section 2.2.1 Segmentation-driven speaker embedding). This block implements Equation 2.
+
     Parameters
     ----------
     gamma: float, optional

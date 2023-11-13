@@ -24,7 +24,6 @@ extensions = [
 ]
 
 autoapi_dirs = ["../src/diart"]
-autoapi_ignore = ["*__init__"]
 autoapi_options = [
     "members",
     "undoc-members",
@@ -57,7 +56,11 @@ html_title = "Documentation"
 
 
 def skip_submodules(app, what, name, obj, skip, options):
-    return name.startswith("diart.console") or name.startswith("diart.argdoc")
+    return (
+        name.endswith("__init__")
+        or name.startswith("diart.console")
+        or name.startswith("diart.argdoc")
+    )
 
 
 def setup(sphinx):
