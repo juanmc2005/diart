@@ -93,7 +93,9 @@ class ONNXModel:
             onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         )
         self.session = onnxruntime.InferenceSession(
-            self.path, sess_options=options, providers=[self.execution_provider],
+            self.path,
+            sess_options=options,
+            providers=[self.execution_provider],
         )
 
     def to(self, device: torch.device) -> ONNXModel:

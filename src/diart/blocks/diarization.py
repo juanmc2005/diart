@@ -193,7 +193,9 @@ class SpeakerDiarization(base.Pipeline):
         for wav, seg, emb in zip(waveforms, segmentations, embeddings):
             # Add timestamps to segmentation
             sw = SlidingWindow(
-                start=wav.extent.start, duration=seg_resolution, step=seg_resolution,
+                start=wav.extent.start,
+                duration=seg_resolution,
+                step=seg_resolution,
             )
             seg = SlidingWindowFeature(seg.cpu().numpy(), sw)
 

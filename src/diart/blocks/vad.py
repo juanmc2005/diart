@@ -125,7 +125,8 @@ class VoiceActivityDetection(base.Pipeline):
         self.timestamp_shift = shift
 
     def __call__(
-        self, waveforms: Sequence[SlidingWindowFeature],
+        self,
+        waveforms: Sequence[SlidingWindowFeature],
     ) -> Sequence[tuple[Annotation, SlidingWindowFeature]]:
         batch_size = len(waveforms)
         msg = "Pipeline expected at least 1 input"
@@ -152,7 +153,9 @@ class VoiceActivityDetection(base.Pipeline):
         for wav, vad in zip(waveforms, voice_detection):
             # Add timestamps to segmentation
             sw = SlidingWindow(
-                start=wav.extent.start, duration=seg_resolution, step=seg_resolution,
+                start=wav.extent.start,
+                duration=seg_resolution,
+                step=seg_resolution,
             )
             vad = SlidingWindowFeature(vad.cpu().numpy(), sw)
 

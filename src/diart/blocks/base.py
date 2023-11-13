@@ -23,7 +23,7 @@ class HyperParameter:
     @staticmethod
     def from_name(name: Text) -> "HyperParameter":
         """Create a HyperParameter object given its name.
-        
+
         Parameters
         ----------
         name: str
