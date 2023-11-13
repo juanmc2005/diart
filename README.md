@@ -305,7 +305,12 @@ prediction = inference()
 
 ## 🔬 Powered by research
 
-Diart is the official implementation of the paper *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)* by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
+Diart is the official implementation of the paper
+[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](https://github.com/juanmc2005/diart/blob/main/paper.pdf)
+by [Juan Manuel Coria](https://juanmc2005.github.io/),
+[Hervé Bredin](https://herve.niderb.fr),
+[Sahar Ghannay](https://saharghannay.github.io/)
+and [Sophie Rosset](https://perso.limsi.fr/rosset/).
 
 
 > We propose to address online speaker diarization as a combination of incremental clustering and local diarization applied to a rolling buffer updated every 500ms. Every single step of the proposed pipeline is designed to take full advantage of the strong ability of a recently proposed end-to-end overlap-aware segmentation to detect and separate overlapping speakers. In particular, we propose a modified version of the statistics pooling layer (initially introduced in the x-vector architecture) to give less weight to frames where the segmentation model predicts simultaneous speakers. Furthermore, we derive cannot-link constraints from the initial segmentation step to prevent two local speakers from being wrongfully merged during the incremental clustering step. Finally, we show how the latency of the proposed approach can be adjusted between 500ms and 5s to match the requirements of a particular use case, and we provide a systematic analysis of the influence of latency on the overall performance (on AMI, DIHARD and VoxConverse).
@@ -383,7 +388,11 @@ if __name__ == "__main__":  # Needed for multiprocessing
 This pre-calculates model outputs in batches, so it runs a lot faster.
 See `diart.benchmark -h` for more options.
 
-For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
+For convenience and to facilitate future comparisons, we also provide the
+[expected outputs](https://github.com/juanmc2005/diart/tree/main/expected_outputs)
+of the paper implementation in RTTM format for every entry of Table 1 and Figure 5.
+This includes the VBx offline topline as well as our proposed online approach with
+latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
 ![Figure 5](https://github.com/juanmc2005/diart/blob/main/figure5.png?raw=true)
 
