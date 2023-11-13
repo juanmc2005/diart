@@ -50,7 +50,7 @@ autodoc_class_signature = "separated"
 html_theme = "furo"
 html_static_path = ["_static"]
 html_logo = "_static/logo.png"
-html_title = "Documentation"
+html_title = "diart documentation"
 
 
 def skip_submodules(app, what, name, obj, skip, options):
