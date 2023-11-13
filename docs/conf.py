@@ -24,6 +24,15 @@ extensions = [
 ]
 
 autoapi_dirs = ["../src/diart"]
+autoapi_ignore = ["*__init__"]
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "show-module-summary",
+    "special-members",
+    "imported-members",
+]
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
@@ -48,12 +57,7 @@ html_title = "Documentation"
 
 
 def skip_submodules(app, what, name, obj, skip, options):
-    return (
-        name.startswith("_")
-        or name.endswith("__init__")
-        or name.startswith("diart.console")
-        or name.startswith("diart.argdoc")
-    )
+    return name.startswith("diart.console") or name.startswith("diart.argdoc")
 
 
 def setup(sphinx):
