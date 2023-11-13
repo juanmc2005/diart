@@ -12,9 +12,7 @@ from requests import HTTPError
 
 try:
     from pyannote.audio import Model
-    from pyannote.audio.pipelines.speaker_verification import (
-        PretrainedSpeakerEmbedding,
-    )
+    from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
     from pyannote.audio.utils.powerset import Powerset
 
     _has_pyannote = True
@@ -95,9 +93,7 @@ class ONNXModel:
             onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         )
         self.session = onnxruntime.InferenceSession(
-            self.path,
-            sess_options=options,
-            providers=[self.execution_provider],
+            self.path, sess_options=options, providers=[self.execution_provider],
         )
 
     def to(self, device: torch.device) -> ONNXModel:

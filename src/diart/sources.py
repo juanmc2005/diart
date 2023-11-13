@@ -238,10 +238,7 @@ class WebSocketAudioSource(AudioSource):
         self.server.set_fn_message_received(self._on_message_received)
 
     def _on_message_received(
-        self,
-        client: Dict[Text, Any],
-        server: WebsocketServer,
-        message: AnyStr,
+        self, client: Dict[Text, Any], server: WebsocketServer, message: AnyStr,
     ):
         # Only one client at a time is allowed
         if self.client is None or self.client["id"] != client["id"]:

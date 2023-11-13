@@ -48,7 +48,8 @@ DeltaNew = HyperParameter("delta_new", low=0, high=2)
 
 
 class PipelineConfig(ABC):
-    """Configuration containing the required parameters to build and run a pipeline"""
+    """Configuration containing the required
+    parameters to build and run a pipeline"""
 
     @property
     @abstractmethod
@@ -66,7 +67,8 @@ class PipelineConfig(ABC):
     @abstractmethod
     def latency(self) -> float:
         """The algorithmic latency of the pipeline (in seconds).
-        At time `t` of the audio stream, the pipeline will output predictions for time `t - latency`.
+        At time `t` of the audio stream, the pipeline will
+        output predictions for time `t - latency`.
         """
         pass
 
@@ -118,7 +120,8 @@ class Pipeline(ABC):
     def __call__(
         self, waveforms: Sequence[SlidingWindowFeature]
     ) -> Sequence[Tuple[Any, SlidingWindowFeature]]:
-        """Runs the next steps of the pipeline given a list of consecutive audio chunks.
+        """Runs the next steps of the pipeline
+        given a list of consecutive audio chunks.
 
         Parameters
         ----------
@@ -128,6 +131,7 @@ class Pipeline(ABC):
         Returns
         -------
         Sequence[Tuple[Any, SlidingWindowFeature]]
-            For each input waveform, a tuple containing the pipeline output and its respective audio
+            For each input waveform, a tuple containing
+            the pipeline output and its respective audio
         """
         pass

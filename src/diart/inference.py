@@ -123,9 +123,7 @@ class StreamingInference:
             )
 
         # Form batches
-        self.stream = self.stream.pipe(
-            ops.buffer_with_count(count=self.batch_size),
-        )
+        self.stream = self.stream.pipe(ops.buffer_with_count(count=self.batch_size),)
 
         if self.do_profile:
             self.stream = self.stream.pipe(
@@ -223,8 +221,7 @@ class StreamingInference:
                 ops.do(StreamingPlot(config.duration, config.latency)),
             )
         observable.subscribe(
-            on_error=self._handle_error,
-            on_completed=self._handle_completion,
+            on_error=self._handle_error, on_completed=self._handle_completion,
         )
         # FIXME if read() isn't blocking, the prediction returned is empty
         self.source.read()
@@ -306,10 +303,7 @@ class Benchmark:
         return list(self.speech_path.iterdir())
 
     def run_single(
-        self,
-        pipeline: blocks.Pipeline,
-        filepath: Path,
-        progress_bar: ProgressBar,
+        self, pipeline: blocks.Pipeline, filepath: Path, progress_bar: ProgressBar,
     ) -> Annotation:
         """Run a given pipeline on a given file.
         Note that this method does NOT reset the
@@ -331,10 +325,7 @@ class Benchmark:
         """
         padding = pipeline.config.get_file_padding(filepath)
         source = src.FileAudioSource(
-            filepath,
-            pipeline.config.sample_rate,
-            padding,
-            pipeline.config.step,
+            filepath, pipeline.config.sample_rate, padding, pipeline.config.step,
         )
         pipeline.set_timestamp_shift(-padding[0])
         inference = StreamingInference(
@@ -357,9 +348,7 @@ class Benchmark:
         return pred
 
     def evaluate(
-        self,
-        predictions: List[Annotation],
-        metric: BaseMetric,
+        self, predictions: List[Annotation], metric: BaseMetric,
     ) -> Union[pd.DataFrame, List[Annotation]]:
         """If a reference path was provided,
         compute the diarization error rate of a list of predictions.
@@ -446,9 +435,7 @@ class Parallelize:
     """
 
     def __init__(
-        self,
-        benchmark: Benchmark,
-        num_workers: int = 4,
+        self, benchmark: Benchmark, num_workers: int = 4,
     ):
         self.benchmark = benchmark
         self.num_workers = num_workers

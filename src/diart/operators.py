@@ -134,8 +134,7 @@ class OutputAccumulationState:
     @property
     def cropped_waveform(self) -> SlidingWindowFeature:
         return SlidingWindowFeature(
-            self.waveform[: self.next_sample],
-            self.waveform.sliding_window,
+            self.waveform[: self.next_sample], self.waveform.sliding_window,
         )
 
     def to_tuple(
@@ -145,9 +144,7 @@ class OutputAccumulationState:
 
 
 def accumulate_output(
-    duration: float,
-    step: float,
-    patch_collar: float = 0.05,
+    duration: float, step: float, patch_collar: float = 0.05,
 ) -> Operator:
     """Accumulate predictions and audio to infinity: O(N) space complexity.
     Uses a pre-allocated buffer that doubles its size once full: O(logN) concat operations.

@@ -126,14 +126,12 @@ class SpeakerMapBuilder:
 
     @staticmethod
     def correlation(scores1: np.ndarray, scores2: np.ndarray) -> SpeakerMap:
-        score_matrix_per_frame = (
-            np.stack(  # (local_speakers, num_frames, global_speakers)
-                [
-                    scores1[:, speaker : speaker + 1] * scores2
-                    for speaker in range(scores1.shape[1])
-                ],
-                axis=0,
-            )
+        score_matrix_per_frame = np.stack(  # (local_speakers, num_frames, global_speakers)
+            [
+                scores1[:, speaker : speaker + 1] * scores2
+                for speaker in range(scores1.shape[1])
+            ],
+            axis=0,
         )
         # Calculate total speech "activations" per local speaker
         local_speech_scores = np.sum(scores1, axis=0).reshape(-1, 1)
@@ -215,9 +213,7 @@ class SpeakerMap:
         return self.is_source_speaker_mapped(src)
 
     def valid_assignments(
-        self,
-        strict: bool = False,
-        as_array: bool = False,
+        self, strict: bool = False, as_array: bool = False,
     ) -> Union[Tuple[List[int], List[int]], Tuple[np.ndarray, np.ndarray]]:
         source, target = [], []
         val_type = "strict" if strict else "loose"
