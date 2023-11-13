@@ -1,5 +1,5 @@
-Diart Documentation
-===================
+Get started with diart
+======================
 
 .. mdinclude:: ../README.md
 

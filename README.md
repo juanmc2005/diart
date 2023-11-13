@@ -5,6 +5,10 @@
 </p>
 
 <p align="center">
+<i>Build AI-powered real-time audio applications in a breeze</i>
+</p>
+
+<p align="center">
 <img alt="PyPI Version" src="https://img.shields.io/pypi/v/diart?color=g">
 <img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/diart?period=total&units=international_system&left_color=grey&right_color=brightgreen&left_text=downloads">
 <img alt="Top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
@@ -53,16 +57,23 @@
   </h4>
 </div>
 
-## Introduction
-
-Diart is a python package to turn the latest and greatest AI audio
-models into powerful real-time applications. It provides tools to
-create your own AI pipeline, benchmark it on a dataset, tune
-hyper-parameters, and even to serve your pipeline using websockets.
+<br/>
 
 <p align="center">
 <img width="100%" src="https://github.com/juanmc2005/diart/blob/main/demo.gif?raw=true" title="Real-time diarization example" />
 </p>
+
+## ⚡ Quick introduction
+
+Diart is a python framework to build AI-powered real-time audio applications. With diart you can
+create your own AI pipeline, benchmark it, tune its hyper-parameters, and even serve it on the web using websockets.
+
+**We provide pre-trained AI pipelines for:**
+
+- Speaker Diarization
+- Voice Activity Detection
+- Transcription (coming soon)
+- [Speaker-Aware Transcription](https://betterprogramming.pub/color-your-captions-streamlining-live-transcriptions-with-diart-and-openais-whisper-6203350234ef) (coming soon)
 
 ## 💾 Installation
 
