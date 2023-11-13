@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-<i>Build AI-powered real-time audio applications in a breeze</i>
+<i>🌿 Build AI-powered real-time audio applications in a breeze 🌿</i>
 </p>
 
 <p align="center">
