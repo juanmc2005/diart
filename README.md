@@ -55,12 +55,21 @@
 
 ## ⚡ Quick introduction
 
-Diart is a python framework to build AI-powered real-time audio applications. With diart you can
-create your own AI pipeline, benchmark it, tune its hyper-parameters, and even serve it on the web using websockets.
+Diart is a python framework to build AI-powered real-time audio applications.
+Its key feature is the ability to recognize different speakers in real time with state-of-the-art performance,
+a task commonly known as "speaker diarization".
+The pipeline `diart.SpeakerDiarization` combines a speaker segmentation and a speaker embedding model
+to power an incremental clustering algorithm that gets better as the conversation progresses:
 
-**We provide pre-trained AI pipelines for:**
+<p align="center">
+<img width="100%" src="/pipeline.gif" title="Real-time speaker diarization pipeline" />
+</p>
 
-- Speaker Diarization
+With diart you can also create your own custom AI pipeline, benchmark it,
+tune its hyper-parameters, and even serve it on the web using websockets.
+
+**We also provide pre-trained pipelines for:**
+
 - Voice Activity Detection
 - Transcription ([coming soon](https://github.com/juanmc2005/diart/pull/144))
 - [Speaker-Aware Transcription](https://betterprogramming.pub/color-your-captions-streamlining-live-transcriptions-with-diart-and-openais-whisper-6203350234ef) ([coming soon](https://github.com/juanmc2005/diart/pull/147))
