@@ -69,8 +69,9 @@ to power an incremental clustering algorithm that gets better as the conversatio
 With diart you can also create your own custom AI pipeline, benchmark it,
 tune its hyper-parameters, and even serve it on the web using websockets.
 
-**We also provide pre-trained pipelines for:**
+**We provide pre-trained pipelines for:**
 
+- Speaker Diarization
 - Voice Activity Detection
 - Transcription ([coming soon](https://github.com/juanmc2005/diart/pull/144))
 - [Speaker-Aware Transcription](https://betterprogramming.pub/color-your-captions-streamlining-live-transcriptions-with-diart-and-openais-whisper-6203350234ef) ([coming soon](https://github.com/juanmc2005/diart/pull/147))
