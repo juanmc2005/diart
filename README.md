@@ -134,7 +134,7 @@ inference.attach_observers(RTTMWriter(mic.uri, "/output/file.rttm"))
 prediction = inference()
 ```
 
-For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#-reproducibility)).
+For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#reproducibility)).
 
 ## 🧠 Models
 
@@ -148,7 +148,7 @@ segmentation = m.SegmentationModel.from_pretrained("model_name")
 embedding = m.EmbeddingModel.from_pretrained("model_name")
 ```
 
-### Available pre-trained models
+### Pre-trained models
 
 Below is a list of all the models currently supported by diart:
 
