@@ -154,15 +154,15 @@ Below is a list of all the models currently supported by diart:
 
 | Model Name | Model Type   | CPU Time* | GPU Time* |
 |------------|--------------|-----------|-----------|
-| [`pyannote/segmentation`](pyannote/segmentation) (default) | segmentation | 12ms | 8ms |
-| [`pyannote/segmentation-3.0`](https://huggingface.co/pyannote/segmentation-3.0) | segmentation | 11ms | 8ms |
-| [`pyannote/embedding`](https://huggingface.co/pyannote/embedding) (default) | embedding | 26ms | 12ms |
-| [`hbredin/wespeaker-voxceleb-resnet34-LM`](https://huggingface.co/hbredin/wespeaker-voxceleb-resnet34-LM) | embedding | 41ms | 15ms |
-| [`speechbrain/spkrec-xvect-voxceleb`](https://huggingface.co/speechbrain/spkrec-xvect-voxceleb) | embedding | 41ms | 15ms |
-| [`speechbrain/spkrec-ecapa-voxceleb`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) | embedding | 41ms | 14ms |
-| [`speechbrain/spkrec-ecapa-voxceleb-mel-spec`](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb-mel-spec) | embedding | 42ms | 14ms |
-| [`speechbrain/spkrec-resnet-voxceleb`](https://huggingface.co/speechbrain/spkrec-resnet-voxceleb) | embedding | 41ms | 16ms |
-| [`nvidia/speakerverification_en_titanet_large`](https://huggingface.co/nvidia/speakerverification_en_titanet_large) | embedding | 91ms | 16ms |
+| [🤗](https://huggingface.co/pyannote/segmentation) `pyannote/segmentation` (default) | segmentation | 12ms | 8ms |
+| [🤗](https://huggingface.co/pyannote/segmentation-3.0) `pyannote/segmentation-3.0` | segmentation | 11ms | 8ms |
+| [🤗](https://huggingface.co/pyannote/embedding) `pyannote/embedding` (default) | embedding | 26ms | 12ms |
+| [🤗](https://huggingface.co/hbredin/wespeaker-voxceleb-resnet34-LM) `hbredin/wespeaker-voxceleb-resnet34-LM` | embedding | 41ms | 15ms |
+| [🤗](https://huggingface.co/speechbrain/spkrec-xvect-voxceleb) `speechbrain/spkrec-xvect-voxceleb` | embedding | 41ms | 15ms |
+| [🤗](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) `speechbrain/spkrec-ecapa-voxceleb` | embedding | 41ms | 14ms |
+| [🤗](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb-mel-spec) `speechbrain/spkrec-ecapa-voxceleb-mel-spec` | embedding | 42ms | 14ms |
+| [🤗](https://huggingface.co/speechbrain/spkrec-resnet-voxceleb) `speechbrain/spkrec-resnet-voxceleb` | embedding | 41ms | 16ms |
+| [🤗](https://huggingface.co/nvidia/speakerverification_en_titanet_large) `nvidia/speakerverification_en_titanet_large` | embedding | 91ms | 16ms |
 
 The latency of segmentation models is measured in a VAD pipeline (5s chunks).
 
