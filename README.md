@@ -58,6 +58,7 @@
 Diart is a python framework to build AI-powered real-time audio applications.
 Its key feature is the ability to recognize different speakers in real time with state-of-the-art performance,
 a task commonly known as "speaker diarization".
+
 The pipeline `diart.SpeakerDiarization` combines a speaker segmentation and a speaker embedding model
 to power an incremental clustering algorithm that gets better as the conversation progresses:
 
