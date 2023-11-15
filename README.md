@@ -17,16 +17,16 @@
 
 <div align="center">
   <h4>
-    <a href="#%EF%B8%8F-stream-audio">
-      🎙️ Stream audio
-    </a>
-    <span> | </span>
     <a href="#-installation">
       💾 Installation
     </a>
     <span> | </span>
+    <a href="#%EF%B8%8F-stream-audio">
+      🎙️ Stream audio
+    </a>
+    <span> | </span>
     <a href="#-models">
-      🧠 Available models
+      🧠 Models
     </a>
     <br />
     <a href="#-tune-hyper-parameters">
@@ -43,10 +43,6 @@
     <span> | </span>
     <a href="#-powered-by-research">
       🔬 Research
-    </a>
-    <span> | </span>
-    <a href="#-reproducibility">
-      👨‍💻 Reproducibility
     </a>
   </h4>
 </div>
@@ -66,8 +62,8 @@ create your own AI pipeline, benchmark it, tune its hyper-parameters, and even s
 
 - Speaker Diarization
 - Voice Activity Detection
-- Transcription (coming soon)
-- [Speaker-Aware Transcription](https://betterprogramming.pub/color-your-captions-streamlining-live-transcriptions-with-diart-and-openais-whisper-6203350234ef) (coming soon)
+- Transcription ([coming soon](https://github.com/juanmc2005/diart/pull/144))
+- [Speaker-Aware Transcription](https://betterprogramming.pub/color-your-captions-streamlining-live-transcriptions-with-diart-and-openais-whisper-6203350234ef) ([coming soon](https://github.com/juanmc2005/diart/pull/147))
 
 ## 💾 Installation
 
@@ -234,7 +230,7 @@ optimizer(num_iter=100)
 
 This will write results to an sqlite database in `/output/dir`.
 
-### Distributed optimization
+### Distributed tuning
 
 For bigger datasets, it is sometimes more convenient to run multiple optimization processes in parallel.
 To do this, create a study on a [recommended DBMS](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py) (e.g. MySQL or PostgreSQL) making sure that the study and database names match:
@@ -278,8 +274,8 @@ import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
 from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 
-segmentation = SpeakerSegmentation.from_pyannote("pyannote/segmentation")
-embedding = OverlapAwareSpeakerEmbedding.from_pyannote("pyannote/embedding")
+segmentation = SpeakerSegmentation.from_pretrained("pyannote/segmentation")
+embedding = OverlapAwareSpeakerEmbedding.from_pretrained("pyannote/embedding")
 mic = MicrophoneAudioSource()
 
 stream = mic.stream.pipe(
@@ -364,7 +360,7 @@ If you found diart useful, please make sure to cite our paper:
 }
 ```
 
-## 👨‍💻 Reproducibility
+### Reproducibility
 
 ![Results table](https://github.com/juanmc2005/diart/blob/main/table1.png?raw=true)
 
