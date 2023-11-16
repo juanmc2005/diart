@@ -18,12 +18,12 @@ class SpeakerSegmentation:
         self.formatter = TemporalFeatureFormatter()
 
     @staticmethod
-    def from_pyannote(
+    def from_pretrained(
         model,
         use_hf_token: Union[Text, bool, None] = True,
         device: Optional[torch.device] = None,
     ) -> "SpeakerSegmentation":
-        seg_model = SegmentationModel.from_pyannote(model, use_hf_token)
+        seg_model = SegmentationModel.from_pretrained(model, use_hf_token)
         return SpeakerSegmentation(seg_model, device)
 
     def __call__(self, waveform: TemporalFeatures) -> TemporalFeatures:
