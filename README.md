@@ -60,10 +60,10 @@ Its key feature is the ability to recognize different speakers in real time with
 a task commonly known as "speaker diarization".
 
 The pipeline `diart.SpeakerDiarization` combines a speaker segmentation and a speaker embedding model
-to power an incremental clustering algorithm that gets better as the conversation progresses:
+to power an incremental clustering algorithm that gets more accurate as the conversation progresses:
 
 <p align="center">
-<img width="100%" src="/pipeline.gif" title="Real-time speaker diarization pipeline" />
+<img width="100%" src="[/pipeline.gif](https://github.com/juanmc2005/diart/blob/main/pipeline.gif?raw=true)" title="Real-time speaker diarization pipeline" />
 </p>
 
 With diart you can also create your own custom AI pipeline, benchmark it,
@@ -100,8 +100,8 @@ pip install diart
 
 ### Get access to 🎹 pyannote models
 
-By default, diart is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) models stored in the [huggingface](https://huggingface.co/) hub.
-To allow diart to use them, you need to follow these steps:
+By default, diart is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) models from the [huggingface](https://huggingface.co/) hub.
+In order to use them, please follow these steps:
 
 1) [Accept user conditions](https://huggingface.co/pyannote/segmentation) for the `pyannote/segmentation` model
 2) [Accept user conditions](https://huggingface.co/pyannote/segmentation-3.0) for the newest `pyannote/segmentation-3.0` model
@@ -126,7 +126,8 @@ A live conversation:
 diart.stream microphone
 ```
 
-See `diart.stream -h` for more options.
+By default, diart runs a speaker diarization pipeline, equivalent to setting `--pipeline SpeakerDiarization`,
+but you can also set it to `--pipeline VoiceActivityDetection`. See `diart.stream -h` for more options.
 
 ### From python
 
