@@ -158,7 +158,7 @@ class OverlapAwareSpeakerEmbedding:
         self.normalize = EmbeddingNormalization(norm)
 
     @staticmethod
-    def from_pyannote(
+    def from_pretrained(
         model,
         gamma: float = 3,
         beta: float = 10,
@@ -167,7 +167,7 @@ class OverlapAwareSpeakerEmbedding:
         normalize_weights: bool = False,
         device: Optional[torch.device] = None,
     ):
-        model = EmbeddingModel.from_pyannote(model, use_hf_token)
+        model = EmbeddingModel.from_pretrained(model, use_hf_token)
         return OverlapAwareSpeakerEmbedding(
             model, gamma, beta, norm, normalize_weights, device
         )
