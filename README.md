@@ -63,7 +63,7 @@ The pipeline `diart.SpeakerDiarization` combines a speaker segmentation and a sp
 to power an incremental clustering algorithm that gets more accurate as the conversation progresses:
 
 <p align="center">
-<img width="100%" src="[/pipeline.gif](https://github.com/juanmc2005/diart/blob/main/pipeline.gif?raw=true)" title="Real-time speaker diarization pipeline" />
+<img width="100%" src="https://github.com/juanmc2005/diart/blob/main/pipeline.gif?raw=true" title="Real-time speaker diarization pipeline" />
 </p>
 
 With diart you can also create your own custom AI pipeline, benchmark it,
