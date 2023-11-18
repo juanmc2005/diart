@@ -20,12 +20,12 @@ class SpeakerEmbedding:
         self.weights_formatter = TemporalFeatureFormatter()
 
     @staticmethod
-    def from_pyannote(
+    def from_pretrained(
         model,
         use_hf_token: Union[Text, bool, None] = True,
         device: Optional[torch.device] = None,
     ) -> "SpeakerEmbedding":
-        emb_model = EmbeddingModel.from_pyannote(model, use_hf_token)
+        emb_model = EmbeddingModel.from_pretrained(model, use_hf_token)
         return SpeakerEmbedding(emb_model, device)
 
     def __call__(
