@@ -377,6 +377,9 @@ If you found diart useful, please make sure to cite our paper:
 
 ![Results table](https://github.com/juanmc2005/diart/blob/main/table1.png?raw=true)
 
+**Important:** We highly recommend installing `pyannote.audio<3.1` to reproduce these results.
+For more information, see [this issue](https://github.com/juanmc2005/diart/issues/214).
+
 Diart aims to be lightweight and capable of real-time streaming in practical scenarios.
 Its performance is very close to what is reported in the paper (and sometimes even a bit better).
 
