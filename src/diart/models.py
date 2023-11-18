@@ -35,14 +35,6 @@ class PowersetAdapter(nn.Module):
         max_speakers_per_chunk = len(specs.classes)
         self.powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
 
-    @property
-    def specifications(self):
-        return self.model.specifications
-
-    @property
-    def audio(self):
-        return self.model.audio
-
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         return self.powerset.to_multilabel(self.model(waveform))
 
