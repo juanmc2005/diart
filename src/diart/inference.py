@@ -524,7 +524,12 @@ class Parallelize:
         num_audio_files = len(audio_file_paths)
 
         # Workaround for multiprocessing with GPU
-        torch.multiprocessing.set_start_method("spawn")
+        try:
+            torch.multiprocessing.set_start_method("spawn")
+        except RuntimeError:
+            # This may fail if the start method was set before
+            pass
+
         # For Windows support
         freeze_support()
 

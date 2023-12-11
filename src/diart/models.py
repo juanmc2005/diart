@@ -5,21 +5,25 @@ from pathlib import Path
 from typing import Optional, Text, Union, Callable, List
 
 import numpy as np
-import onnxruntime
 import torch
 import torch.nn as nn
 from requests import HTTPError
 
 try:
     from pyannote.audio import Model
-    from pyannote.audio.pipelines.speaker_verification import (
-        PretrainedSpeakerEmbedding,
-    )
+    from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
     from pyannote.audio.utils.powerset import Powerset
 
-    _has_pyannote = True
+    IS_PYANNOTE_AVAILABLE = True
 except ImportError:
-    _has_pyannote = False
+    IS_PYANNOTE_AVAILABLE = False
+
+try:
+    import onnxruntime as ort
+
+    IS_ONNX_AVAILABLE = True
+except ImportError:
+    IS_ONNX_AVAILABLE = False
 
 
 class PowersetAdapter(nn.Module):
@@ -30,14 +34,6 @@ class PowersetAdapter(nn.Module):
         max_speakers_per_frame = specs.powerset_max_classes
         max_speakers_per_chunk = len(specs.classes)
         self.powerset = Powerset(max_speakers_per_chunk, max_speakers_per_frame)
-
-    @property
-    def specifications(self):
-        return self.model.specifications
-
-    @property
-    def audio(self):
-        return self.model.audio
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         return self.powerset.to_multilabel(self.model(waveform))
@@ -89,11 +85,9 @@ class ONNXModel:
         return f"{device}ExecutionProvider"
 
     def recreate_session(self):
-        options = onnxruntime.SessionOptions()
-        options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
-        self.session = onnxruntime.InferenceSession(
+        options = ort.SessionOptions()
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        self.session = ort.InferenceSession(
             self.path,
             sess_options=options,
             providers=[self.execution_provider],
@@ -168,7 +162,7 @@ class SegmentationModel(LazyModel):
         -------
         wrapper: SegmentationModel
         """
-        assert _has_pyannote, "No pyannote.audio installation found"
+        assert IS_PYANNOTE_AVAILABLE, "No pyannote.audio installation found"
         return SegmentationModel(PyannoteLoader(model, use_hf_token))
 
     @staticmethod
@@ -177,6 +171,7 @@ class SegmentationModel(LazyModel):
         input_name: str = "waveform",
         output_name: str = "segmentation",
     ) -> "SegmentationModel":
+        assert IS_ONNX_AVAILABLE, "No ONNX installation found"
         return SegmentationModel(ONNXLoader(model_path, [input_name], output_name))
 
     @staticmethod
@@ -224,7 +219,7 @@ class EmbeddingModel(LazyModel):
         -------
         wrapper: EmbeddingModel
         """
-        assert _has_pyannote, "No pyannote.audio installation found"
+        assert IS_PYANNOTE_AVAILABLE, "No pyannote.audio installation found"
         loader = PyannoteLoader(model, use_hf_token)
         return EmbeddingModel(loader)
 
@@ -234,6 +229,7 @@ class EmbeddingModel(LazyModel):
         input_names: List[str] | None = None,
         output_name: str = "embedding",
     ) -> "EmbeddingModel":
+        assert IS_ONNX_AVAILABLE, "No ONNX installation found"
         input_names = input_names or ["waveform", "weights"]
         loader = ONNXLoader(model_path, input_names, output_name)
         return EmbeddingModel(loader)

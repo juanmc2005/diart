@@ -20,12 +20,12 @@ class SpeakerEmbedding:
         self.weights_formatter = TemporalFeatureFormatter()
 
     @staticmethod
-    def from_pyannote(
+    def from_pretrained(
         model,
         use_hf_token: Union[Text, bool, None] = True,
         device: Optional[torch.device] = None,
     ) -> "SpeakerEmbedding":
-        emb_model = EmbeddingModel.from_pyannote(model, use_hf_token)
+        emb_model = EmbeddingModel.from_pretrained(model, use_hf_token)
         return SpeakerEmbedding(emb_model, device)
 
     def __call__(
@@ -69,7 +69,13 @@ class SpeakerEmbedding:
 
 
 class OverlappedSpeechPenalty:
-    """
+    """Applies a penalty on overlapping speech and low-confidence regions to speaker segmentation scores.
+
+    .. note::
+        For more information, see `"Overlap-Aware Low-Latency Online Speaker Diarization
+        based on End-to-End Local Segmentation" <https://github.com/juanmc2005/diart/blob/main/paper.pdf>`_
+        (Section 2.2.1 Segmentation-driven speaker embedding). This block implements Equation 2.
+
     Parameters
     ----------
     gamma: float, optional
@@ -152,7 +158,7 @@ class OverlapAwareSpeakerEmbedding:
         self.normalize = EmbeddingNormalization(norm)
 
     @staticmethod
-    def from_pyannote(
+    def from_pretrained(
         model,
         gamma: float = 3,
         beta: float = 10,
@@ -161,7 +167,7 @@ class OverlapAwareSpeakerEmbedding:
         normalize_weights: bool = False,
         device: Optional[torch.device] = None,
     ):
-        model = EmbeddingModel.from_pyannote(model, use_hf_token)
+        model = EmbeddingModel.from_pretrained(model, use_hf_token)
         return OverlapAwareSpeakerEmbedding(
             model, gamma, beta, norm, normalize_weights, device
         )

@@ -1,13 +1,15 @@
-<br/>
+<p align="center">
+<img width="100%" src="https://github.com/juanmc2005/diart/blob/main/logo.jpg?raw=true" title="diart logo" />
+</p>
 
 <p align="center">
-<img width="50%" src="/logo.jpg" title="Logo" />
+<i>🌿 Build AI-powered real-time audio applications in a breeze 🌿</i>
 </p>
 
 <p align="center">
 <img alt="PyPI Version" src="https://img.shields.io/pypi/v/diart?color=g">
 <img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/diart?period=total&units=international_system&left_color=grey&right_color=brightgreen&left_text=downloads">
-<img alt="Top language" src="https://img.shields.io/github/languages/top/juanmc2005/StreamingSpeakerDiarization?color=g">
+<img alt="Python Versions" src="https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10-dark_green">
 <img alt="Code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
 <img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
 <a href="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996"><img src="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996/status.svg"></a>
@@ -23,16 +25,16 @@
       🎙️ Stream audio
     </a>
     <span> | </span>
-    <a href="#-custom-models">
-      🤖 Add your model
-    </a>
-    <span> | </span>
-    <a href="#-tune-hyper-parameters">
-      📈 Tune hyper-parameters
+    <a href="#-models">
+      🧠 Models
     </a>
     <br />
+    <a href="#-tune-hyper-parameters">
+      📈 Tuning
+    </a>
+    <span> | </span>
     <a href="#-build-pipelines">
-      🧠🔗 Build pipelines
+      🧠🔗 Pipelines
     </a>
     <span> | </span>
     <a href="#-websockets">
@@ -42,45 +44,69 @@
     <a href="#-powered-by-research">
       🔬 Research
     </a>
-    <span> | </span>
-    <a href="#-citation">
-      📗 Citation
-    </a>
-    <span> | </span>
-    <a href="#-reproducibility">
-      👨‍💻 Reproducibility
-    </a>
   </h4>
 </div>
 
 <br/>
 
 <p align="center">
-<img width="100%" src="/demo.gif" title="Real-time diarization example" />
+<img width="100%" src="https://github.com/juanmc2005/diart/blob/main/demo.gif?raw=true" title="Real-time diarization example" />
 </p>
+
+## ⚡ Quick introduction
+
+Diart is a python framework to build AI-powered real-time audio applications.
+Its key feature is the ability to recognize different speakers in real time with state-of-the-art performance,
+a task commonly known as "speaker diarization".
+
+The pipeline `diart.SpeakerDiarization` combines a speaker segmentation and a speaker embedding model
+to power an incremental clustering algorithm that gets more accurate as the conversation progresses:
+
+<p align="center">
+<img width="100%" src="https://github.com/juanmc2005/diart/blob/main/pipeline.gif?raw=true" title="Real-time speaker diarization pipeline" />
+</p>
+
+With diart you can also create your own custom AI pipeline, benchmark it,
+tune its hyper-parameters, and even serve it on the web using websockets.
+
+**We provide pre-trained pipelines for:**
+
+- Speaker Diarization
+- Voice Activity Detection
+- Transcription ([coming soon](https://github.com/juanmc2005/diart/pull/144))
+- [Speaker-Aware Transcription](https://betterprogramming.pub/color-your-captions-streamlining-live-transcriptions-with-diart-and-openais-whisper-6203350234ef) ([coming soon](https://github.com/juanmc2005/diart/pull/147))
 
 ## 💾 Installation
 
-1) Create environment:
+**1) Make sure your system has the following dependencies:**
+
+```
+ffmpeg < 4.4
+portaudio == 19.6.X
+libsndfile >= 1.2.2
+```
+
+Alternatively, we provide an `environment.yml` file for a pre-configured conda environment:
 
 ```shell
 conda env create -f diart/environment.yml
 conda activate diart
 ```
 
-2) Install the package:
+**2) Install the package:**
 ```shell
 pip install diart
 ```
 
 ### Get access to 🎹 pyannote models
 
-By default, diart is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) models stored in the [huggingface](https://huggingface.co/) hub.
-To allow diart to use them, you need to follow these steps:
+By default, diart is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) models from the [huggingface](https://huggingface.co/) hub.
+In order to use them, please follow these steps:
 
 1) [Accept user conditions](https://huggingface.co/pyannote/segmentation) for the `pyannote/segmentation` model
-2) [Accept user conditions](https://huggingface.co/pyannote/embedding) for the `pyannote/embedding` model
-3) Install [huggingface-cli](https://huggingface.co/docs/huggingface_hub/quick-start#install-the-hub-library) and [log in](https://huggingface.co/docs/huggingface_hub/quick-start#login) with your user access token (or provide it manually in diart CLI or API).
+2) [Accept user conditions](https://huggingface.co/pyannote/segmentation-3.0) for the newest `pyannote/segmentation-3.0` model
+3) [Accept user conditions](https://huggingface.co/pyannote/embedding) for the `pyannote/embedding` model
+4) Install [huggingface-cli](https://huggingface.co/docs/huggingface_hub/quick-start#install-the-hub-library) and [log in](https://huggingface.co/docs/huggingface_hub/quick-start#login) with your user access token (or provide it manually in diart CLI or API).
 
 ## 🎙️ Stream audio
 
@@ -100,7 +126,8 @@ A live conversation:
 diart.stream microphone
 ```
 
-See `diart.stream -h` for more options.
+By default, diart runs a speaker diarization pipeline, equivalent to setting `--pipeline SpeakerDiarization`,
+but you can also set it to `--pipeline VoiceActivityDetection`. See `diart.stream -h` for more options.
 
 ### From python
 
@@ -119,18 +146,50 @@ inference.attach_observers(RTTMWriter(mic.uri, "/output/file.rttm"))
 prediction = inference()
 ```
 
-For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#-reproducibility)).
+For inference and evaluation on a dataset we recommend to use `Benchmark` (see notes on [reproducibility](#reproducibility)).
 
-## 🤖 Add your model
+## 🧠 Models
+
+You can use other models with the `--segmentation` and `--embedding` arguments.
+Or in python:
+
+```python
+import diart.models as m
+
+segmentation = m.SegmentationModel.from_pretrained("model_name")
+embedding = m.EmbeddingModel.from_pretrained("model_name")
+```
+
+### Pre-trained models
+
+Below is a list of all the models currently supported by diart:
+
+| Model Name                                                                                                                | Model Type   | CPU Time* | GPU Time* |
+|---------------------------------------------------------------------------------------------------------------------------|--------------|-----------|-----------|
+| [🤗](https://huggingface.co/pyannote/segmentation) `pyannote/segmentation` (default)                                      | segmentation | 12ms      | 8ms       |
+| [🤗](https://huggingface.co/pyannote/segmentation-3.0) `pyannote/segmentation-3.0`                                        | segmentation | 11ms      | 8ms       |
+| [🤗](https://huggingface.co/pyannote/embedding) `pyannote/embedding` (default)                                            | embedding | 26ms      | 12ms      |
+| [🤗](https://huggingface.co/hbredin/wespeaker-voxceleb-resnet34-LM) `hbredin/wespeaker-voxceleb-resnet34-LM` (ONNX)       | embedding | 48ms      | 15ms      |
+| [🤗](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM) `pyannote/wespeaker-voxceleb-resnet34-LM` (PyTorch)  | embedding | 150ms     | 29ms      |
+| [🤗](https://huggingface.co/speechbrain/spkrec-xvect-voxceleb) `speechbrain/spkrec-xvect-voxceleb`                        | embedding | 41ms      | 15ms      |
+| [🤗](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb) `speechbrain/spkrec-ecapa-voxceleb`                        | embedding | 41ms      | 14ms      |
+| [🤗](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb-mel-spec) `speechbrain/spkrec-ecapa-voxceleb-mel-spec`      | embedding | 42ms      | 14ms      |
+| [🤗](https://huggingface.co/speechbrain/spkrec-resnet-voxceleb) `speechbrain/spkrec-resnet-voxceleb`                      | embedding | 41ms      | 16ms      |
+| [🤗](https://huggingface.co/nvidia/speakerverification_en_titanet_large) `nvidia/speakerverification_en_titanet_large`    | embedding | 91ms      | 16ms      |
+
+The latency of segmentation models is measured in a VAD pipeline (5s chunks).
+
+The latency of embedding models is measured in a diarization pipeline using `pyannote/segmentation` (also 5s chunks).
+
+\* CPU: AMD Ryzen 9 - GPU: RTX 4060 Max-Q
+
+### Custom models
 
 Third-party models can be integrated by providing a loader function:
 
 ```python
 from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from diart.models import EmbeddingModel, SegmentationModel
-from diart.sources import MicrophoneAudioSource
-from diart.inference import StreamingInference
-
 
 def segmentation_loader():
     # It should take a waveform and return a segmentation tensor
@@ -140,7 +199,6 @@ def embedding_loader():
     # It should take (waveform, weights) and return per-speaker embeddings
     return load_pretrained_model("my_other_model.ckpt")
 
-
 segmentation = SegmentationModel(segmentation_loader)
 embedding = EmbeddingModel(embedding_loader)
 config = SpeakerDiarizationConfig(
@@ -148,9 +206,6 @@ config = SpeakerDiarizationConfig(
     embedding=embedding,
 )
 pipeline = SpeakerDiarization(config)
-mic = MicrophoneAudioSource()
-inference = StreamingInference(pipeline, mic)
-prediction = inference()
 ```
 
 If you have an ONNX model, you can use `from_onnx()`:
@@ -188,7 +243,7 @@ optimizer(num_iter=100)
 
 This will write results to an sqlite database in `/output/dir`.
 
-### Distributed optimization
+### Distributed tuning
 
 For bigger datasets, it is sometimes more convenient to run multiple optimization processes in parallel.
 To do this, create a study on a [recommended DBMS](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#sphx-glr-tutorial-10-key-features-004-distributed-py) (e.g. MySQL or PostgreSQL) making sure that the study and database names match:
@@ -232,8 +287,8 @@ import diart.operators as dops
 from diart.sources import MicrophoneAudioSource
 from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 
-segmentation = SpeakerSegmentation.from_pyannote("pyannote/segmentation")
-embedding = OverlapAwareSpeakerEmbedding.from_pyannote("pyannote/embedding")
+segmentation = SpeakerSegmentation.from_pretrained("pyannote/segmentation")
+embedding = OverlapAwareSpeakerEmbedding.from_pretrained("pyannote/embedding")
 mic = MicrophoneAudioSource()
 
 stream = mic.stream.pipe(
@@ -262,7 +317,7 @@ Diart is also compatible with the WebSocket protocol to serve pipelines on the w
 
 ### From the command line
 
-```commandline
+```shell
 diart.serve --host 0.0.0.0 --port 7007
 diart.client microphone --host <server-address> --port 7007
 ```
@@ -289,16 +344,21 @@ prediction = inference()
 
 ## 🔬 Powered by research
 
-Diart is the official implementation of the paper *[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](/paper.pdf)* by [Juan Manuel Coria](https://juanmc2005.github.io/), [Hervé Bredin](https://herve.niderb.fr), [Sahar Ghannay](https://saharghannay.github.io/) and [Sophie Rosset](https://perso.limsi.fr/rosset/).
+Diart is the official implementation of the paper
+[Overlap-aware low-latency online speaker diarization based on end-to-end local segmentation](https://github.com/juanmc2005/diart/blob/main/paper.pdf)
+by [Juan Manuel Coria](https://juanmc2005.github.io/),
+[Hervé Bredin](https://herve.niderb.fr),
+[Sahar Ghannay](https://saharghannay.github.io/)
+and [Sophie Rosset](https://perso.limsi.fr/rosset/).
 
 
 > We propose to address online speaker diarization as a combination of incremental clustering and local diarization applied to a rolling buffer updated every 500ms. Every single step of the proposed pipeline is designed to take full advantage of the strong ability of a recently proposed end-to-end overlap-aware segmentation to detect and separate overlapping speakers. In particular, we propose a modified version of the statistics pooling layer (initially introduced in the x-vector architecture) to give less weight to frames where the segmentation model predicts simultaneous speakers. Furthermore, we derive cannot-link constraints from the initial segmentation step to prevent two local speakers from being wrongfully merged during the incremental clustering step. Finally, we show how the latency of the proposed approach can be adjusted between 500ms and 5s to match the requirements of a particular use case, and we provide a systematic analysis of the influence of latency on the overall performance (on AMI, DIHARD and VoxConverse).
 
 <p align="center">
-<img height="400" src="/figure1.png" title="Visual explanation of the system" width="325" />
+<img height="400" src="https://github.com/juanmc2005/diart/blob/main/figure1.png?raw=true" title="Visual explanation of the system" width="325" />
 </p>
 
-## 📗 Citation
+### Citation
 
 If you found diart useful, please make sure to cite our paper:
 
@@ -313,9 +373,12 @@ If you found diart useful, please make sure to cite our paper:
 }
 ```
 
-## 👨‍💻 Reproducibility
+### Reproducibility
 
-![Results table](/table1.png)
+![Results table](https://github.com/juanmc2005/diart/blob/main/table1.png?raw=true)
+
+**Important:** We highly recommend installing `pyannote.audio<3.1` to reproduce these results.
+For more information, see [this issue](https://github.com/juanmc2005/diart/issues/214).
 
 Diart aims to be lightweight and capable of real-time streaming in practical scenarios.
 Its performance is very close to what is reported in the paper (and sometimes even a bit better).
@@ -367,9 +430,13 @@ if __name__ == "__main__":  # Needed for multiprocessing
 This pre-calculates model outputs in batches, so it runs a lot faster.
 See `diart.benchmark -h` for more options.
 
-For convenience and to facilitate future comparisons, we also provide the [expected outputs](/expected_outputs) of the paper implementation in RTTM format for every entry of Table 1 and Figure 5. This includes the VBx offline topline as well as our proposed online approach with latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
+For convenience and to facilitate future comparisons, we also provide the
+<a href="https://github.com/juanmc2005/diart/tree/main/expected_outputs">expected outputs</a>
+of the paper implementation in RTTM format for every entry of Table 1 and Figure 5.
+This includes the VBx offline topline as well as our proposed online approach with
+latencies 500ms, 1s, 2s, 3s, 4s, and 5s.
 
-![Figure 5](/figure5.png)
+![Figure 5](https://github.com/juanmc2005/diart/blob/main/figure5.png?raw=true)
 
 ## 📑 License
 
@@ -398,4 +465,4 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-<p>Logo generated by <a href="https://www.designevo.com/" title="Free Online Logo Maker">DesignEvo free logo designer</a></p>
+<p style="color:grey;font-size:14px;">Logo generated by <a href="https://www.designevo.com/" title="Free Online Logo Maker">DesignEvo free logo designer</a></p>
