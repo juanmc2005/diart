@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import random
 
-import numpy as np
 import pytest
-from pyannote.core import SlidingWindow, SlidingWindowFeature
 
 from diart import SpeakerDiarizationConfig, SpeakerDiarization
+from utils import build_waveform_swf
 
 
 @pytest.fixture
@@ -45,17 +44,6 @@ def max_latency_config(segmentation_model, embedding_model) -> SpeakerDiarizatio
         step=0.5,
         latency="max",
     )
-
-
-def build_waveform_swf(config, start_time: float | None = None) -> SlidingWindowFeature:
-    start_time = round(random.uniform(0, 600), 1) if start_time is None else start_time
-    chunk_size = int(config.duration * config.sample_rate)
-    resolution = config.duration / chunk_size
-    samples = np.random.randn(chunk_size, 1)
-    sliding_window = SlidingWindow(
-        start=start_time, step=resolution, duration=resolution
-    )
-    return SlidingWindowFeature(samples, sliding_window)
 
 
 def test_config(
@@ -137,7 +125,10 @@ def test_timestamp_shift(random_diarization_config):
     pipeline.set_timestamp_shift(new_shift)
     assert pipeline.timestamp_shift == new_shift
 
-    waveform = build_waveform_swf(random_diarization_config)
+    waveform = build_waveform_swf(
+        random_diarization_config.duration,
+        random_diarization_config.sample_rate,
+    )
     prediction, _ = pipeline([waveform])[0]
 
     for segment, _, label in prediction.itertracks(yield_label=True):
@@ -150,8 +141,16 @@ def test_timestamp_shift(random_diarization_config):
 
 def test_call_min_latency(min_latency_config):
     pipeline = SpeakerDiarization(min_latency_config)
-    waveform1 = build_waveform_swf(min_latency_config, start_time=0)
-    waveform2 = build_waveform_swf(min_latency_config, min_latency_config.step)
+    waveform1 = build_waveform_swf(
+        min_latency_config.duration,
+        min_latency_config.sample_rate,
+        start_time=0,
+    )
+    waveform2 = build_waveform_swf(
+        min_latency_config.duration,
+        min_latency_config.sample_rate,
+        min_latency_config.step,
+    )
 
     batch = [waveform1, waveform2]
     output = pipeline(batch)
@@ -175,8 +174,16 @@ def test_call_min_latency(min_latency_config):
 
 def test_call_max_latency(max_latency_config):
     pipeline = SpeakerDiarization(max_latency_config)
-    waveform1 = build_waveform_swf(max_latency_config, start_time=0)
-    waveform2 = build_waveform_swf(max_latency_config, max_latency_config.step)
+    waveform1 = build_waveform_swf(
+        max_latency_config.duration,
+        max_latency_config.sample_rate,
+        start_time=0,
+    )
+    waveform2 = build_waveform_swf(
+        max_latency_config.duration,
+        max_latency_config.sample_rate,
+        max_latency_config.step,
+    )
 
     batch = [waveform1, waveform2]
     output = pipeline(batch)
