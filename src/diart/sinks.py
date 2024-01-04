@@ -68,12 +68,7 @@ class RedisWriter(Observer):
 
     def on_next(self, value: Union[Tuple, Annotation]):
         if isinstance(value, tuple):
-            if len(value)==3:
-                prediction, _, centroids = value 
-            else:
-                prediction, _ = value 
-                
-               
+            prediction, _ = value[:2]
             # Process each segment in the prediction
             for segment, _, label in prediction.itertracks(yield_label=True):
                 # Update last centroids for each speaker
@@ -85,7 +80,8 @@ class RedisWriter(Observer):
                     'speaker_id': label,
                 }
                 if len(value)==3:
-                    diarization_data['centroids'] = centroids.tolist()
+                    diarization_data['centroids'] = value[-1].tolist()
+                    
                 self.redis_client.rpush(f'diarization_{self.conversation_id}', json.dumps(diarization_data))
 
         else:
