@@ -163,8 +163,8 @@ def test_call_min_latency(min_latency_config):
 
     pred1_timeline = pred1.get_timeline()
     pred2_timeline = pred2.get_timeline()
-    pred1_duration = pred1_timeline[-1].end - pred1_timeline[0].start
-    pred2_duration = pred2_timeline[-1].end - pred2_timeline[0].start
+    pred1_duration = round(pred1_timeline[-1].end - pred1_timeline[0].start, 3)
+    pred2_duration = round(pred2_timeline[-1].end - pred2_timeline[0].start, 3)
 
     expected_duration = round(min_latency_config.duration, 3)
     expected_step = round(min_latency_config.step, 3)
