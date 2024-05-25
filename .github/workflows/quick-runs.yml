@@ -38,6 +38,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install .
+        pip install onnxruntime==1.18.0
     - name: Crop audio and rttm
       run: |
         sox audio/ES2002a_long.wav audio/ES2002a.wav trim 00:40 00:30
