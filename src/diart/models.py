@@ -38,7 +38,6 @@ class PowersetAdapter(nn.Module):
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         return self.powerset.to_multilabel(self.model(waveform))
 
-
 class PyannoteLoader:
     def __init__(self, model_info, hf_token: Union[Text, bool, None] = True):
         super().__init__()
@@ -107,7 +106,6 @@ class ONNXModel:
         }
         output = self.session.run([self.output_name], inputs)[0]
         return torch.from_numpy(output).float().to(args[0].device)
-
 
 class LazyModel(ABC):
     def __init__(self, loader: Callable[[], Callable]):
