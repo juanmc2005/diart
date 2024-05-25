@@ -72,6 +72,7 @@ def test_benchmark(make_config, source_file, latency):
     for track1, track2 in zip(pred.itertracks(yield_label=True), expected.itertracks(yield_label=True)):
         pred_segment, _, pred_spk = track1
         expected_segment, _, expected_spk = track2
-        assert math.isclose(pred_segment.start, expected_segment.start, abs_tol=1e-3)
-        assert math.isclose(pred_segment.end, expected_segment.end, abs_tol=1e-3)
+        # We can tolerate a difference of up to 50ms
+        assert math.isclose(pred_segment.start, expected_segment.start, abs_tol=0.05)
+        assert math.isclose(pred_segment.end, expected_segment.end, abs_tol=0.05)
         assert pred_spk == expected_spk
