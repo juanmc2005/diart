@@ -284,19 +284,22 @@ Obtain overlap-aware speaker embeddings from a microphone stream:
 ```python
 import rx.operators as ops
 import diart.operators as dops
-from diart.sources import MicrophoneAudioSource
+from diart.sources import MicrophoneAudioSource #, FileAudioSource
 from diart.blocks import SpeakerSegmentation, OverlapAwareSpeakerEmbedding
 
-segmentation = SpeakerSegmentation.from_pretrained("pyannote/segmentation")
-embedding = OverlapAwareSpeakerEmbedding.from_pretrained("pyannote/embedding")
+segmentation = SpeakerSegmentation.from_pretrained("pyannote/segmentation", use_hf_token="")
+embedding = OverlapAwareSpeakerEmbedding.from_pretrained("pyannote/embedding", use_hf_token="")
+
 mic = MicrophoneAudioSource()
+# To take input from file:
+# mic = FileAudioSource("<filename>", sample_rate=16000)
 
 stream = mic.stream.pipe(
     # Reformat stream to 5s duration and 500ms shift
     dops.rearrange_audio_stream(sample_rate=segmentation.model.sample_rate),
     ops.map(lambda wav: (wav, segmentation(wav))),
     ops.starmap(embedding)
-).subscribe(on_next=lambda emb: print(emb.shape))
+).subscribe(on_next=lambda emb: print(emb)) #emb.shape to display shape
 
 mic.read()
 ```
@@ -304,10 +307,13 @@ mic.read()
 Output:
 
 ```
-# Shape is (batch_size, num_speakers, embedding_dim)
-torch.Size([1, 3, 512])
-torch.Size([1, 3, 512])
-torch.Size([1, 3, 512])
+# Displaying embeds: 
+tensor([[[-0.0442, -0.0327, -0.0910,  ...,  0.0134,  0.0209,  0.0050],
+         [-0.0404, -0.0342, -0.0780,  ...,  0.0395,  0.0334, -0.0140],
+         [-0.0404, -0.0342, -0.0780,  ...,  0.0395,  0.0334, -0.0140]]])
+tensor([[[-0.0724,  0.0049, -0.0660,  ...,  0.0359,  0.0247, -0.0256],
+         [-0.0462, -0.0256, -0.0642,  ...,  0.0417,  0.0273, -0.0135],
+         [-0.0459, -0.0263, -0.0639,  ...,  0.0412,  0.0269, -0.0131]]])
 ...
 ```
 
