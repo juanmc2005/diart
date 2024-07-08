@@ -297,7 +297,7 @@ class TorchStreamAudioSource(AudioSource):
                 if self.is_closed:
                     break
                 # shape (samples, channels) to (1, samples)
-                chunk = np.mean(item[0].numpy(), axis=1, keepdims=True).T
+                chunk = np.mean(item[0].detach().numpy(), axis=1, keepdims=True).T
                 self.stream.on_next(chunk)
             except BaseException as e:
                 self.stream.on_error(e)
