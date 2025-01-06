@@ -5,10 +5,8 @@ import torch
 
 from diart import argdoc
 from diart import models as m
-from diart import sources as src
 from diart import utils
-from diart.inference import StreamingInference
-from diart.sinks import RTTMWriter
+from diart.websockets import WebSocketStreamingServer
 
 
 def run():
@@ -73,9 +71,6 @@ def run():
         help=f"{argdoc.CPU}. Defaults to GPU if available, CPU otherwise",
     )
     parser.add_argument(
-        "--output", type=Path, help=f"{argdoc.OUTPUT}. Defaults to no writing"
-    )
-    parser.add_argument(
         "--hf-token",
         default="true",
         type=str,
@@ -96,35 +91,19 @@ def run():
     args.segmentation = m.SegmentationModel.from_pretrained(args.segmentation, hf_token)
     args.embedding = m.EmbeddingModel.from_pretrained(args.embedding, hf_token)
 
-    # Resolve pipeline
+    # Resolve pipeline configuration
     pipeline_class = utils.get_pipeline_class(args.pipeline)
-    config = pipeline_class.get_config_class()(**vars(args))
-    pipeline = pipeline_class(config)
+    pipeline_config = pipeline_class.get_config_class()(**vars(args))
 
-    # Create websocket audio source
-    audio_source = src.WebSocketAudioSource(config.sample_rate, args.host, args.port)
-
-    # Run online inference
-    inference = StreamingInference(
-        pipeline,
-        audio_source,
-        batch_size=1,
-        do_profile=False,
-        do_plot=False,
-        show_progress=True,
+    # Initialize Websocket server
+    server = WebSocketStreamingServer(
+        pipeline_class=pipeline_class,
+        pipeline_config=pipeline_config,
+        host=args.host,
+        port=args.port,
     )
 
-    # Write to disk if required
-    if args.output is not None:
-        inference.attach_observers(
-            RTTMWriter(audio_source.uri, args.output / f"{audio_source.uri}.rttm")
-        )
-
-    # Send back responses as RTTM text lines
-    inference.attach_hooks(lambda ann_wav: audio_source.send(ann_wav[0].to_rttm()))
-
-    # Run server and pipeline
-    inference()
+    server.run()
 
 
 if __name__ == "__main__":

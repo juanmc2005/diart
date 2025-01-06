@@ -202,6 +202,7 @@ def embedding_loader():
 segmentation = SegmentationModel(segmentation_loader)
 embedding = EmbeddingModel(embedding_loader)
 config = SpeakerDiarizationConfig(
+    # Set the segmentation model used in the paper
     segmentation=segmentation,
     embedding=embedding,
 )
@@ -332,20 +333,57 @@ diart.client microphone --host <server-address> --port 7007
 
 See `-h` for more options.
 
+### From the Dockerfile
+
+You can also run the server in a Docker container. First, build the image:
+```shell
+docker build -t diart -f Dockerfile .
+```
+
+Run the server with default configuration:
+```shell
+docker run -p 7007:7007 --gpus all -e HF_TOKEN=<token> diart
+```
+
+Run with custom configuration:
+```shell
+docker run -p 7007:7007 --restart unless-stopped --gpus all \
+  -e HF_TOKEN=<token> \
+  -e HOST=0.0.0.0 \
+  -e PORT=7007 \
+  -e SEGMENTATION=pyannote/segmentation-3.0 \
+  -e EMBEDDING=speechbrain/spkrec-resnet-voxceleb \
+  -e TAU_ACTIVE=0.45 \
+  -e RHO_UPDATE=0.25 \
+  -e DELTA_NEW=0.6 \
+  -e LATENCY=5 \
+  -e MAX_SPEAKERS=3 \
+  diart
+```
+
+The server can be configured using these environment variables, at runtime:
+- `HOST`: Server host (default: 0.0.0.0)
+- `PORT`: Server port (default: 7007)
+- `SEGMENTATION`: Segmentation model (default: pyannote/segmentation)
+- `EMBEDDING`: Embedding model (default: pyannote/embedding)
+- `TAU_ACTIVE`: Activity threshold (default: 0.5)
+- `RHO_UPDATE`: Update threshold (default: 0.3)
+- `DELTA_NEW`: New speaker threshold (default: 1.0)
+- `LATENCY`: Processing latency in seconds (default: 0.5)
+- `MAX_SPEAKERS`: Maximum number of speakers (default: 20)
+
 ### From python
 
-For customized solutions, a server can also be created in python using the `WebSocketAudioSource`:
+For customized solutions, a server can also be created in python using `WebSocketStreamingServer`:
 
 ```python
-from diart import SpeakerDiarization
-from diart.sources import WebSocketAudioSource
-from diart.inference import StreamingInference
+from diart import SpeakerDiarization, SpeakerDiarizationConfig
+from diart.websockets import WebSocketStreamingServer
 
-pipeline = SpeakerDiarization()
-source = WebSocketAudioSource(pipeline.config.sample_rate, "localhost", 7007)
-inference = StreamingInference(pipeline, source)
-inference.attach_hooks(lambda ann_wav: source.send(ann_wav[0].to_rttm()))
-prediction = inference()
+pipeline_class = SpeakerDiarization
+pipeline_config = SpeakerDiarizationConfig(step=0.5, sample_rate=16000)
+server = WebSocketStreamingServer(pipeline_class, pipeline_config, host="localhost", port=7007)
+server.run()
 ```
 
 ## 🔬 Powered by research

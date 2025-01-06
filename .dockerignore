@@ -1,0 +1,19 @@
+# Development
+.git/
+.github/
+.idea/
+__pycache__/
+
+# Data and examples
+assets/
+example/
+expected_outputs/
+tests/
+
+# Documentation
+docs/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
