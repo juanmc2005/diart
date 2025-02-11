@@ -25,7 +25,6 @@ jobs:
 
     - name: Install apt dependencies
       run: |
-        sudo add-apt-repository ppa:savoury1/ffmpeg4
         sudo apt-get update
         sudo apt-get -y install ffmpeg libportaudio2=19.6.0-1.1
 
