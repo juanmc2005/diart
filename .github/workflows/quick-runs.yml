@@ -32,7 +32,7 @@ jobs:
     - name: Install apt dependencies
       run: |
         sudo apt-get update
-        sudo apt-get -y install ffmpeg libportaudio2=19.6.0-1.1 sox
+        sudo apt-get -y install ffmpeg libportaudio2 sox
     - name: Install pip dependencies
       run: |
         python -m pip install --upgrade pip
