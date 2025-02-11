@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.8", "3.10"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v3
@@ -31,9 +31,8 @@ jobs:
         wget --no-verbose --show-progress --continue -O rttms/ES2002b_long.rttm https://raw.githubusercontent.com/pyannote/AMI-diarization-setup/main/only_words/rttms/train/ES2002b.rttm
     - name: Install apt dependencies
       run: |
-        sudo add-apt-repository ppa:savoury1/ffmpeg4
         sudo apt-get update
-        sudo apt-get -y install ffmpeg libportaudio2=19.6.0-1.1 sox
+        sudo apt-get -y install ffmpeg libportaudio2 sox
     - name: Install pip dependencies
       run: |
         python -m pip install --upgrade pip
