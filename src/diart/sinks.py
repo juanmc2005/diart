@@ -7,6 +7,7 @@ from pyannote.database.util import load_rttm
 from pyannote.metrics.diarization import DiarizationErrorRate
 from rx.core import Observer
 from typing_extensions import Literal
+import json
 
 
 class WindowClosedException(Exception):
@@ -55,6 +56,46 @@ class RTTMWriter(Observer):
     def on_completed(self):
         self.patch()
 
+######
+
+class RedisWriter(Observer):
+    def __init__(self, uri: Text, redis_client, patch_collar: float = 0.05):
+        super().__init__()
+        self.uri = uri
+        self.redis_client = redis_client
+        self.conversation_id = uri  # Assuming URI as a unique identifier for the conversation
+        self.patch_collar = patch_collar
+
+    def on_next(self, value: Union[Tuple, Annotation]):
+        if isinstance(value, tuple):
+            prediction, _ = value[:2]
+            # Process each segment in the prediction
+            for segment, _, label in prediction.itertracks(yield_label=True):
+                # Update last centroids for each speaker
+
+                # Write data to Redis queues
+                diarization_data = {
+                    'start': segment.start,
+                    'end': segment.end,
+                    'speaker_id': label,
+                }
+                if len(value)==3:
+                    diarization_data['centroids'] = value[-1].tolist()
+                    
+                self.redis_client.rpush(f'diarization_{self.conversation_id}', json.dumps(diarization_data))
+
+        else:
+            prediction = value
+
+    def on_error(self, error: Exception):
+        # Handle error (optional)
+        pass
+
+    def on_completed(self):
+        # Handle completion (optional)
+        pass
+
+    #######
 
 class PredictionAccumulator(Observer):
     def __init__(self, uri: Optional[Text] = None, patch_collar: float = 0.05):

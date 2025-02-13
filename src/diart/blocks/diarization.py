@@ -87,7 +87,8 @@ class SpeakerDiarizationConfig(base.PipelineConfig):
 
 
 class SpeakerDiarization(base.Pipeline):
-    def __init__(self, config: SpeakerDiarizationConfig | None = None):
+    def __init__(self, config: SpeakerDiarizationConfig | None = None, return_embeddings: bool = False):
+        self.return_embeddings = return_embeddings
         self._config = SpeakerDiarizationConfig() if config is None else config
 
         msg = f"Latency should be in the range [{self._config.step}, {self._config.duration}]"
@@ -225,6 +226,9 @@ class SpeakerDiarization(base.Pipeline):
                 agg_prediction = shifted_agg_prediction
 
             outputs.append((agg_prediction, agg_waveform))
+            if self.return_embeddings:
+                outputs[-1] = outputs[-1] + (self.clustering.centers,) # extend output with speakers' embeddings
+
 
             # Make place for new chunks in buffer if required
             if len(self.chunk_buffer) == self.pred_aggregation.num_overlapping_windows:
