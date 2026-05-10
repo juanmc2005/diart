@@ -5,8 +5,6 @@ import torch
 import torchaudio
 from torchaudio.functional import resample
 
-torchaudio.set_audio_backend("soundfile")
-
 
 FilePath = Union[Text, Path]
 
