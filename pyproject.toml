@@ -64,6 +64,9 @@ docs = [
     "sphinx-mdinclude>=0.6.0",
     "furo>=2024.1.29",
 ]
+s3 = [
+    "s3fs>=2024.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/juanmc2005/diart"

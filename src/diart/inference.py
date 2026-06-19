@@ -15,7 +15,7 @@ from pyannote.metrics.base import BaseMetric
 from rx.core import Observer
 from tqdm import tqdm
 
-from . import blocks, utils
+from . import blocks, storage, utils
 from . import operators as dops
 from . import sources as src
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
@@ -273,8 +273,13 @@ class Benchmark:
         show_report: bool = True,
         batch_size: int = 32,
     ):
-        self.speech_path = Path(speech_path).expanduser()
-        assert self.speech_path.is_dir(), "Speech path must be a directory"
+        # Remote paths (e.g. s3://) are kept as strings; local paths use pathlib.
+        if storage.is_remote(speech_path):
+            self.speech_path = str(speech_path)
+            assert storage.exists(self.speech_path), "Speech path must be a directory"
+        else:
+            self.speech_path = Path(speech_path).expanduser()
+            assert self.speech_path.is_dir(), "Speech path must be a directory"
 
         # If there's no reference and no output, then benchmark has no output
         msg = "Benchmark expected reference path, output path or both"
@@ -282,8 +287,16 @@ class Benchmark:
 
         self.reference_path = reference_path
         if reference_path is not None:
-            self.reference_path = Path(self.reference_path).expanduser()
-            assert self.reference_path.is_dir(), "Reference path must be a directory"
+            if storage.is_remote(reference_path):
+                self.reference_path = str(reference_path)
+                assert storage.exists(self.reference_path), (
+                    "Reference path must be a directory"
+                )
+            else:
+                self.reference_path = Path(self.reference_path).expanduser()
+                assert self.reference_path.is_dir(), (
+                    "Reference path must be a directory"
+                )
 
         self.output_path = output_path
         if self.output_path is not None:
@@ -302,6 +315,8 @@ class Benchmark:
         paths: List[Path]
             List of audio file paths.
         """
+        if storage.is_remote(self.speech_path):
+            return storage.list_audio_files(self.speech_path)
         return list(self.speech_path.iterdir())
 
     def run_single(
@@ -328,26 +343,28 @@ class Benchmark:
         prediction: Annotation
             Pipeline prediction for the given file.
         """
-        padding = pipeline.config.get_file_padding(filepath)
-        source = src.FileAudioSource(
-            filepath,
-            pipeline.config.sample_rate,
-            padding,
-            pipeline.config.step,
-        )
-        pipeline.set_timestamp_shift(-padding[0])
-        inference = StreamingInference(
-            pipeline,
-            source,
-            self.batch_size,
-            do_profile=False,
-            do_plot=False,
-            show_progress=self.show_progress,
-            progress_bar=progress_bar,
-        )
+        # Download remote files (e.g. s3://) once to a temporary local copy.
+        with storage.localize(filepath) as local_filepath:
+            padding = pipeline.config.get_file_padding(local_filepath)
+            source = src.FileAudioSource(
+                local_filepath,
+                pipeline.config.sample_rate,
+                padding,
+                pipeline.config.step,
+            )
+            pipeline.set_timestamp_shift(-padding[0])
+            inference = StreamingInference(
+                pipeline,
+                source,
+                self.batch_size,
+                do_profile=False,
+                do_plot=False,
+                show_progress=self.show_progress,
+                progress_bar=progress_bar,
+            )
 
-        pred = inference()
-        pred.uri = source.uri
+            pred = inference()
+            pred.uri = source.uri
 
         if self.output_path is not None:
             with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
@@ -380,8 +397,14 @@ class Benchmark:
             progress_bar = TQDMProgressBar(f"Computing {metric.name}", leave=False)
             progress_bar.create(total=len(predictions), unit="file")
             progress_bar.start()
+            is_remote_ref = storage.is_remote(self.reference_path)
             for hyp in predictions:
-                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
+                if is_remote_ref:
+                    ref_path = f"{str(self.reference_path).rstrip('/')}/{hyp.uri}.rttm"
+                else:
+                    ref_path = self.reference_path / f"{hyp.uri}.rttm"
+                with storage.localize(ref_path) as local_ref:
+                    ref = load_rttm(local_ref).popitem()[1]
                 metric(ref, hyp)
                 progress_bar.update()
             progress_bar.close()
@@ -423,7 +446,7 @@ class Benchmark:
         predictions = []
         for i, filepath in enumerate(audio_file_paths):
             pipeline.reset()
-            desc = f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})"
+            desc = f"Streaming {storage.get_stem(filepath)} ({i + 1}/{num_audio_files})"
             progress = TQDMProgressBar(desc, leave=False, do_close=True)
             predictions.append(self.run_single(pipeline, filepath, progress))
 
@@ -542,7 +565,7 @@ class Parallelize:
                 pipeline_class,
                 config,
                 filepath,
-                f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+                f"Streaming {storage.get_stem(filepath)} ({i + 1}/{num_audio_files})",
             )
             for i, filepath in enumerate(audio_file_paths)
         ]
