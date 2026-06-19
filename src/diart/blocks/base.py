@@ -6,7 +6,7 @@ from pyannote.core import SlidingWindowFeature
 from pyannote.metrics.base import BaseMetric
 
 from .. import utils
-from ..audio import AudioLoader, FilePath
+from ..audio import AudioLoader, PathLike
 
 
 @dataclass
@@ -78,7 +78,7 @@ class PipelineConfig(ABC):
         """The sample rate of the input audio stream"""
         pass
 
-    def get_file_padding(self, filepath: FilePath) -> Tuple[float, float]:
+    def get_file_padding(self, filepath: PathLike) -> Tuple[float, float]:
         file_duration = AudioLoader(self.sample_rate, mono=True).get_duration(filepath)
         right = utils.get_padding_right(self.latency, self.step)
         left = utils.get_padding_left(file_duration + right, self.duration)

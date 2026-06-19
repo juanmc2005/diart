@@ -7,6 +7,7 @@ import torch
 from diart import argdoc, utils
 from diart import models as m
 from diart.inference import Benchmark, Parallelize
+from diart.storage import Dataset
 
 
 def run():
@@ -119,8 +120,7 @@ def run():
     pipeline_class = utils.get_pipeline_class(args.pipeline)
 
     benchmark = Benchmark(
-        args.root,
-        args.reference,
+        Dataset(args.root, args.reference),
         args.output,
         show_progress=True,
         show_report=True,

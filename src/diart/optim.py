@@ -12,6 +12,7 @@ from typing_extensions import Literal
 from . import blocks
 from .audio import FilePath
 from .inference import Benchmark
+from .storage import Dataset
 
 
 class Optimizer:
@@ -32,8 +33,7 @@ class Optimizer:
         # FIXME can we run this benchmark in parallel?
         #  Currently it breaks the trial progress bar
         self.benchmark = Benchmark(
-            speech_path,
-            reference_path,
+            Dataset(speech_path, reference_path),
             show_progress=True,
             show_report=False,
             batch_size=batch_size,

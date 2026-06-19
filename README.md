@@ -423,10 +423,10 @@ or using the inference API:
 
 ```python
 from diart.inference import Benchmark, Parallelize
-from diart import SpeakerDiarization, SpeakerDiarizationConfig
+from diart import Dataset, SpeakerDiarization, SpeakerDiarizationConfig
 from diart.models import SegmentationModel
 
-benchmark = Benchmark("/wav/dir", "/rttm/dir")
+benchmark = Benchmark(Dataset("/wav/dir", "/rttm/dir"))
 
 model_name = "pyannote/segmentation@Interspeech2021"
 model = SegmentationModel.from_pretrained(model_name)
@@ -467,9 +467,10 @@ diart.benchmark s3://my-bucket/audio --reference s3://my-bucket/rttm
 ```
 
 ```python
+from diart import Dataset
 from diart.inference import Benchmark
 
-benchmark = Benchmark("s3://my-bucket/audio", "s3://my-bucket/rttm")
+benchmark = Benchmark(Dataset("s3://my-bucket/audio", "s3://my-bucket/rttm"))
 ```
 
 As with local benchmarks, RTTM file names must match the audio file names
