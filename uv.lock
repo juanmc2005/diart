@@ -838,6 +838,7 @@ name = "diart"
 source = { editable = "." }
 dependencies = [
     { name = "einops" },
+    { name = "fsspec" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "matplotlib", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -853,6 +854,7 @@ dependencies = [
     { name = "requests" },
     { name = "rich" },
     { name = "rx" },
+    { name = "s3fs" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -878,9 +880,6 @@ onnx = [
     { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "onnxruntime", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-s3 = [
-    { name = "s3fs" },
-]
 
 [package.dev-dependencies]
 dev = [
@@ -892,6 +891,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "einops", specifier = ">=0.7.0" },
+    { name = "fsspec", specifier = ">=2024.0.0" },
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2024.1.29" },
     { name = "matplotlib", specifier = ">=3.8.0,<4.0.0" },
     { name = "numpy", specifier = ">=2.0.0" },
@@ -906,7 +906,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "rx", specifier = ">=3.2.0" },
-    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.0.0" },
+    { name = "s3fs", specifier = ">=2024.0.0" },
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "sounddevice", specifier = ">=0.5.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=7.0.0" },
@@ -919,7 +919,7 @@ requires-dist = [
     { name = "websocket-client", specifier = ">=1.7.0" },
     { name = "websocket-server", specifier = ">=0.6.4" },
 ]
-provides-extras = ["docs", "onnx", "s3"]
+provides-extras = ["docs", "onnx"]
 
 [package.metadata.requires-dev]
 dev = [

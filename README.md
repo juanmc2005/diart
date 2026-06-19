@@ -456,15 +456,9 @@ See `diart.benchmark -h` for more options.
 
 ### Benchmark from AWS S3
 
-The audio and reference directories also accept remote `s3://` URLs, so you can
-benchmark a corpus stored on AWS S3 without downloading it first. Install the
-optional dependencies:
-
-```shell
-pip install diart[s3]
-```
-
-Then point `diart.benchmark` (or `Benchmark`) at `s3://` prefixes:
+The audio and reference directories also accept remote `s3://` URLs out of the
+box, so you can benchmark a corpus stored on AWS S3 without downloading it
+first. Just point `diart.benchmark` (or `Benchmark`) at `s3://` prefixes:
 
 ```shell
 diart.benchmark s3://my-bucket/audio --reference s3://my-bucket/rttm

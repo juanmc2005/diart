@@ -5,13 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, List, Optional, Union
 
-try:
-    import fsspec
-
-    IS_FSSPEC_AVAILABLE = True
-except ImportError:
-    fsspec = None
-    IS_FSSPEC_AVAILABLE = False
+import fsspec
 
 # Protocols that point to the local filesystem and don't require fsspec.
 LOCAL_PROTOCOLS = (None, "", "file", "local")
@@ -33,15 +27,7 @@ AUDIO_EXTENSIONS = (
 
 def _split_protocol(path: str):
     """Return the ``(protocol, path)`` pair for a path string."""
-    if IS_FSSPEC_AVAILABLE:
-        return fsspec.core.split_protocol(path)
-
-    # Minimal fallback when fsspec is unavailable: detect a leading "scheme://"
-    if "://" in path:
-        protocol, rest = path.split("://", 1)
-        return protocol, rest
-
-    return None, path
+    return fsspec.core.split_protocol(path)
 
 
 class FilePath:
@@ -76,22 +62,8 @@ class FilePath:
 
     @property
     def _fs(self):
-        """The fsspec filesystem backing this (remote) path.
-
-        Raises a helpful error if the required backend isn't installed.
-        """
-        if not IS_FSSPEC_AVAILABLE:
-            raise ImportError(
-                f"Reading from '{self}' requires extra dependencies. "
-                "Install them with: pip install diart[s3]"
-            )
-        try:
-            return fsspec.filesystem(self._protocol)
-        except ImportError as e:
-            raise ImportError(
-                f"Reading from '{self}' requires the '{self._protocol}' fsspec "
-                "backend. Install it with: pip install diart[s3]"
-            ) from e
+        """The fsspec filesystem backing this (remote) path."""
+        return fsspec.filesystem(self._protocol)
 
     @property
     def name(self) -> str:
