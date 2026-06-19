@@ -7,14 +7,16 @@ import torch
 from diart import argdoc, utils
 from diart import models as m
 from diart.inference import Benchmark, Parallelize
+from diart.storage import Dataset
 
 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "root",
-        type=Path,
-        help="Directory with audio files CONVERSATION.(wav|flac|m4a|...)",
+        type=str,
+        help="Directory with audio files CONVERSATION.(wav|flac|m4a|...). "
+        "Also accepts remote URLs such as s3://my-bucket/audio (requires diart[s3])",
     )
     parser.add_argument(
         "--pipeline",
@@ -36,8 +38,9 @@ def run():
     )
     parser.add_argument(
         "--reference",
-        type=Path,
-        help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files",
+        type=str,
+        help="Optional. Directory with RTTM files CONVERSATION.rttm. Names must match audio files. "
+        "Also accepts remote URLs such as s3://my-bucket/rttm (requires diart[s3])",
     )
     parser.add_argument(
         "--duration",
@@ -117,8 +120,7 @@ def run():
     pipeline_class = utils.get_pipeline_class(args.pipeline)
 
     benchmark = Benchmark(
-        args.root,
-        args.reference,
+        Dataset(args.root, args.reference),
         args.output,
         show_progress=True,
         show_report=True,

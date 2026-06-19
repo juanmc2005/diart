@@ -9,6 +9,7 @@ from diart import argdoc, utils
 from diart import models as m
 from diart.blocks.base import HyperParameter
 from diart.optim import Optimizer
+from diart.storage import Dataset
 
 
 def run():
@@ -157,8 +158,7 @@ def run():
     # Run optimization
     Optimizer(
         pipeline_class=pipeline_class,
-        speech_path=args.root,
-        reference_path=args.reference,
+        dataset=Dataset(args.root, args.reference),
         study_or_path=study_or_path,
         batch_size=args.batch_size,
         hparams=hparams,

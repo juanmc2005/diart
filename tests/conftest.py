@@ -1,9 +1,14 @@
 import random
+from pathlib import Path
 
 import pytest
 import torch
 
+from diart import SpeakerDiarizationConfig
 from diart.models import EmbeddingModel, SegmentationModel
+
+MODEL_DIR = Path(__file__).parent.parent / "assets" / "models"
+DATA_DIR = Path(__file__).parent / "data"
 
 
 class DummySegmentationModel:
@@ -46,3 +51,29 @@ def segmentation_model() -> SegmentationModel:
 @pytest.fixture(scope="session")
 def embedding_model() -> EmbeddingModel:
     return EmbeddingModel(DummyEmbeddingModel)
+
+
+@pytest.fixture(scope="session")
+def segmentation() -> SegmentationModel:
+    return SegmentationModel.from_pretrained(MODEL_DIR / "segmentation_uint8.onnx")
+
+
+@pytest.fixture(scope="session")
+def embedding() -> EmbeddingModel:
+    return EmbeddingModel.from_pretrained(MODEL_DIR / "embedding_uint8.onnx")
+
+
+@pytest.fixture(scope="session")
+def make_config(segmentation, embedding):
+    def _config(latency):
+        return SpeakerDiarizationConfig(
+            segmentation=segmentation,
+            embedding=embedding,
+            step=0.5,
+            latency=latency,
+            tau_active=0.507,
+            rho_update=0.006,
+            delta_new=1.057,
+        )
+
+    return _config

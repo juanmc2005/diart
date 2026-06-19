@@ -20,6 +20,7 @@ from . import operators as dops
 from . import sources as src
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from .sinks import PredictionAccumulator, StreamingPlot, WindowClosedException
+from .storage import Dataset, FilePath
 
 
 class StreamingInference:
@@ -239,12 +240,9 @@ class Benchmark:
 
     Parameters
     ----------
-    speech_path: Text or Path
-        Directory with audio files.
-    reference_path: Text, Path or None
-        Directory with reference RTTM files (same names as audio files).
-        If None, performance will not be calculated.
-        Defaults to None.
+    dataset: Dataset
+        Dataset with audio files and optional reference RTTM files.
+        If the dataset has no reference, performance will not be calculated.
     output_path: Text, Path or None
         Output directory to store predictions in RTTM format.
         If None, predictions will not be written to disk.
@@ -266,24 +264,17 @@ class Benchmark:
 
     def __init__(
         self,
-        speech_path: Union[Text, Path],
-        reference_path: Optional[Union[Text, Path]] = None,
+        dataset: Dataset,
         output_path: Optional[Union[Text, Path]] = None,
         show_progress: bool = True,
         show_report: bool = True,
         batch_size: int = 32,
     ):
-        self.speech_path = Path(speech_path).expanduser()
-        assert self.speech_path.is_dir(), "Speech path must be a directory"
+        self.dataset = dataset
 
         # If there's no reference and no output, then benchmark has no output
-        msg = "Benchmark expected reference path, output path or both"
-        assert reference_path is not None or output_path is not None, msg
-
-        self.reference_path = reference_path
-        if reference_path is not None:
-            self.reference_path = Path(self.reference_path).expanduser()
-            assert self.reference_path.is_dir(), "Reference path must be a directory"
+        msg = "Benchmark expected a dataset with a reference, an output path, or both"
+        assert self.dataset.has_reference or output_path is not None, msg
 
         self.output_path = output_path
         if self.output_path is not None:
@@ -294,20 +285,20 @@ class Benchmark:
         self.show_report = show_report
         self.batch_size = batch_size
 
-    def get_file_paths(self) -> List[Path]:
+    def get_file_paths(self) -> List[FilePath]:
         """Return the path for each file in the benchmark.
 
         Returns
         -------
-        paths: List[Path]
+        paths: List[FilePath]
             List of audio file paths.
         """
-        return list(self.speech_path.iterdir())
+        return self.dataset.audio_files()
 
     def run_single(
         self,
         pipeline: blocks.Pipeline,
-        filepath: Path,
+        file: FilePath,
         progress_bar: ProgressBar,
     ) -> Annotation:
         """Run a given pipeline on a given file.
@@ -318,7 +309,7 @@ class Benchmark:
         ----------
         pipeline: StreamingPipeline
             Speaker diarization pipeline to run.
-        filepath: Path
+        file: FilePath
             Path to the target file.
         progress_bar: diart.progress.ProgressBar
             An object to manage the progress of this run.
@@ -328,26 +319,28 @@ class Benchmark:
         prediction: Annotation
             Pipeline prediction for the given file.
         """
-        padding = pipeline.config.get_file_padding(filepath)
-        source = src.FileAudioSource(
-            filepath,
-            pipeline.config.sample_rate,
-            padding,
-            pipeline.config.step,
-        )
-        pipeline.set_timestamp_shift(-padding[0])
-        inference = StreamingInference(
-            pipeline,
-            source,
-            self.batch_size,
-            do_profile=False,
-            do_plot=False,
-            show_progress=self.show_progress,
-            progress_bar=progress_bar,
-        )
+        # Ensure the file exists locally before running the pipeline
+        with file.localize() as local_file:
+            padding = pipeline.config.get_file_padding(local_file)
+            source = src.FileAudioSource(
+                local_file,
+                pipeline.config.sample_rate,
+                padding,
+                pipeline.config.step,
+            )
+            pipeline.set_timestamp_shift(-padding[0])
+            inference = StreamingInference(
+                pipeline,
+                source,
+                self.batch_size,
+                do_profile=False,
+                do_plot=False,
+                show_progress=self.show_progress,
+                progress_bar=progress_bar,
+            )
 
-        pred = inference()
-        pred.uri = source.uri
+            pred = inference()
+            pred.uri = source.uri
 
         if self.output_path is not None:
             with open(self.output_path / f"{source.uri}.rttm", "w") as out_file:
@@ -376,12 +369,13 @@ class Benchmark:
             A performance report as a pandas `DataFrame` if a
             reference path was given. Otherwise return the same predictions.
         """
-        if self.reference_path is not None:
+        if self.dataset.has_reference:
             progress_bar = TQDMProgressBar(f"Computing {metric.name}", leave=False)
             progress_bar.create(total=len(predictions), unit="file")
             progress_bar.start()
             for hyp in predictions:
-                ref = load_rttm(self.reference_path / f"{hyp.uri}.rttm").popitem()[1]
+                with self.dataset.reference_for(hyp.uri).localize() as local_ref:
+                    ref = load_rttm(str(local_ref)).popitem()[1]
                 metric(ref, hyp)
                 progress_bar.update()
             progress_bar.close()
@@ -421,11 +415,11 @@ class Benchmark:
         pipeline = pipeline_class(config)
 
         predictions = []
-        for i, filepath in enumerate(audio_file_paths):
+        for i, file in enumerate(audio_file_paths):
             pipeline.reset()
-            desc = f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})"
+            desc = f"Streaming {file.stem} ({i + 1}/{num_audio_files})"
             progress = TQDMProgressBar(desc, leave=False, do_close=True)
-            predictions.append(self.run_single(pipeline, filepath, progress))
+            predictions.append(self.run_single(pipeline, file, progress))
 
         metric = pipeline.suggest_metric() if metric is None else metric
         return self.evaluate(predictions, metric)
@@ -456,7 +450,7 @@ class Parallelize:
         self,
         pipeline_class: type,
         config: blocks.PipelineConfig,
-        filepath: Path,
+        file: FilePath,
         description: Text,
     ) -> Annotation:
         """Build and run a pipeline on a single file.
@@ -469,7 +463,7 @@ class Parallelize:
             A pipeline from this class will be instantiated.
         config: StreamingConfig
             Streaming pipeline configuration.
-        filepath: Path
+        file: FilePath
             Path to the target file.
         description: Text
             Description to show in the parallel progress bar.
@@ -489,7 +483,7 @@ class Parallelize:
             description, leave=False, position=idx_process, do_close=True
         )
         # Run the pipeline
-        return self.benchmark.run_single(pipeline, filepath, progress)
+        return self.benchmark.run_single(pipeline, file, progress)
 
     def __call__(
         self,
@@ -541,10 +535,10 @@ class Parallelize:
             (
                 pipeline_class,
                 config,
-                filepath,
-                f"Streaming {filepath.stem} ({i + 1}/{num_audio_files})",
+                file,
+                f"Streaming {file.stem} ({i + 1}/{num_audio_files})",
             )
-            for i, filepath in enumerate(audio_file_paths)
+            for i, file in enumerate(audio_file_paths)
         ]
         # Submit all jobs
         jobs = [pool.apply_async(self.run_single_job, args=args) for args in arg_list]

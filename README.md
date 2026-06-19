@@ -249,9 +249,11 @@ See `diart.tune -h` for more options.
 ### From python
 
 ```python
+from diart import Dataset, SpeakerDiarization
 from diart.optim import Optimizer
 
-optimizer = Optimizer("/wav/dir", "/rttm/dir", "/output/dir")
+dataset = Dataset("/wav/dir", "/rttm/dir")
+optimizer = Optimizer(SpeakerDiarization, dataset, "/output/dir")
 optimizer(num_iter=100)
 ```
 
@@ -276,13 +278,15 @@ diart.tune /wav/dir --reference /rttm/dir --storage mysql://root@localhost/examp
 or in python:
 
 ```python
+from diart import Dataset, SpeakerDiarization
 from diart.optim import Optimizer
 from optuna.samplers import TPESampler
 import optuna
 
 db = "mysql://root@localhost/example"
 study = optuna.load_study("example", db, TPESampler())
-optimizer = Optimizer("/wav/dir", "/rttm/dir", study)
+dataset = Dataset("/wav/dir", "/rttm/dir")
+optimizer = Optimizer(SpeakerDiarization, dataset, study)
 optimizer(num_iter=100)
 ```
 
@@ -423,10 +427,10 @@ or using the inference API:
 
 ```python
 from diart.inference import Benchmark, Parallelize
-from diart import SpeakerDiarization, SpeakerDiarizationConfig
+from diart import Dataset, SpeakerDiarization, SpeakerDiarizationConfig
 from diart.models import SegmentationModel
 
-benchmark = Benchmark("/wav/dir", "/rttm/dir")
+benchmark = Benchmark(Dataset("/wav/dir", "/rttm/dir"))
 
 model_name = "pyannote/segmentation@Interspeech2021"
 model = SegmentationModel.from_pretrained(model_name)
@@ -449,6 +453,31 @@ if __name__ == "__main__":  # Needed for multiprocessing
 
 This pre-calculates model outputs in batches, so it runs a lot faster.
 See `diart.benchmark -h` for more options.
+
+### Benchmark from AWS S3
+
+The audio and reference directories also accept remote `s3://` URLs out of the
+box, so you can benchmark a corpus stored on AWS S3 without downloading it
+first. Just point `diart.benchmark` (or `Benchmark`) at `s3://` prefixes:
+
+```shell
+diart.benchmark s3://my-bucket/audio --reference s3://my-bucket/rttm
+```
+
+```python
+from diart import Dataset
+from diart.inference import Benchmark
+
+benchmark = Benchmark(Dataset("s3://my-bucket/audio", "s3://my-bucket/rttm"))
+```
+
+As with local benchmarks, RTTM file names must match the audio file names
+(e.g. `audio/conversation.wav` ↔ `rttm/conversation.rttm`). AWS credentials are
+resolved through the standard chain (environment variables,
+`~/.aws/credentials`, or an IAM role). Under the hood this uses
+[fsspec](https://filesystem-spec.readthedocs.io)/[s3fs](https://s3fs.readthedocs.io),
+so other supported protocols such as `gs://` work too once their backend is
+installed. The `--output` directory remains local.
 
 For convenience and to facilitate future comparisons, we also provide the
 <a href="https://github.com/juanmc2005/diart/tree/main/expected_outputs">expected outputs</a>

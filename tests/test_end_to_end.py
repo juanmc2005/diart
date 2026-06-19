@@ -4,41 +4,11 @@ from pathlib import Path
 import pytest
 from pyannote.database.util import load_rttm
 
-from diart import SpeakerDiarization, SpeakerDiarizationConfig
+from diart import SpeakerDiarization
 from diart.inference import StreamingInference
-from diart.models import EmbeddingModel, SegmentationModel
 from diart.sources import FileAudioSource
 
-MODEL_DIR = Path(__file__).parent.parent / "assets" / "models"
 DATA_DIR = Path(__file__).parent / "data"
-
-
-@pytest.fixture(scope="session")
-def segmentation():
-    model_path = MODEL_DIR / "segmentation_uint8.onnx"
-    return SegmentationModel.from_pretrained(model_path)
-
-
-@pytest.fixture(scope="session")
-def embedding():
-    model_path = MODEL_DIR / "embedding_uint8.onnx"
-    return EmbeddingModel.from_pretrained(model_path)
-
-
-@pytest.fixture(scope="session")
-def make_config(segmentation, embedding):
-    def _config(latency):
-        return SpeakerDiarizationConfig(
-            segmentation=segmentation,
-            embedding=embedding,
-            step=0.5,
-            latency=latency,
-            tau_active=0.507,
-            rho_update=0.006,
-            delta_new=1.057,
-        )
-
-    return _config
 
 
 @pytest.mark.parametrize("source_file", [DATA_DIR / "audio" / "sample.wav"])

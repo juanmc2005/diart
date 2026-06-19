@@ -52,6 +52,8 @@ dependencies = [
     "websocket-client>=1.7.0",
     "rich>=13.0.0",
     "omegaconf>=2.3.0",
+    "fsspec>=2024.0.0",
+    "s3fs>=2024.0.0",
 ]
 
 [project.optional-dependencies]

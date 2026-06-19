@@ -81,7 +81,8 @@ class FileAudioSource(AudioSource):
         padding: Tuple[float, float] = (0, 0),
         block_duration: float = 0.5,
     ):
-        super().__init__(Path(file).stem, sample_rate)
+        file = FilePath(file)
+        super().__init__(file.stem, sample_rate)
         self.loader = AudioLoader(self.sample_rate, mono=True)
         self._duration = self.loader.get_duration(file)
         self.file = file
