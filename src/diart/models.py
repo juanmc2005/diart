@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from pathlib import Path
-from typing import Optional, Text, Union, Callable, List
+from typing import Callable, List, Optional, Text, Union
 
 import numpy as np
 import torch
@@ -47,7 +47,7 @@ class PyannoteLoader:
 
     def __call__(self) -> Callable:
         try:
-            model = Model.from_pretrained(self.model_info, use_auth_token=self.hf_token)
+            model = Model.from_pretrained(self.model_info, token=self.hf_token)
             specs = getattr(model, "specifications", None)
             if specs is not None and specs.powerset:
                 model = PowersetAdapter(model)
@@ -56,7 +56,7 @@ class PyannoteLoader:
             pass
         except ModuleNotFoundError:
             pass
-        return PretrainedSpeakerEmbedding(self.model_info, use_auth_token=self.hf_token)
+        return PretrainedSpeakerEmbedding(self.model_info, token=self.hf_token)
 
 
 class ONNXLoader:

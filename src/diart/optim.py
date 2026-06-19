@@ -1,12 +1,12 @@
 from collections import OrderedDict
 from pathlib import Path
-from typing import Sequence, Text, Optional, Union
+from typing import Optional, Sequence, Text, Union
 
-from optuna import TrialPruned, Study, create_study
+from optuna import Study, TrialPruned, create_study
 from optuna.samplers import TPESampler
-from optuna.trial import Trial, FrozenTrial
+from optuna.trial import FrozenTrial, Trial
 from pyannote.metrics.base import BaseMetric
-from tqdm import trange, tqdm
+from tqdm import tqdm, trange
 from typing_extensions import Literal
 
 from . import blocks

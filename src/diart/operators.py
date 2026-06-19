@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Callable, Optional, List, Any, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 import numpy as np
 import rx
-from pyannote.core import Annotation, SlidingWindow, SlidingWindowFeature, Segment
+from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from rx import operators as ops
 from rx.core import Observable
 

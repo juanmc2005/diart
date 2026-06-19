@@ -1,6 +1,102 @@
 [build-system]
-requires = [
-  "setuptools >= 40.9.0",
-  "wheel",
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "diart"
+dynamic = ["version"]
+description = "A python framework to build AI for real-time speech"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Juan Manuel Coria", email = "juanmc2005@hotmail.com" },
 ]
-build-backend = "setuptools.build_meta"
+keywords = [
+    "speaker diarization",
+    "streaming",
+    "online",
+    "real time",
+    "rxpy",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=2.0.0",
+    "matplotlib>=3.8.0,<4.0.0",
+    "rx>=3.2.0",
+    "scipy>=1.11.0",
+    "sounddevice>=0.5.0",
+    "einops>=0.7.0",
+    "tqdm>=4.66.0",
+    "pandas>=2.0.0",
+    "torch>=2.8.0",
+    "torchaudio>=2.8.0",
+    "torchcodec>=0.7.0",
+    "pyannote.audio>=4.0.0",
+    "requests>=2.31.0",
+    "pyannote.core>=6.0.0",
+    "pyannote.database>=6.1.0",
+    "pyannote.metrics>=4.0.0",
+    "optuna>=4.0.0",
+    "websocket-server>=0.6.4",
+    "websocket-client>=1.7.0",
+    "rich>=13.0.0",
+    "omegaconf>=2.3.0",
+]
+
+[project.optional-dependencies]
+onnx = [
+    "onnxruntime>=1.18.0",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-autoapi>=3.0.0",
+    "sphinx-mdinclude>=0.6.0",
+    "furo>=2024.1.29",
+]
+
+[project.urls]
+Homepage = "https://github.com/juanmc2005/diart"
+Repository = "https://github.com/juanmc2005/diart"
+Documentation = "https://diart.readthedocs.io"
+
+[project.scripts]
+"diart.stream" = "diart.console.stream:run"
+"diart.benchmark" = "diart.console.benchmark:run"
+"diart.tune" = "diart.console.tune:run"
+"diart.serve" = "diart.console.serve:run"
+"diart.client" = "diart.console.client:run"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0,<9.0.0",
+    "ruff>=0.6.0",
+    "pre-commit>=3.5.0",
+]
+
+[tool.hatch.version]
+path = "src/diart/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diart"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

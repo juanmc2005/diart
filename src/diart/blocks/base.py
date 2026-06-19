@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Tuple, Sequence, Text
+from typing import Any, Sequence, Text, Tuple
 
 from pyannote.core import SlidingWindowFeature
 from pyannote.metrics.base import BaseMetric
 
 from .. import utils
-from ..audio import FilePath, AudioLoader
+from ..audio import AudioLoader, FilePath
 
 
 @dataclass

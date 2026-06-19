@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from diart import SpeakerDiarizationConfig, SpeakerDiarization
+from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from utils import build_waveform_swf
 
 

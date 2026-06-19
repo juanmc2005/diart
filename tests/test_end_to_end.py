@@ -6,7 +6,7 @@ from pyannote.database.util import load_rttm
 
 from diart import SpeakerDiarization, SpeakerDiarizationConfig
 from diart.inference import StreamingInference
-from diart.models import SegmentationModel, EmbeddingModel
+from diart.models import EmbeddingModel, SegmentationModel
 from diart.sources import FileAudioSource
 
 MODEL_DIR = Path(__file__).parent.parent / "assets" / "models"
@@ -35,8 +35,9 @@ def make_config(segmentation, embedding):
             latency=latency,
             tau_active=0.507,
             rho_update=0.006,
-            delta_new=1.057
+            delta_new=1.057,
         )
+
     return _config
 
 
@@ -56,20 +57,18 @@ def test_benchmark(make_config, source_file, latency):
 
     pipeline.set_timestamp_shift(-padding[0])
     inference = StreamingInference(
-        pipeline,
-        source,
-        do_profile=False,
-        do_plot=False,
-        show_progress=False
+        pipeline, source, do_profile=False, do_plot=False, show_progress=False
     )
 
     pred = inference()
 
-    expected_file = (DATA_DIR / "rttm" / f"latency_{latency}.rttm")
+    expected_file = DATA_DIR / "rttm" / f"latency_{latency}.rttm"
     expected = load_rttm(expected_file).popitem()[1]
 
     assert len(pred) == len(expected)
-    for track1, track2 in zip(pred.itertracks(yield_label=True), expected.itertracks(yield_label=True)):
+    for track1, track2 in zip(
+        pred.itertracks(yield_label=True), expected.itertracks(yield_label=True)
+    ):
         pred_segment, _, pred_spk = track1
         expected_segment, _, expected_spk = track2
         # We can tolerate a difference of up to 50ms

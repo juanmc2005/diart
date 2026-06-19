@@ -6,21 +6,21 @@ import numpy as np
 import torch
 from pyannote.core import (
     Annotation,
-    Timeline,
-    SlidingWindowFeature,
-    SlidingWindow,
     Segment,
+    SlidingWindow,
+    SlidingWindowFeature,
+    Timeline,
 )
 from pyannote.metrics.base import BaseMetric
 from pyannote.metrics.detection import DetectionErrorRate
 from typing_extensions import Literal
 
+from .. import models as m
+from .. import utils
 from . import base
 from .aggregation import DelayedAggregation
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
-from .. import models as m
-from .. import utils
 
 
 class VoiceActivityDetectionConfig(base.PipelineConfig):

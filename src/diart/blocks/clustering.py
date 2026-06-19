@@ -1,4 +1,4 @@
-from typing import Optional, List, Iterable, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch

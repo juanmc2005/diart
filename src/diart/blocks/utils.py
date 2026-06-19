@@ -1,11 +1,11 @@
-from typing import Text, Optional
+from typing import Optional, Text
 
 import numpy as np
 import torch
-from pyannote.core import Annotation, Segment, SlidingWindowFeature
 import torchaudio.transforms as T
+from pyannote.core import Annotation, Segment, SlidingWindowFeature
 
-from ..features import TemporalFeatures, TemporalFeatureFormatter
+from ..features import TemporalFeatureFormatter, TemporalFeatures
 
 
 class Binarize:

@@ -5,9 +5,8 @@ import optuna
 import torch
 from optuna.samplers import TPESampler
 
-from diart import argdoc
+from diart import argdoc, utils
 from diart import models as m
-from diart import utils
 from diart.blocks.base import HyperParameter
 from diart.optim import Optimizer
 

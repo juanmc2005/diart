@@ -4,18 +4,18 @@ from typing import Sequence
 
 import numpy as np
 import torch
-from pyannote.core import Annotation, SlidingWindowFeature, SlidingWindow, Segment
+from pyannote.core import Annotation, Segment, SlidingWindow, SlidingWindowFeature
 from pyannote.metrics.base import BaseMetric
 from pyannote.metrics.diarization import DiarizationErrorRate
 from typing_extensions import Literal
 
+from .. import models as m
 from . import base
 from .aggregation import DelayedAggregation
 from .clustering import OnlineSpeakerClustering
 from .embedding import OverlapAwareSpeakerEmbedding
 from .segmentation import SpeakerSegmentation
 from .utils import Binarize
-from .. import models as m
 
 
 class SpeakerDiarizationConfig(base.PipelineConfig):

@@ -1,10 +1,10 @@
-from typing import Optional, Union, Text
+from typing import Optional, Text, Union
 
 import torch
 from einops import rearrange
 
 from .. import functional as F
-from ..features import TemporalFeatures, TemporalFeatureFormatter
+from ..features import TemporalFeatureFormatter, TemporalFeatures
 from ..models import EmbeddingModel
 
 
