@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional, Sequence, Text, Union
+from typing import Optional, Sequence, Union
 
 from optuna import Study, TrialPruned, create_study
 from optuna.samplers import TPESampler
@@ -19,8 +19,7 @@ class Optimizer:
     def __init__(
         self,
         pipeline_class: type,
-        speech_path: Union[Text, Path],
-        reference_path: Union[Text, Path],
+        dataset: Dataset,
         study_or_path: Union[FilePath, Study],
         batch_size: int = 32,
         hparams: Optional[Sequence[blocks.base.HyperParameter]] = None,
@@ -29,11 +28,14 @@ class Optimizer:
         metric: Optional[BaseMetric] = None,
         direction: Literal["minimize", "maximize"] = "minimize",
     ):
+        # Optimization requires a reference to compute the metric being optimized
+        assert dataset.has_reference, "Optimizer requires a dataset with a reference"
+
         self.pipeline_class = pipeline_class
         # FIXME can we run this benchmark in parallel?
         #  Currently it breaks the trial progress bar
         self.benchmark = Benchmark(
-            Dataset(speech_path, reference_path),
+            dataset,
             show_progress=True,
             show_report=False,
             batch_size=batch_size,

@@ -249,9 +249,11 @@ See `diart.tune -h` for more options.
 ### From python
 
 ```python
+from diart import Dataset, SpeakerDiarization
 from diart.optim import Optimizer
 
-optimizer = Optimizer("/wav/dir", "/rttm/dir", "/output/dir")
+dataset = Dataset("/wav/dir", "/rttm/dir")
+optimizer = Optimizer(SpeakerDiarization, dataset, "/output/dir")
 optimizer(num_iter=100)
 ```
 
@@ -276,13 +278,15 @@ diart.tune /wav/dir --reference /rttm/dir --storage mysql://root@localhost/examp
 or in python:
 
 ```python
+from diart import Dataset, SpeakerDiarization
 from diart.optim import Optimizer
 from optuna.samplers import TPESampler
 import optuna
 
 db = "mysql://root@localhost/example"
 study = optuna.load_study("example", db, TPESampler())
-optimizer = Optimizer("/wav/dir", "/rttm/dir", study)
+dataset = Dataset("/wav/dir", "/rttm/dir")
+optimizer = Optimizer(SpeakerDiarization, dataset, study)
 optimizer(num_iter=100)
 ```
 
