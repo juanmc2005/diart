@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Union, Text, Optional, Tuple
+from typing import Optional, Text, Tuple, Union
 
 import matplotlib.pyplot as plt
 from pyannote.core import Annotation, Segment, SlidingWindowFeature, notebook

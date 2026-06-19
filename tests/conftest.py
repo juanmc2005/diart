@@ -3,7 +3,7 @@ import random
 import pytest
 import torch
 
-from diart.models import SegmentationModel, EmbeddingModel
+from diart.models import EmbeddingModel, SegmentationModel
 
 
 class DummySegmentationModel:

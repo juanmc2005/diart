@@ -4,9 +4,8 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from diart import argdoc
+from diart import argdoc, utils
 from diart import models as m
-from diart import utils
 from diart.inference import Benchmark, Parallelize
 
 

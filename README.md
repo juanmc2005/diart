@@ -9,7 +9,7 @@
 <p align="center">
 <img alt="PyPI Version" src="https://img.shields.io/pypi/v/diart?color=g">
 <img alt="PyPI Downloads" src="https://static.pepy.tech/personalized-badge/diart?period=total&units=international_system&left_color=grey&right_color=brightgreen&left_text=downloads">
-<img alt="Python Versions" src="https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10-dark_green">
+<img alt="Python Versions" src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-dark_green">
 <img alt="Code size in bytes" src="https://img.shields.io/github/languages/code-size/juanmc2005/StreamingSpeakerDiarization?color=g">
 <img alt="License" src="https://img.shields.io/github/license/juanmc2005/StreamingSpeakerDiarization?color=g">
 <a href="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996"><img src="https://joss.theoj.org/papers/cc9807c6de75ea4c29025c7bd0d31996/status.svg"></a>
@@ -81,7 +81,7 @@ tune its hyper-parameters, and even serve it on the web using websockets.
 **1) Make sure your system has the following dependencies:**
 
 ```
-ffmpeg < 4.4
+ffmpeg >= 4.4
 portaudio == 19.6.X
 libsndfile >= 1.2.2
 ```
@@ -96,6 +96,20 @@ conda activate diart
 **2) Install the package:**
 ```shell
 pip install diart
+```
+
+To use ONNX models, install the optional `onnx` extra:
+```shell
+pip install diart[onnx]
+```
+
+#### Development install
+
+diart uses [uv](https://docs.astral.sh/uv/) for dependency management. To set up a development environment:
+```shell
+git clone https://github.com/juanmc2005/diart.git
+cd diart
+uv sync --extra onnx --group dev
 ```
 
 ### Get access to 🎹 pyannote models

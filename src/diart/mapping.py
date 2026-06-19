@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, List, Optional, Text, Tuple, Union, Dict
 from abc import ABC, abstractmethod
+from typing import Callable, Dict, Iterable, List, Optional, Text, Tuple, Union
 
 import numpy as np
 from pyannote.core.utils.distance import cdist
@@ -126,14 +126,12 @@ class SpeakerMapBuilder:
 
     @staticmethod
     def correlation(scores1: np.ndarray, scores2: np.ndarray) -> SpeakerMap:
-        score_matrix_per_frame = (
-            np.stack(  # (local_speakers, num_frames, global_speakers)
-                [
-                    scores1[:, speaker : speaker + 1] * scores2
-                    for speaker in range(scores1.shape[1])
-                ],
-                axis=0,
-            )
+        score_matrix_per_frame = np.stack(  # (local_speakers, num_frames, global_speakers)
+            [
+                scores1[:, speaker : speaker + 1] * scores2
+                for speaker in range(scores1.shape[1])
+            ],
+            axis=0,
         )
         # Calculate total speech "activations" per local speaker
         local_speech_scores = np.sum(scores1, axis=0).reshape(-1, 1)

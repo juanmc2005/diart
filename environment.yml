@@ -3,10 +3,10 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.12
   - portaudio=19.6.*
   - pysoundfile=0.12.*
-  - ffmpeg[version='<4.4']
+  - ffmpeg>=4.4
   - pip
   - pip:
     - .

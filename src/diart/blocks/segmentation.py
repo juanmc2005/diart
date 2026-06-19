@@ -1,9 +1,9 @@
-from typing import Optional, Union, Text
+from typing import Optional, Text, Union
 
 import torch
 from einops import rearrange
 
-from ..features import TemporalFeatures, TemporalFeatureFormatter
+from ..features import TemporalFeatureFormatter, TemporalFeatures
 from ..models import SegmentationModel
 
 

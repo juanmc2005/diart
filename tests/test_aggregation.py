@@ -4,10 +4,10 @@ from pyannote.core import SlidingWindow, SlidingWindowFeature
 
 from diart.blocks.aggregation import (
     AggregationStrategy,
-    HammingWeightedAverageStrategy,
-    FirstOnlyStrategy,
     AverageStrategy,
     DelayedAggregation,
+    FirstOnlyStrategy,
+    HammingWeightedAverageStrategy,
 )
 
 

@@ -26,6 +26,19 @@ If you encounter a problem with diart or want to suggest an improvement, please 
   - Clearly outline the new feature you are proposing.
   - Explain how it would benefit the project.
 
+## Setting Up a Development Environment
+
+diart uses [uv](https://docs.astral.sh/uv/) for dependency management. After [installing uv](https://docs.astral.sh/uv/getting-started/installation/) and the system dependencies listed in the README:
+
+```shell
+git clone https://github.com/<your-username>/diart.git
+cd diart
+uv sync --extra onnx --group dev
+uv run pre-commit install
+```
+
+You can then run the tests with `uv run pytest` and the linter/formatter with `uv run ruff check .` and `uv run ruff format .`.
+
 ## Opening Pull Requests
 
 We welcome and appreciate contributions! To ensure a smooth review process, please follow these guidelines when opening a pull request:
@@ -43,11 +56,12 @@ We welcome and appreciate contributions! To ensure a smooth review process, plea
   - If applicable, add or update tests to cover your changes.
 
 - **Code Style:**
-  - Follow the existing coding style of the project. We use `black` and `isort`.
+  - Follow the existing coding style of the project. We use [Ruff](https://docs.astral.sh/ruff/) for both linting and formatting (it replaces `black` and `isort`).
+  - The `pre-commit` hooks run Ruff automatically. You can also run `uv run ruff check --fix .` and `uv run ruff format .` manually.
 
 - **Discuss Before Major Changes:**
   - If your PR includes significant changes, discuss it in an issue first.
- 
+
 - **Follow the existing workflow:**
   - Make sure to open your PR against `develop` (**not** `main`).
 

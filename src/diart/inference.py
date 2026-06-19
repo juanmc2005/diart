@@ -1,8 +1,8 @@
 import logging
-from multiprocessing import Pool, freeze_support, RLock, current_process
+from multiprocessing import Pool, RLock, current_process, freeze_support
 from pathlib import Path
 from traceback import print_exc
-from typing import Union, Text, Optional, Callable, Tuple, List
+from typing import Callable, List, Optional, Text, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -15,10 +15,9 @@ from pyannote.metrics.base import BaseMetric
 from rx.core import Observer
 from tqdm import tqdm
 
-from . import blocks
+from . import blocks, utils
 from . import operators as dops
 from . import sources as src
-from . import utils
 from .progress import ProgressBar, RichProgressBar, TQDMProgressBar
 from .sinks import PredictionAccumulator, StreamingPlot, WindowClosedException
 

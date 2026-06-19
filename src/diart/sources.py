@@ -1,18 +1,28 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 from queue import SimpleQueue
-from typing import Text, Optional, AnyStr, Dict, Any, Union, Tuple
+from typing import Any, AnyStr, Dict, Optional, Text, Tuple, Union
 
 import numpy as np
 import sounddevice as sd
 import torch
 from einops import rearrange
 from rx.subject import Subject
-from torchaudio.io import StreamReader
 from websocket_server import WebsocketServer
 
+try:
+    # torchaudio.io.StreamReader was removed in torchaudio 2.11.
+    # It is only required for live device capture (e.g. macOS avfoundation),
+    # which torchcodec does not provide an equivalent for.
+    from torchaudio.io import StreamReader
+
+    IS_STREAM_READER_AVAILABLE = True
+except ImportError:
+    StreamReader = None
+    IS_STREAM_READER_AVAILABLE = False
+
 from . import utils
-from .audio import FilePath, AudioLoader
+from .audio import AudioLoader, FilePath
 
 
 class AudioSource(ABC):
@@ -280,6 +290,11 @@ class TorchStreamAudioSource(AudioSource):
         stream_index: Optional[int] = None,
         block_duration: float = 0.5,
     ):
+        assert IS_STREAM_READER_AVAILABLE, (
+            "torchaudio.io.StreamReader is not available in this torchaudio version. "
+            "Live device capture via StreamReader is no longer supported; "
+            "use MicrophoneAudioSource instead."
+        )
         super().__init__(uri, sample_rate)
         self.block_size = int(np.rint(block_duration * self.sample_rate))
         self._streamer = streamer

@@ -6,10 +6,12 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+from importlib.metadata import version as _version
+
 project = "diart"
 copyright = "2023, Juan Manuel Coria"
 author = "Juan Manuel Coria"
-release = "v0.9"
+release = _version("diart")
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

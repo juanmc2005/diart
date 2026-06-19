@@ -1,5 +1,5 @@
-from typing import Union, Optional
 from abc import ABC, abstractmethod
+from typing import Optional, Union
 
 import numpy as np
 import torch

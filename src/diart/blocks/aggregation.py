@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import List, Optional
 
 import numpy as np
 from pyannote.core import Segment, SlidingWindow, SlidingWindowFeature

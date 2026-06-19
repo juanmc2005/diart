@@ -3,10 +3,9 @@ from pathlib import Path
 
 import torch
 
-from diart import argdoc
+from diart import argdoc, utils
 from diart import models as m
 from diart import sources as src
-from diart import utils
 from diart.inference import StreamingInference
 from diart.sinks import RTTMWriter
 

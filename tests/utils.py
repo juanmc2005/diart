@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import random
+
 import numpy as np
-from pyannote.core import SlidingWindowFeature, SlidingWindow
+from pyannote.core import SlidingWindow, SlidingWindowFeature
 
 
 def build_waveform_swf(
